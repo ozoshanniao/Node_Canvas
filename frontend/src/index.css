@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #121212; /* 设置暗黑基底 */
+}
+
+/* --- 全局极简暗黑滚动条定制 --- */
+
+/* 1. 规定所有滚动条的总宽度 */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+/* 2. 全局取消白色底块，全部设为纯净透明 */
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 3. 全局滑块重构为低调的半透明微白圆角 */
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+/* 4. 鼠标悬浮在任何滑块上时微亮 */
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 🌟 Flora AI 专属：全局拉线端点隐形热区扩大（完美修复错位版） */
+/* 注意：千万不要再去复写 .react-flow__handle 本身的 position 属性，让它保持原生的 absolute 即可 */
+
+.react-flow__handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px !important;   /* 触控直径依然保持 32px 盲操级别 */
+  height: 32px !important;
+  background: transparent !important; /* 维持 100% 绝对透明 */
+  border-radius: 50% !important;
+  cursor: crosshair !important;       /* 鼠标移入时呈现连线十字准星 */
+}
+
+/* 🌟 连线流动核心动画 */
+.react-flow__edge-path.flowing {
+  stroke-dasharray: 10; /* 线段长度 */
+  stroke-dashoffset: 20;
+  animation: flowAnimation 0.5s linear infinite;
+  stroke-width: 3; /* 动画时加粗一点更有质感 */
+  stroke: #ffffff; /* 确保流动时颜色亮起 */
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.8)); /* 增加发光效果 */
+}
+
+@keyframes flowAnimation {
+  from {
+    stroke-dashoffset: 20;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}

@@ -1,0 +1,470 @@
+import { useState, useRef, useEffect } from 'react';
+import { Handle, Position, NodeResizeControl, useReactFlow } from '@xyflow/react';
+import { useImageAspect } from '../hooks/useImageAspect';
+
+// 1. 追加解构 id
+export function ImageNode({ id, data }) {
+  const containerRef = useRef(null); // 🌟 建立容器引用
+  const { setNodes, getNodes, getEdges, setEdges } = useReactFlow();
+
+  const [registry, setRegistry] = useState(null); // 🌟 存储后端 specs
+  const [showAdvanced, setShowAdvanced] = useState(false); // 🌟 控制副胶囊显示
+  const [currentIndex, setCurrentIndex] = useState(0); // 🌟 记录当前预览的是第几张图
+
+  useEffect(() => {
+  const fetchSpecs = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/model-specs');
+      const result = await response.json();
+      setRegistry(result);
+    } catch (err) {
+      console.error("抓取规格失败:", err);
+    }
+  };
+  fetchSpecs();
+}, []);
+
+  // 🌟 新增：图片比例自动校准逻辑 (与 ImageInputNode 保持绝对一致)
+  const handleImageLoad = useImageAspect(id, containerRef);
+  
+  // --- 2. 核心状态管理 (升级为全局受控) ---
+  
+  // 🌟 读取主画布派发过来的值，如果为空则自动fallback到默认值
+  const provider = data.provider || 'Google';
+  // 🌟 动态获取当前服务商支持的模型
+  const availableModels = registry?.providers[provider] || [];
+  const model = data.model || availableModels[0];
+
+  // 🌟 从池子里抓取当前模型的“能力说明书”
+  const currentSpec = registry?.models[model] || {};
+
+  const availableRatios = currentSpec.ratios || ['1:1'];
+  const availableResolutions = currentSpec.resolutions || ['1K'];
+
+  // 智能回退：如果当前比例不在新模型支持列表中，自动选第一个
+  const ratio = availableRatios.includes(data.ratio) ? data.ratio : availableRatios[0];
+  const resolution = data.resolution || '1K';
+
+  // 将 "16:9" 转换为 1.777...
+  const parseRatio = (ratioStr) => {
+  const [w, h] = ratioStr.split(':').map(Number);
+  return w / h;
+};
+
+  // 【唯一保留的局部状态】控制当前打开的下拉菜单（因为画布主壳不需要关心谁的菜单开了）
+  const [activeMenu, setActiveMenu] = useState(null);
+
+  // 🌟 智能比例校准：确保节点永远缩放在 600x600 的安全区内
+  const handleRatioChange = (ratioStr) => {
+  const aspect = parseRatio(ratioStr);
+
+  // 🌟 获取当前节点的实时物理宽度和高度
+  const currentWidth = containerRef.current?.offsetWidth || 480;
+  const currentHeight = containerRef.current?.offsetHeight || 360;
+
+  const anchorSide = Math.max(currentWidth, currentHeight);
+    
+    let targetWidth, targetHeight;
+
+    if (aspect >= 1) {
+      // 横屏或正方形：宽度撑满，高度收缩
+      targetWidth = anchorSide;
+      targetHeight = anchorSide / aspect;
+    } else {
+      // 竖屏：高度撑满，宽度收缩
+      targetHeight = anchorSide;
+      targetWidth = anchorSide * aspect;
+    }
+
+    // 1. 同步数据状态
+    updateNodeData({ ratio: ratioStr });
+
+    // 2. 物理调整节点尺寸
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === id) {
+          return {
+            ...node,
+            width: targetWidth,
+            height: targetHeight,
+          };
+        }
+        return node;
+      })
+    );
+  };
+
+  // 🌟 必须定义这个函数，否则点击菜单会崩溃
+  const updateNodeData = (newData) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === id) {
+          return { ...node, data: { ...node.data, ...newData } };
+        }
+        return node;
+      })
+    );
+  };
+
+  const toggleMenu = (menuName) => {
+    setActiveMenu(activeMenu === menuName ? null : menuName);
+  };
+
+  // 服务商切换联动
+  const handleProviderSelect = (value) => {
+    updateNodeData({
+      provider: value,
+      model: registry.providers[value][0] // 联动更新该服务商的第一个默认模型
+    });
+    setActiveMenu(null);
+  };
+
+  // 1. 在组件顶部添加状态
+  const [isLoading, setIsLoading] = useState(false);
+
+// 2. 修改 handleRun 函数
+  const handleRun = async (e) => {
+    if (isLoading) return; // 🌟 防呆：如果正在加载，直接拦截
+    e.stopPropagation(); // 防止点击按钮触发节点的选中状态
+
+    setIsLoading(true); // 🌟 开始加载
+
+    // 🌟 A. 开启流动动画：找到所有连向自己的线，注入 CSS 类名
+    setEdges((eds) =>
+      eds.map((edge) => {
+        if (edge.target === id) {
+          return { ...edge, className: 'flowing' }; // 注入刚才写的 CSS 类
+        }
+        return edge;
+      })
+    );
+    
+    // 获取全场最新的快照
+    const allNodes = getNodes();
+    const allEdges = getEdges();
+
+    // 🌟 优先级：节点私有数据 > 全局保底 > 默认空串
+    const activePath = data.projectPath || window.currentProjectPath || "";
+
+    if (!activePath) {
+      console.error("❌ 运行失败：未检测到有效的项目路径");
+      return;
+    }
+
+    // 🌟 核心：拓扑动态索引扫描
+    // 1. 获取所有连向本节点 image:in 端口的线
+    const imageEdges = allEdges.filter(
+      (edge) => edge.target === id && edge.targetHandle === "image:in"
+    );
+
+    // 2. 按照连线在数组中的顺序（即连线先后顺序）提取上游节点的图片
+    const connectedImages = imageEdges.map((edge) => {
+      const sourceNode = allNodes.find((n) => n.id === edge.source);
+      // 优先取单图 url，如果没有则取多图数组的第一张
+      return sourceNode?.data?.url || sourceNode?.data?.urls?.[0];
+    }).filter(url => !!url); // 过滤掉无效的空值
+
+    const workflowData = {
+      triggerId: id, // 记录是哪个图片节点点的运行
+      nodes: allNodes.map(n => ({ 
+        id: n.id, 
+        type: n.type, 
+        data: n.data,
+        position: n.position, // 🌟 别忘了加上坐标，后端模型现在需要它
+        width: n.width,
+        height: n.height
+      })),
+      edges: allEdges,
+      imageInputs: connectedImages,
+      projectPath: data.projectPath || window.currentProjectPath // 🌟 必须包含这个字段！
+    };
+
+  try {
+      // 🌟 真正的全栈握手请求
+      const response = await fetch('http://127.0.0.1:8000/run-workflow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(workflowData),
+      });
+
+      const result = await response.json();
+      if (result.status === 'success') {
+        // 🌟 将后端返回的图片 URL 写回当前节点的 data
+        updateNodeData({ url: result.data.url });
+        console.log(" 图片已生成并渲染:", result.data.url);
+      }
+      // 如果后端收到了，控制台会打印 {"status": "success", ...}
+    } catch (error) {
+      console.error(" 渲染失败:", error);
+    } finally {
+        setIsLoading(false); // 🌟 结束加载，恢复按钮点击
+
+      // 🌟 B. 关闭流动动画：无论成功失败，停止光流
+      setEdges((eds) =>
+        eds.map((edge) => {
+          if (edge.target === id) {
+            return { ...edge, className: '' }; // 移除类名，恢复静态
+          }
+          return edge;
+        })
+      );
+    }
+  };
+
+  // 🌟 核心：计算当前应显示的图片 URL
+  const displayUrl = Array.isArray(data.urls) && data.urls.length > 0
+    ? data.urls[currentIndex]
+    : data.url
+
+  return (
+    <div ref={containerRef} // 🌟 绑定引用
+      className="bg-[#181818] rounded-[24px] w-full h-full min-w-[50px] min-h-[50px] flex flex-col text-white select-none group hover:ring-2 hover:ring-white/50 hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.1)] transition-[box-shadow,filter] duration-150 relative">
+      
+    {showAdvanced && currentSpec.n && (
+          <div className="absolute -top-28 left-[23%] -translate-x-1/2 bg-[#181818]/90 backdrop-blur-xl border border-white/5 rounded-2xl px-6 py-3 flex items-center shadow-2xl animate-in fade-in slide-in-from-bottom-2 z-[60] nodrag opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-[1000ms] group-hover:delay-0">
+            <div className="flex flex-col gap-1 min-w-[100px]">
+              <div className="flex justify-between text-[9px] text-white/30 uppercase tracking-tighter">
+                <span>{currentSpec.n.label}</span>
+                <span className="text-white/60">{data.n || currentSpec.n.default}</span>
+              </div>
+              <input 
+                type="range"
+                min={currentSpec.n.min}
+                max={currentSpec.n.max}
+                step={currentSpec.n.step}
+                value={data.n || currentSpec.n.default}
+                onChange={(e) => updateNodeData({ n: parseInt(e.target.value) })}
+                className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+              />
+            </div>
+          </div>
+        )}
+      
+      {/* 1. 顶部悬浮工具栏 (1秒延时退出，before 伪元素防断联) */}
+      <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-[#181818] border border-white/5 rounded-full px-6 py-2.5 flex items-center gap-2 text-sm text-white/60 shadow-xl z-50 font-light whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity duration-300 delay-[1000ms] group-hover:delay-0 before:content-[''] before:absolute before:top-full before:left-0 before:w-full before:h-14">
+        
+        {(currentSpec.n || currentSpec.quality || currentSpec.features?.includes('google_search')) && (
+          <span
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className={`text-xs w-5 h-5 rounded-full flex items-center justify-center cursor-pointer transition-all nodrag ${showAdvanced ? 'bg-white text-black' : 'text-white/40 hover:bg-white/5 hover:text-white'}`}
+          >
+            &
+          </span>
+          )}
+
+        <div className="w-[1px] h-3 bg-white/10" />
+        
+        {/* 【服务商下拉】 */}
+        <div className="relative nodrag">
+          <div 
+            onClick={() => toggleMenu('provider')}
+            className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'provider' ? 'text-white' : 'hover:text-white'}`}
+          >
+            {provider} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+          </div>
+          {activeMenu === 'provider' && registry && (
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[100px] text-center animate-in fade-in zoom-in-95 duration-150">
+              {Object.keys(registry.providers).map((item) => (
+                <div 
+                  key={item}
+                  onClick={() => handleProviderSelect(item)}
+                  className={`px-4 py-2 text-xs cursor-pointer transition-colors ${provider === item ? 'text-white bg-white/5 font-normal' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="w-[1px] h-3 bg-white/10" />
+
+        {/* 【模型下拉（依据服务商动态渲染）】 */}
+        <div className="relative nodrag">
+          <div 
+            onClick={() => toggleMenu('model')}
+            className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'model' ? 'text-white' : 'hover:text-white'}`}
+          >
+            {model} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+          </div>
+          {activeMenu === 'model' && (
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[140px] text-center animate-in fade-in zoom-in-95 duration-150">
+              {availableModels.map((item) => (
+                <div 
+                  key={item}
+                  onClick={() => { updateNodeData({ model: item }); setActiveMenu(null); }}
+                  className={`px-4 py-2 text-xs cursor-pointer transition-colors ${model === item ? 'text-white bg-white/5 font-normal' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="w-[1px] h-3 bg-white/10" />
+
+        {/* 【比例下拉（11 种比例，带自适应滚动限制）】 */}
+        <div className="relative nodrag">
+          <div 
+            onClick={() => toggleMenu('ratio')}
+            className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'ratio' ? 'text-white' : 'hover:text-white'}`}
+          >
+            {ratio} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+          </div>
+          {activeMenu === 'ratio' && (
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[80px] max-h-[220px] overflow-y-auto text-center nowheel animate-in fade-in zoom-in-95 duration-150">
+              {availableRatios.map((item) => (
+                <div 
+                  key={item}
+                  onClick={(e) => { 
+                   e.stopPropagation();    // 阻止冒泡，防止触发节点选中
+                   handleRatioChange(item); // 🌟 触发联动校准
+                   setActiveMenu(null); }}
+                  className={`px-4 py-2 text-xs cursor-pointer transition-colors ${ratio === item ? 'text-white bg-white/5 font-normal' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="w-[1px] h-3 bg-white/10" />
+
+        {/* 【分辨率下拉】 */}
+        <div className="relative nodrag">
+          <div 
+            onClick={() => toggleMenu('resolution')}
+            className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'resolution' ? 'text-white' : 'hover:text-white'}`}
+          >
+            {resolution} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+          </div>
+          {activeMenu === 'resolution' && (
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[80px] text-center animate-in fade-in zoom-in-95 duration-150">
+              {availableResolutions.map((item) => (
+                <div 
+                  key={item}
+                  onClick={() => { updateNodeData({ resolution: item }); setActiveMenu(null); }}
+                  className={`px-4 py-2 text-xs cursor-pointer transition-colors ${resolution === item ? 'text-white bg-white/5 font-normal' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+          {currentSpec.quality && (
+          <>
+            <div className="w-[1px] h-3 bg-white/10" />
+            <div className="relative nodrag">
+              <div onClick={() => toggleMenu('quality')} className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'quality' ? 'text-white' : 'hover:text-white'}`}>
+                <span className="opacity-40">Q:</span>{data.quality || 'auto'} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+              </div>
+              {activeMenu === 'quality' && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[80px] text-center animate-in fade-in zoom-in-95">
+                  {currentSpec.quality.map(q => (
+                    <div key={q} onClick={() => { updateNodeData({ quality: q }); setActiveMenu(null); }} className={`px-4 py-2 text-xs cursor-pointer transition-colors ${data.quality === q ? 'text-white bg-white/5' : 'text-white/50 hover:text-white hover:bg-white/5'}`}>{q}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+          
+        <div className="w-[1px] h-3 bg-white/10" />
+        
+        {/* 向上箭头生成触发按钮 */}
+        <button 
+          onClick={handleRun}
+          disabled={isLoading} // 🌟 物理禁用按钮
+          className={`w-5 h-5 rounded-full bg-[#222222] flex items-center justify-center text-white/60 hover:bg-white hover:text-black transition-all nodrag ${
+            isLoading ? 'bg-white text-black' : 'bg-[#222222] text-white/60 hover:bg-white hover:text-black'
+          }`}
+        >
+          {isLoading ? (
+            // 🌟 旋转加载圆圈
+          <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+        ) : (
+          // 原有的箭头
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+          </svg>
+          )}
+        </button>
+      </div>
+
+{/* 2. 主体全域画布（恢复 flex-1 弹性高宽，内部包含悬浮文字） */}
+      <div className="absolute inset-0 nowheel overflow-hidden rounded-[24px] flex items-center justify-center">
+        
+{/* 🌟 悬浮毛玻璃胶囊：完美对齐 ImageInput 设计语言 */}
+      {/* 顶部悬浮文字标签栏 */}
+      <div className="absolute top-4 left-4 z-20 flex items-center gap-2 text-white/50 text-[11px] font-light bg-[#121212]/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/5 pointer-events-none">
+        <svg className="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 002-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        <span>Image Generation</span>
+      </div>
+
+{/* 条件渲染：有图片链接时全网格平铺，无图片时完美居中显示提示词 */}
+        {displayUrl ? (
+          <img 
+            src={displayUrl}
+            alt="AI Generated"
+            onLoad={handleImageLoad} // 🌟 调用 Hook 返回的逻辑
+            className="absolute inset-0 w-full h-full object-contain pointer-events-none transition-opacity duration-150"
+          />
+        ) : (
+          <div className="text-white/10 text-sm font-extralight tracking-wide">
+            No image generated
+          </div>
+        )}
+      </div>
+
+
+{/* 4. 悬浮触控说明端口 */}
+      <div className="absolute left-0 top-[35%] flex items-center z-20">
+        <Handle 
+          type="target" 
+          id="text:prompt" // 声明只接收 text 类型的连线
+          position={Position.Left} 
+          className="!w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !left-[-4px] group-hover:!border-white transition-colors"
+        />
+        <span className="absolute left-4 text-[11px] text-white/40 font-light pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-[#181818] px-1 rounded">prompt</span>
+      </div>
+      <div className="absolute left-0 top-[55%] flex items-center z-20">
+        <Handle 
+          type="target" 
+          id="image:in" // 声明只接收 image 类型的连线
+          position={Position.Left} 
+          className="!w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !left-[-4px] group-hover:!border-white transition-colors"
+        />
+        <span className="absolute left-4 text-[11px] text-white/40 font-light pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-[#181818] px-1 rounded">image</span>
+      </div>
+
+      <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center z-20">
+        <span className="absolute right-4 text-[11px] text-white/40 font-light pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-[#181818] px-1 rounded">
+          image:out
+        </span>
+        <Handle 
+          type="source" 
+          id="image:out" 
+          position={Position.Right} 
+          className="!w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !right-[-4px] group-hover:!border-white transition-colors shadow-[0_0_8px_rgba(255,255,255,0.2)]"
+        />
+      </div>
+
+      {/* 5. 隐形智能拉伸触控区 */}
+      <NodeResizeControl 
+        className="absolute bottom-0 right-0 w-12 h-12 cursor-se-resize z-50 !bg-transparent !border-none" 
+        minWidth={50} 
+        minHeight={50} 
+        keepAspectRatio={true}
+      />
+    </div>
+  );
+}
