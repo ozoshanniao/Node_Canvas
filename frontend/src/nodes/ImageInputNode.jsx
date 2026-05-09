@@ -1,10 +1,42 @@
-import { useRef } from 'react';
-import { Handle, Position, NodeResizeControl, useReactFlow } from '@xyflow/react';
+import { useEffect, useRef } from 'react';
+import { Handle, Position, useReactFlow } from '@xyflow/react';
+import { NodeResizeCorner } from '../components/NodeResizeCorner';
 
 export function ImageInputNode({ id, data }) {
   const fileInputRef = useRef(null);
   const containerRef = useRef(null);
   const { setNodes } = useReactFlow();
+  const imageSrc = data?.url || data?.dataUrl || data?.imageUrl || data?.src;
+
+  useEffect(() => {
+    const describeImageValue = (value) => {
+      if (!value) return { type: 'empty', length: 0 };
+      if (typeof value !== 'string') return { type: typeof value, length: 0 };
+      if (value.startsWith('data:image/')) return { type: 'dataURL', length: value.length, preview: value.slice(0, 80) };
+      if (value.startsWith('blob:')) return { type: 'blobURL', length: value.length, preview: value.slice(0, 80) };
+      if (value.startsWith('http://') || value.startsWith('https://')) return { type: 'httpURL', length: value.length, preview: value.slice(0, 80) };
+      return { type: 'filePathOrOther', length: value.length, preview: value.slice(0, 80) };
+    };
+
+    console.log('[ImageInputNode render:image]', {
+      nodeId: id,
+      fields: {
+        url: describeImageValue(data?.url),
+        dataUrl: describeImageValue(data?.dataUrl),
+        imageUrl: describeImageValue(data?.imageUrl),
+        src: describeImageValue(data?.src),
+      },
+      selectedSrc: describeImageValue(imageSrc),
+    });
+
+    if (data?.url?.startsWith?.('blob:')) {
+      console.warn('[ImageInputNode invalid-persistent-src]', {
+        nodeId: id,
+        reason: 'blob URL cannot survive reload; upload this image again so it can be saved as dataURL',
+        preview: data.url.slice(0, 80),
+      });
+    }
+  }, [id, data?.url, data?.dataUrl, data?.imageUrl, data?.src, imageSrc]);
 
   // 核心智能逻辑：当图片加载完毕后，自动精准校准整个卡片的宽高比
   const handleImageLoad = (e) => {
@@ -29,14 +61,32 @@ export function ImageInputNode({ id, data }) {
     );
   };
 
-  const handleFileChange = (e) => {
+  const fileToDataUrl = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
-      const url = URL.createObjectURL(file);
+      const dataUrl = await fileToDataUrl(file);
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === id) {
-            return { ...node, data: { ...node.data, url, file } };
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                url: dataUrl,
+                dataUrl,
+                filename: file.name,
+                mimeType: file.type,
+                file: undefined,
+              },
+            };
           }
           return node;
         })
@@ -44,7 +94,8 @@ export function ImageInputNode({ id, data }) {
     }
   };
 
-  const handleAreaClick = () => {
+  const handleDoubleClick = (e) => {
+    e.stopPropagation(); // 关键：防止触发 App.jsx 中的双击搜索框
     fileInputRef.current?.click();
   };
 
@@ -72,20 +123,20 @@ export function ImageInputNode({ id, data }) {
 
       {/* 修正位置 2：将 rounded-[24px] overflow-hidden 绑定在图片画布上，精准剪裁图片边缘 */}
       <div 
-        onMouseDown={(e) => e.stopPropagation()} 
-        onClick={handleAreaClick}
+        onMouseDown={(e) => e.stopPropagation()}
+        onDoubleClick={handleDoubleClick} // 🌟 关键修改：onClick -> onDoubleClick
         className="absolute inset-0 nowheel flex items-center justify-center bg-white/[0.005] hover:bg-white/[0.02] transition-all cursor-pointer rounded-[24px] overflow-hidden"
       >
-        {data?.url ? (
+        {imageSrc ? (
           <img 
-            src={data.url} 
+            src={imageSrc} 
             alt="Input Source" 
             onLoad={handleImageLoad}
             className="absolute inset-0 w-full h-full object-contain pointer-events-none transition-all duration-500"
           />
         ) : (
           <div className="text-white/20 text-sm font-extralight tracking-wide hover:text-white/40 transition-colors pt-4">
-            Click to Upload Image
+            Double Click to Upload Image
           </div>
         )}
       </div>
@@ -99,12 +150,7 @@ export function ImageInputNode({ id, data }) {
       />
 
       {/* 智能等比例拉伸触控区 */}
-      <NodeResizeControl 
-        className="absolute bottom-0 right-0 w-12 h-12 cursor-se-resize z-30 !bg-transparent !border-none" 
-        minWidth={320} 
-        minHeight={240} 
-        keepAspectRatio={!!data?.url} 
-      />
+      <NodeResizeCorner minWidth={320} minHeight={240} keepAspectRatio={!!imageSrc} />
     </div>
   );
 }

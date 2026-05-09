@@ -1,4 +1,5 @@
 // src/components/ImageEdge.jsx
+import { useEffect } from 'react';
 import { getBezierPath, EdgeLabelRenderer, useEdges, useReactFlow } from '@xyflow/react';
 
 export default function ImageEdge({
@@ -13,6 +14,7 @@ export default function ImageEdge({
   targetHandle,
   targetHandleId,
   selected,
+  data = {},
   style = {},
   markerEnd,
   ...props
@@ -45,6 +47,14 @@ export default function ImageEdge({
     setEdges((eds) => eds.filter((edge) => edge.id !== id));
   };
 
+  const isFlowing = Boolean(data?.flowing);
+
+  useEffect(() => {
+    if (isFlowing) {
+      console.log('[ImageEdge flowing]', id, data);
+    }
+  }, [id, isFlowing, data]);
+
   return (
     <>
       <path
@@ -59,10 +69,18 @@ export default function ImageEdge({
       <path
         id={id}
         style={style}
-        className={`react-flow__edge-path pointer-events-none ${selected ? 'stroke-white/60' : 'stroke-white/20'}`}
+        className={`react-flow__edge-path pointer-events-none ${selected || isFlowing ? 'stroke-white/55' : 'stroke-white/20'}`}
         d={edgePath}
         markerEnd={markerEnd ?? props.markerEnd}
       />
+
+      {isFlowing && (
+        <path
+          d={edgePath}
+          fill="none"
+          className="edge-flowing-overlay"
+        />
+      )}
 
       {(selected) && (
         <EdgeLabelRenderer>

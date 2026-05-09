@@ -1,6 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { Handle, Position, NodeResizeControl, useReactFlow } from '@xyflow/react';
+import { Handle, Position, useReactFlow } from '@xyflow/react';
+import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { useImageAspect } from '../hooks/useImageAspect';
+import { getNodeTextOutput } from '../utils/nodeOutputs';
+import { setLastNodeDefaults } from '../utils/nodeDefaults';
+import { getImageNodeAspectRatio, getImageNodeSizeByAspectRatio } from '../utils/nodeSizing';
 
 // 1. 追加解构 id
 export function ImageNode({ id, data }) {
@@ -30,10 +34,10 @@ export function ImageNode({ id, data }) {
   // --- 2. 核心状态管理 (升级为全局受控) ---
   
   // 🌟 读取主画布派发过来的值，如果为空则自动fallback到默认值
-  const provider = data.provider || 'Google';
+  const provider = data.provider || 'Yunwu';
   // 🌟 动态获取当前服务商支持的模型
   const availableModels = registry?.providers[provider] || [];
-  const model = data.model || availableModels[0];
+  const model = availableModels.includes(data.model) ? data.model : availableModels[0] || data.model || 'Nano 2';
 
   // 🌟 从池子里抓取当前模型的“能力说明书”
   const currentSpec = registry?.models[model] || {};
@@ -42,42 +46,30 @@ export function ImageNode({ id, data }) {
   const availableResolutions = currentSpec.resolutions || ['1K'];
 
   // 智能回退：如果当前比例不在新模型支持列表中，自动选第一个
-  const ratio = availableRatios.includes(data.ratio) ? data.ratio : availableRatios[0];
+  const configuredRatio = getImageNodeAspectRatio(data);
+  const ratio = availableRatios.includes(configuredRatio) ? configuredRatio : availableRatios[0];
   const resolution = data.resolution || '1K';
 
-  // 将 "16:9" 转换为 1.777...
-  const parseRatio = (ratioStr) => {
-  const [w, h] = ratioStr.split(':').map(Number);
-  return w / h;
-};
+  const imageUrlForBackend = async (url) => {
+    if (!url || !url.startsWith('blob:')) return url;
+    const blob = await fetch(url).then((res) => res.blob());
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
 
   // 【唯一保留的局部状态】控制当前打开的下拉菜单（因为画布主壳不需要关心谁的菜单开了）
   const [activeMenu, setActiveMenu] = useState(null);
 
   // 🌟 智能比例校准：确保节点永远缩放在 600x600 的安全区内
   const handleRatioChange = (ratioStr) => {
-  const aspect = parseRatio(ratioStr);
-
-  // 🌟 获取当前节点的实时物理宽度和高度
-  const currentWidth = containerRef.current?.offsetWidth || 480;
-  const currentHeight = containerRef.current?.offsetHeight || 360;
-
-  const anchorSide = Math.max(currentWidth, currentHeight);
-    
-    let targetWidth, targetHeight;
-
-    if (aspect >= 1) {
-      // 横屏或正方形：宽度撑满，高度收缩
-      targetWidth = anchorSide;
-      targetHeight = anchorSide / aspect;
-    } else {
-      // 竖屏：高度撑满，宽度收缩
-      targetHeight = anchorSide;
-      targetWidth = anchorSide * aspect;
-    }
+    const { width, height } = getImageNodeSizeByAspectRatio(ratioStr);
 
     // 1. 同步数据状态
-    updateNodeData({ ratio: ratioStr });
+    updateNodeData({ ratio: ratioStr, aspectRatio: ratioStr });
 
     // 2. 物理调整节点尺寸
     setNodes((nds) =>
@@ -85,8 +77,8 @@ export function ImageNode({ id, data }) {
         if (node.id === id) {
           return {
             ...node,
-            width: targetWidth,
-            height: targetHeight,
+            width,
+            height,
           };
         }
         return node;
@@ -96,6 +88,7 @@ export function ImageNode({ id, data }) {
 
   // 🌟 必须定义这个函数，否则点击菜单会崩溃
   const updateNodeData = (newData) => {
+    setLastNodeDefaults('imageGeneration', newData);
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === id) {
@@ -122,6 +115,16 @@ export function ImageNode({ id, data }) {
   // 1. 在组件顶部添加状态
   const [isLoading, setIsLoading] = useState(false);
 
+  const getFlowingEdgeIds = (edges) =>
+    edges
+      .filter((edge) => edge.target === id)
+      .map((edge) => edge.id);
+
+  const getRelatedEdgeIds = (edges) =>
+    edges
+      .filter((edge) => edge.target === id || edge.source === id)
+      .map((edge) => edge.id);
+
 // 2. 修改 handleRun 函数
   const handleRun = async (e) => {
     if (isLoading) return; // 🌟 防呆：如果正在加载，直接拦截
@@ -130,14 +133,28 @@ export function ImageNode({ id, data }) {
     setIsLoading(true); // 🌟 开始加载
 
     // 🌟 A. 开启流动动画：找到所有连向自己的线，注入 CSS 类名
-    setEdges((eds) =>
-      eds.map((edge) => {
-        if (edge.target === id) {
-          return { ...edge, className: 'flowing' }; // 注入刚才写的 CSS 类
+    setEdges((eds) => {
+      const flowingEdgeIds = getFlowingEdgeIds(eds);
+      
+      const incomingEdgeIds = eds.filter((edge) => edge.target === id).map((edge) => edge.id);
+      const outgoingEdgeIds = eds.filter((edge) => edge.source === id).map((edge) => edge.id);
+
+      console.log('[ImageNode flowing:start]', {
+        nodeId: id,
+        totalEdges: eds.length,
+        incomingCount: incomingEdgeIds.length,
+        outgoingCount: outgoingEdgeIds.length,
+        matchedCount: flowingEdgeIds.length,
+        edgeIds: flowingEdgeIds,
+      });
+
+      return eds.map((edge) => {
+        if (flowingEdgeIds.includes(edge.id)) {
+          return { ...edge, className: 'flowing', data: { ...edge.data, flowing: true } }; // 注入刚才写的 CSS 类
         }
         return edge;
-      })
-    );
+      });
+    });
     
     // 获取全场最新的快照
     const allNodes = getNodes();
@@ -148,38 +165,71 @@ export function ImageNode({ id, data }) {
 
     if (!activePath) {
       console.error("❌ 运行失败：未检测到有效的项目路径");
+      setIsLoading(false);
+      setEdges((eds) => {
+        const flowingEdgeIds = getFlowingEdgeIds(eds);
+        console.log('[ImageNode flowing:clear]', {
+          nodeId: id,
+          totalEdges: eds.length,
+          matchedCount: flowingEdgeIds.length,
+          edgeIds: flowingEdgeIds,
+          reason: 'missing-project-path',
+        });
+
+        return eds.map((edge) =>
+          flowingEdgeIds.includes(edge.id)
+            ? { ...edge, className: '', data: { ...edge.data, flowing: false } }
+            : edge
+        );
+      });
       return;
     }
 
     // 🌟 核心：拓扑动态索引扫描
     // 1. 获取所有连向本节点 image:in 端口的线
+  try {
     const imageEdges = allEdges.filter(
-      (edge) => edge.target === id && edge.targetHandle === "image:in"
+      (edge) => edge.target === id && (edge.targetHandle ?? edge.targetHandleId) === "image:in"
     );
 
     // 2. 按照连线在数组中的顺序（即连线先后顺序）提取上游节点的图片
-    const connectedImages = imageEdges.map((edge) => {
+    const connectedImages = await Promise.all(imageEdges.map(async (edge) => {
       const sourceNode = allNodes.find((n) => n.id === edge.source);
       // 优先取单图 url，如果没有则取多图数组的第一张
-      return sourceNode?.data?.url || sourceNode?.data?.urls?.[0];
-    }).filter(url => !!url); // 过滤掉无效的空值
+      return await imageUrlForBackend(sourceNode?.data?.url || sourceNode?.data?.urls?.[0]);
+    }));
+
+    const runtimeNodes = allNodes.map((n) => {
+      if (n.type === 'textConstruction') {
+        const resolvedText = getNodeTextOutput(n, allNodes, allEdges);
+        return {
+          id: n.id,
+          type: n.type,
+          data: { ...n.data, text: resolvedText, resolvedText },
+          position: n.position,
+          width: n.width,
+          height: n.height,
+        };
+      }
+
+      return {
+        id: n.id,
+        type: n.type,
+        data: n.data,
+        position: n.position,
+        width: n.width,
+        height: n.height,
+      };
+    });
 
     const workflowData = {
       triggerId: id, // 记录是哪个图片节点点的运行
-      nodes: allNodes.map(n => ({ 
-        id: n.id, 
-        type: n.type, 
-        data: n.data,
-        position: n.position, // 🌟 别忘了加上坐标，后端模型现在需要它
-        width: n.width,
-        height: n.height
-      })),
+      nodes: runtimeNodes,
       edges: allEdges,
-      imageInputs: connectedImages,
+      imageInputs: connectedImages.filter(url => !!url),
       projectPath: data.projectPath || window.currentProjectPath // 🌟 必须包含这个字段！
     };
 
-  try {
       // 🌟 真正的全栈握手请求
       const response = await fetch('http://127.0.0.1:8000/run-workflow', {
         method: 'POST',
@@ -190,8 +240,8 @@ export function ImageNode({ id, data }) {
       const result = await response.json();
       if (result.status === 'success') {
         // 🌟 将后端返回的图片 URL 写回当前节点的 data
-        updateNodeData({ url: result.data.url });
-        console.log(" 图片已生成并渲染:", result.data.url);
+        updateNodeData({ url: result.data.url, urls: result.data.urls });
+        console.log(" 图片已生成并渲染:", result.data.url || result.data.urls);
       }
       // 如果后端收到了，控制台会打印 {"status": "success", ...}
     } catch (error) {
@@ -200,14 +250,23 @@ export function ImageNode({ id, data }) {
         setIsLoading(false); // 🌟 结束加载，恢复按钮点击
 
       // 🌟 B. 关闭流动动画：无论成功失败，停止光流
-      setEdges((eds) =>
-        eds.map((edge) => {
-          if (edge.target === id) {
-            return { ...edge, className: '' }; // 移除类名，恢复静态
+      setEdges((eds) => {
+        const flowingEdgeIds = getFlowingEdgeIds(eds);
+        console.log('[ImageNode flowing:clear]', {
+          nodeId: id,
+          totalEdges: eds.length,
+          matchedCount: flowingEdgeIds.length,
+          edgeIds: flowingEdgeIds,
+          reason: 'finally',
+        });
+
+        return eds.map((edge) => {
+          if (flowingEdgeIds.includes(edge.id)) {
+            return { ...edge, className: '', data: { ...edge.data, flowing: false } }; // 移除类名，恢复静态
           }
           return edge;
-        })
-      );
+        });
+      });
     }
   };
 
@@ -459,12 +518,7 @@ export function ImageNode({ id, data }) {
       </div>
 
       {/* 5. 隐形智能拉伸触控区 */}
-      <NodeResizeControl 
-        className="absolute bottom-0 right-0 w-12 h-12 cursor-se-resize z-50 !bg-transparent !border-none" 
-        minWidth={50} 
-        minHeight={50} 
-        keepAspectRatio={true}
-      />
+      <NodeResizeCorner minWidth={120} minHeight={90} keepAspectRatio />
     </div>
   );
 }

@@ -60,10 +60,13 @@ class WorkflowPayload(BaseModel):
     triggerId: str
     nodes: List[NodeData]
     edges: List[EdgeData]
+    imageInputs: Optional[List[str]] = []
     projectPath: Optional[str] = None # 🌟 允许为空，并在逻辑中校验，防止 422
 
 class ProjectConfig(BaseModel):
     path: str
+    projectFilePath: Optional[str] = None
+    projectName: Optional[str] = None
     nodes: Optional[List[NodeData]] = []
     edges: Optional[List[EdgeData]] = []
 
@@ -103,7 +106,7 @@ async def init_project(config: ProjectConfig):
         
         # 创建/读取 project.json
         project_file = os.path.join(abs_path, "project.json")
-        existing_data = {"nodes": [], "edges": []}
+        existing_data = {"projectName": os.path.basename(abs_path) or "Untitled Project", "nodes": [], "edges": []}
         
         if os.path.exists(project_file):
             with open(project_file, "r", encoding="utf-8") as f:
@@ -129,9 +132,12 @@ async def get_specs():
 @app.post("/api/project/save")
 async def save_project(config: ProjectConfig):
     if not config.path: return
-    project_file = os.path.join(config.path, "project.json")
+    project_file = config.projectFilePath or os.path.join(config.path, "project.json")
+    project_dir = os.path.dirname(project_file) or config.path
+    os.makedirs(project_dir, exist_ok=True)
     # 将模型转换为字典保存
     data = {
+        "projectName": config.projectName or Path(project_file).stem or os.path.basename(config.path) or "Untitled Project",
         "nodes": [n.model_dump() for n in config.nodes],
         "edges": [e.model_dump() for e in config.edges]
     }
@@ -177,7 +183,7 @@ async def select_project_file():
     with open(file_path, "r", encoding="utf-8") as f:
         content = json.load(f)
 
-    return {"projectPath": project_dir, "content": content}
+    return {"projectPath": project_dir, "projectFilePath": file_path, "content": content}
 
 # 🌟 动态图片代理：读取项目路径下的生成图片
 @app.get("/api/image/{filename}")
@@ -190,7 +196,13 @@ async def get_image(filename: str, projectPath: Optional[str] = None):
     
     if os.path.exists(img_path):
         # 🌟 修正：根据后缀动态判断 MIME 类型，确保浏览器渲染
-        content_type = "image/jpeg" if filename.endswith((".jpg", ".jpeg")) else "image/png"
+        lower_name = filename.lower()
+        if lower_name.endswith((".jpg", ".jpeg")):
+            content_type = "image/jpeg"
+        elif lower_name.endswith(".webp"):
+            content_type = "image/webp"
+        else:
+            content_type = "image/png"
         return FileResponse(img_path, media_type=content_type)
         
     raise HTTPException(status_code=404)
@@ -225,7 +237,7 @@ async def run_workflow(payload: WorkflowPayload):
     gen_dir = os.path.join(payload.projectPath, "generation")
 
     # 🌟 统一提取 images 数组
-    image_inputs = trigger_node.data.get("images", [])
+    image_inputs = payload.imageInputs or []
     
 # 🌟 修改：考虑到以后可能生成多张图，我们将返回值处理得更鲁棒
     result = await active_engine.generate(config, prompt, gen_dir, image_inputs)

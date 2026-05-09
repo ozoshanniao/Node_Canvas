@@ -47,19 +47,24 @@ html, body, #root {
   cursor: crosshair !important;       /* 鼠标移入时呈现连线十字准星 */
 }
 
-/* 🌟 连线流动核心动画 */
-.react-flow__edge-path.flowing {
-  stroke-dasharray: 10; /* 线段长度 */
-  stroke-dashoffset: 20;
-  animation: flowAnimation 0.5s linear infinite;
-  stroke-width: 3; /* 动画时加粗一点更有质感 */
-  stroke: #ffffff; /* 确保流动时颜色亮起 */
-  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.8)); /* 增加发光效果 */
+/* Active workflow edge: moving background-colored mask over the static path. */
+.edge-flowing-overlay {
+  stroke: #0b0b0b;
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 18 14;
+  stroke-dashoffset: 32;
+  animation: edgeMaskFlow 0.75s linear infinite;
+  opacity: 1;
+  fill: none;
+  pointer-events: none;
+  filter: none;
 }
 
-@keyframes flowAnimation {
+@keyframes edgeMaskFlow {
   from {
-    stroke-dashoffset: 20;
+    stroke-dashoffset: 32;
   }
   to {
     stroke-dashoffset: 0;
