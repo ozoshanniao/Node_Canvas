@@ -106,6 +106,13 @@ export function TextNode({ id, data }) {
       </div>
 
       <Handle
+        type="target"
+        id="text:in"
+        position={Position.Left}
+        className="!w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !left-[-4px] group-hover:!border-white transition-all"
+      />
+
+      <Handle
         type="source"
         id="text:out"
         position={Position.Right}

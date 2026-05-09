@@ -1,0 +1,2 @@
+"""Image generation model adapters."""
+

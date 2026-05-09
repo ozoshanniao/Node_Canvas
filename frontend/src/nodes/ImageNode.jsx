@@ -193,10 +193,11 @@ export function ImageNode({ id, data }) {
     );
 
     // 2. 按照连线在数组中的顺序（即连线先后顺序）提取上游节点的图片
-    const connectedImages = await Promise.all(imageEdges.map(async (edge) => {
+    const connectedImages = await Promise.all(imageEdges.map(async (edge, index) => {
       const sourceNode = allNodes.find((n) => n.id === edge.source);
       // 优先取单图 url，如果没有则取多图数组的第一张
-      return await imageUrlForBackend(sourceNode?.data?.url || sourceNode?.data?.urls?.[0]);
+      const url = await imageUrlForBackend(sourceNode?.data?.url || sourceNode?.data?.urls?.[0]);
+      return { index, url };
     }));
 
     const runtimeNodes = allNodes.map((n) => {
@@ -226,7 +227,7 @@ export function ImageNode({ id, data }) {
       triggerId: id, // 记录是哪个图片节点点的运行
       nodes: runtimeNodes,
       edges: allEdges,
-      imageInputs: connectedImages.filter(url => !!url),
+      imageInputs: connectedImages.filter((item) => !!item.url),
       projectPath: data.projectPath || window.currentProjectPath // 🌟 必须包含这个字段！
     };
 

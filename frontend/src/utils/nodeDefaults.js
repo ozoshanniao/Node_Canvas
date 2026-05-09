@@ -14,6 +14,13 @@ const DEFAULT_FIELDS = {
     'background',
     'n',
   ],
+  llmProcessor: [
+    'provider',
+    'model',
+    'temperature',
+    'maxTokens',
+    'thinkingLevel',
+    ],
 };
 
 const readDefaultsStore = () => {

@@ -12,14 +12,23 @@ import '@xyflow/react/dist/style.css';
 import { Launcher } from './components/Launcher';
 import ImageEdge from './components/ImageEdge';
 import { TopProjectBar } from './components/TopProjectBar';
+import { ConnectionNodeMenu } from './components/ConnectionNodeMenu';
 
 import { TextNode } from './nodes/TextNode';
 import { TextConstructionNode } from './nodes/TextConstructionNode';
+import { LLMProcessorNode } from './nodes/LLMProcessorNode';
 import { ImageNode } from './nodes/ImageNode';
 import { ImageInputNode } from './nodes/ImageInputNode';
+import { OutputNode } from './nodes/OutputNode';
 import { NODE_DEFINITIONS, createDefaultNodeData, getNodeDefinition } from './nodes/nodeDefinitions';
+import {
+  getCompatibleNodeDefinitions,
+  getCompatibleTargetHandle,
+  groupNodeDefinitionsByCategory,
+} from './utils/nodeCompatibility';
+import { useCanvasHistory } from './hooks/useCanvasHistory';
 import { getImageNodeAspectRatio, getImageNodeSizeByAspectRatio, hasValidNodeSize } from './utils/nodeSizing';
-import { describeImageValue, saveProjectCore } from './utils/projectSave';
+import { saveProjectCore } from './utils/projectSave';
 //import { ButtonEdge } from './edges/ButtonEdge';
 
 const nodeTypes = {
@@ -27,6 +36,8 @@ const nodeTypes = {
   textConstruction: TextConstructionNode,
   imageNode: ImageNode,
   imageInputNode: ImageInputNode,
+  outputNode: OutputNode,
+  llmProcessor: LLMProcessorNode,
 };
 
 const edgeTypes = {
@@ -70,17 +81,6 @@ const normalizeNodesForLoad = (nodes = []) =>
         ? getImageNodeSizeByAspectRatio(getImageNodeAspectRatio(data))
         : {};
 
-    console.log('[project:load node image]', {
-      nodeId: node.id,
-      type: node.type,
-      imageFields: {
-        url: describeImageValue(data.url),
-        dataUrl: describeImageValue(data.dataUrl),
-        imageUrl: describeImageValue(data.imageUrl),
-        src: describeImageValue(data.src),
-      },
-    });
-
     return {
       ...node,
       selected: false,
@@ -117,12 +117,67 @@ const isValidConnection = (c) => {
   return c.sourceHandle.split(':')[0] === c.targetHandle.split(':')[0];
 };
 
+const getEventPoint = (event) => {
+  const touch = event?.changedTouches?.[0];
+  if (touch) return { x: touch.clientX, y: touch.clientY };
+
+  if (typeof event?.clientX === 'number' && typeof event?.clientY === 'number') {
+    return { x: event.clientX, y: event.clientY };
+  }
+
+  return null;
+};
+
+const clampMenuPoint = (point, menuWidth = 260, menuHeight = 360, margin = 12) => ({
+  x: Math.min(Math.max(point.x, margin), window.innerWidth - menuWidth - margin),
+  y: Math.min(Math.max(point.y, margin), window.innerHeight - menuHeight - margin),
+});
+
+const getConnectionStateSource = (connectionState) => {
+  const source =
+    typeof connectionState?.fromNode === 'string'
+      ? connectionState.fromNode
+      : connectionState?.fromNode?.id;
+
+  const sourceHandle =
+    typeof connectionState?.fromHandle === 'string'
+      ? connectionState.fromHandle
+      : connectionState?.fromHandle?.id || connectionState?.fromHandle?.handleId;
+
+  const handleType =
+    connectionState?.fromHandle?.type ||
+    connectionState?.fromHandle?.handleType ||
+    connectionState?.fromHandle?.handle_type;
+
+  const isSource =
+    handleType === 'source' ||
+    sourceHandle?.endsWith(':out') ||
+    sourceHandle === 'image:out' ||
+    sourceHandle === 'text:out';
+
+  return source && sourceHandle && isSource ? { source, sourceHandle } : null;
+};
+
+const isEditableShortcutTarget = (target) => {
+  const tagName = target?.tagName?.toLowerCase();
+  return tagName === 'input' || tagName === 'textarea' || Boolean(target?.isContentEditable);
+};
+
 function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) {
   const [nodes, setNodes, onNodesChange] = useNodesState(normalizeNodesForLoad(initialData?.nodes || []));
   const [edges, setEdges, onEdgesChange] = useEdgesState(normalizeEdges(initialData?.edges || []));
   const [saveStatus, setSaveStatus] = useState('idle');
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const isSavingRef = useRef(false);
+  const pendingConnectionRef = useRef(null);
+  const connectionSuccessfulRef = useRef(false);
+  const { commitHistory, undo, redo } = useCanvasHistory({
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    maxHistory: 50,
+  });
 
   // 馃専 鏂板锛氬鏋?initialData 鍙樹簡锛堟瘮濡傞€氳繃 Launcher 鍔犺浇浜嗘柊椤圭洰锛夛紝寮哄埗鏇存柊鐢诲竷
   useEffect(() => {
@@ -193,7 +248,29 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
 
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+      if (!(event.ctrlKey || event.metaKey) || isEditableShortcutTarget(event.target)) return;
+
+      const key = event.key.toLowerCase();
+
+      if (key === 'z' && event.shiftKey) {
+        event.preventDefault();
+        redo();
+        return;
+      }
+
+      if (key === 'z') {
+        event.preventDefault();
+        undo();
+        return;
+      }
+
+      if (key === 'y') {
+        event.preventDefault();
+        redo();
+        return;
+      }
+
+      if (key === 's') {
         event.preventDefault();
         saveProject('shortcut');
       }
@@ -201,7 +278,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [saveProject]);
+  }, [redo, saveProject, undo]);
 
   // 馃専 灏嗚ˉ涓佹斁鍦ㄨ繖閲岋細
   useEffect(() => {
@@ -218,6 +295,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
   }, [projectPath, setNodes]);
 
   const [searchMenu, setSearchMenu] = useState({ show: false, x: 0, y: 0, flowPos: { x: 0, y: 0 } });
+  const [connectionMenu, setConnectionMenu] = useState(null);
   const [query, setQuery] = useState('');
 
   const availableNodes = NODE_DEFINITIONS;
@@ -301,13 +379,15 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
           },
         };
 
-        setNodes((nds) => nds.concat(newNode));
+        const nextNodes = nodes.concat(newNode);
+        setNodes(nextNodes);
+        commitHistory(nextNodes, edges);
       }
     };
 
     window.addEventListener('paste', handleCanvasPaste);
     return () => window.removeEventListener('paste', handleCanvasPaste);
-  }, [screenToFlowPosition, setNodes]);
+  }, [commitHistory, edges, nodes, screenToFlowPosition, setNodes]);
   
 
   // --- 馃専 2. 澶栭儴鏂囦欢澶瑰浘鍍忔嫋鍔ㄩ噴鏀撅紙Drop锛夊搷搴斿櫒 ---
@@ -330,7 +410,9 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
           mimeType: file.type,
         },
       };
-      setNodes((nds) => nds.concat(newNode));
+      const nextNodes = nodes.concat(newNode);
+      setNodes(nextNodes);
+      commitHistory(nextNodes, edges);
     }
   };
 
@@ -339,24 +421,31 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     if (e.target.closest('.react-flow__node') || e.target.closest('.nodrag')) return;
     const flowPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
     setSearchMenu({ show: true, x: e.clientX, y: e.clientY, flowPos });
+    setConnectionMenu(null);
     setQuery('');
   };
 
-  const createNode = (type) => {
+  const buildNode = useCallback((type, position) => {
     const data = createDefaultNodeData(type, projectPath);
     const size =
       type === 'imageNode'
         ? getImageNodeSizeByAspectRatio(getImageNodeAspectRatio(data))
         : getNodeDefinition(type)?.defaultSize || {};
 
-    const newNode = {
+    return {
       id: `${type}-${Date.now()}`,
       type: type,
-      position: searchMenu.flowPos,
+      position,
       data,
       ...size,
     };
-    setNodes((nds) => nds.concat(newNode));
+  }, [projectPath]);
+
+  const createNode = (type) => {
+    const newNode = buildNode(type, searchMenu.flowPos);
+    const nextNodes = nodes.concat(newNode);
+    setNodes(nextNodes);
+    commitHistory(nextNodes, edges);
     setSearchMenu((prev) => ({ ...prev, show: false }));
   };
 
@@ -367,24 +456,111 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
       y: window.innerHeight / 2,
     });
 
-    const data = createDefaultNodeData(type, projectPath);
-    const size =
-      type === 'imageNode'
-        ? getImageNodeSizeByAspectRatio(getImageNodeAspectRatio(data))
-        : getNodeDefinition(type)?.defaultSize || {};
+    const newNode = buildNode(type, flowPos);
 
-    const newNode = {
-      id: `${type}-${Date.now()}`,
-      type: type,
-      position: flowPos,
-      data,
-      ...size,
-    };
-
-    setNodes((nds) => nds.concat(newNode));
+    const nextNodes = nodes.concat(newNode);
+    setNodes(nextNodes);
+    commitHistory(nextNodes, edges);
   };
 
-  const onConnect = (params) => setEdges((eds) => addEdge({ ...params, type: 'default' }, eds));
+  const onConnect = (params) => {
+    connectionSuccessfulRef.current = true;
+    const nextEdges = addEdge({ ...params, type: 'default' }, edges);
+    setEdges(nextEdges);
+    commitHistory(nodes, nextEdges);
+  };
+
+  const handleConnectStart = (event, params) => {
+    setConnectionMenu(null);
+    connectionSuccessfulRef.current = false;
+
+    const nodeId = params?.nodeId;
+    const handleId = params?.handleId;
+    const handleType = params?.handleType;
+
+    const isSource =
+      handleType === 'source' ||
+      handleId?.endsWith(':out') ||
+      handleId === 'image:out' ||
+      handleId === 'text:out';
+
+    if (!nodeId || !handleId || !isSource) {
+      pendingConnectionRef.current = null;
+      return;
+    }
+
+    pendingConnectionRef.current = {
+      source: nodeId,
+      sourceHandle: handleId,
+    };
+  };
+
+  const handleConnectEnd = (event, connectionState) => {
+    if (connectionSuccessfulRef.current) {
+      pendingConnectionRef.current = null;
+      connectionSuccessfulRef.current = false;
+      return;
+    }
+
+    const pending = pendingConnectionRef.current || getConnectionStateSource(connectionState);
+    pendingConnectionRef.current = null;
+    connectionSuccessfulRef.current = false;
+
+    if (!pending?.source || !pending?.sourceHandle) {
+      return;
+    }
+
+    const point = getEventPoint(event);
+    if (!point) {
+      return;
+    }
+
+    const compatibleDefinitions = getCompatibleNodeDefinitions(pending.sourceHandle);
+    const groupedItems = groupNodeDefinitionsByCategory(compatibleDefinitions);
+    const flowPos = screenToFlowPosition(point);
+    const menuPoint = clampMenuPoint(point);
+
+    setSearchMenu((prev) => ({ ...prev, show: false }));
+    setTimeout(() => {
+      setConnectionMenu({
+        x: menuPoint.x,
+        y: menuPoint.y,
+        flowPos,
+        source: pending.source,
+        sourceHandle: pending.sourceHandle,
+        groupedItems,
+      });
+    }, 0);
+  };
+
+  const createNodeFromConnection = (type) => {
+    if (!connectionMenu) return;
+
+    const targetHandle = getCompatibleTargetHandle(type, connectionMenu.sourceHandle);
+    if (!targetHandle) {
+      setConnectionMenu(null);
+      return;
+    }
+
+    const newNode = buildNode(type, connectionMenu.flowPos);
+    const nextNodes = nodes.concat(newNode);
+    const nextEdges = addEdge(
+      {
+        id: `${connectionMenu.source}-${connectionMenu.sourceHandle}-${newNode.id}-${targetHandle}`,
+        source: connectionMenu.source,
+        sourceHandle: connectionMenu.sourceHandle,
+        target: newNode.id,
+        targetHandle,
+        type: 'default',
+      },
+      edges
+    );
+
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    commitHistory(nextNodes, nextEdges);
+    setConnectionMenu(null);
+  };
 
   const handleEdgeClick = (event, clickedEdge) => {
     event.stopPropagation();
@@ -399,6 +575,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
 
   const handlePaneClick = () => {
     setSearchMenu((prev) => ({ ...prev, show: false }));
+    setConnectionMenu(null);
     setNodes((nds) => nds.map((node) => ({ ...node, selected: false })));
     setEdges((eds) => eds.map((edge) => ({ ...edge, selected: false })));
   };
@@ -426,6 +603,8 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         onEdgesChange={onEdgesChange}
         onEdgeClick={handleEdgeClick}
         onConnect={onConnect}
+        onConnectStart={handleConnectStart}
+        onConnectEnd={handleConnectEnd}
         nodeTypes={nodeTypes} 
         edgeTypes={edgeTypes}
         isValidConnection={isValidConnection}
@@ -479,6 +658,16 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
             )}
           </div>
         </div>
+      )}
+
+      {connectionMenu && (
+        <ConnectionNodeMenu
+          x={connectionMenu.x}
+          y={connectionMenu.y}
+          groupedItems={connectionMenu.groupedItems}
+          onSelect={createNodeFromConnection}
+          onClose={() => setConnectionMenu(null)}
+        />
       )}
 
       {/* 4. Flora AI 鏋佺畝楂橀樁鎮诞搴曟爮 (Dock) */}
