@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 export function OutputImageModal({
   open,
@@ -11,6 +12,7 @@ export function OutputImageModal({
 }) {
   const imageCount = images.length;
   const selectedUrl = images[selectedIndex];
+  const resolvedSelectedUrl = resolveImageUrl(selectedUrl);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -87,11 +89,12 @@ export function OutputImageModal({
         </div>
 
         <div className="relative flex-1 min-h-0 flex items-center justify-center bg-black/20 p-4 overflow-hidden">
-          {selectedUrl ? (
+          {resolvedSelectedUrl ? (
             <img
-              src={selectedUrl}
+              src={resolvedSelectedUrl}
               alt="Selected output"
-              className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl"
+              draggable={false}
+              className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl select-none"
             />
           ) : (
             <div className="text-sm font-light text-white/25">No image connected</div>
@@ -142,7 +145,12 @@ export function OutputImageModal({
                       : 'border-white/10 opacity-60 hover:border-white/30 hover:opacity-100'
                   }`}
                 >
-                  <img src={url} alt={`Output thumbnail ${index + 1}`} className="h-full w-full object-cover" />
+                  <img
+                    src={resolveImageUrl(url)}
+                    alt={`Output thumbnail ${index + 1}`}
+                    draggable={false}
+                    className="h-full w-full object-cover pointer-events-none select-none"
+                  />
                 </button>
               ))}
             </div>

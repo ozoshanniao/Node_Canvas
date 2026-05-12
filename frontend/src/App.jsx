@@ -1,18 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useRef, useState } from 'react';
 import { 
   ReactFlow, 
   Background, 
+  MiniMap,
   ReactFlowProvider, 
   useReactFlow, 
   useNodesState, 
   useEdgesState,
-  addEdge
+  addEdge,
+  applyEdgeChanges
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Launcher } from './components/Launcher';
 import ImageEdge from './components/ImageEdge';
 import { TopProjectBar } from './components/TopProjectBar';
 import { ConnectionNodeMenu } from './components/ConnectionNodeMenu';
+import { NodeDock } from './components/NodeDock';
 
 import { TextNode } from './nodes/TextNode';
 import { TextConstructionNode } from './nodes/TextConstructionNode';
@@ -20,6 +23,11 @@ import { LLMProcessorNode } from './nodes/LLMProcessorNode';
 import { ImageNode } from './nodes/ImageNode';
 import { ImageInputNode } from './nodes/ImageInputNode';
 import { OutputNode } from './nodes/OutputNode';
+import { SplitGridNode } from './nodes/SplitGridNode';
+import { ImageCompareNode } from './nodes/ImageCompareNode';
+import { RouteNode } from './nodes/RouteNode';
+import { AR720Node } from './nodes/AR720Node';
+import { Panorama360Node } from './nodes/Panorama360Node';
 import { NODE_DEFINITIONS, createDefaultNodeData, getNodeDefinition } from './nodes/nodeDefinitions';
 import {
   getCompatibleNodeDefinitions,
@@ -29,7 +37,12 @@ import {
 import { useCanvasHistory } from './hooks/useCanvasHistory';
 import { getImageNodeAspectRatio, getImageNodeSizeByAspectRatio, hasValidNodeSize } from './utils/nodeSizing';
 import { saveProjectCore } from './utils/projectSave';
+import { RUNNABLE_NODE_TYPES } from './utils/nodeCategories';
+import { DISABLE_MINIMAP } from './utils/perfDebug';
+import { normalizeImageInputEdgeLabels } from './utils/edgeLabels';
 //import { ButtonEdge } from './edges/ButtonEdge';
+
+const MINIMAP_COLLAPSED_STORAGE_KEY = 'node-ai-canvas:minimap-collapsed';
 
 const nodeTypes = {
   textNode: TextNode,
@@ -37,6 +50,11 @@ const nodeTypes = {
   imageNode: ImageNode,
   imageInputNode: ImageInputNode,
   outputNode: OutputNode,
+  splitGridNode: SplitGridNode,
+  imageCompareNode: ImageCompareNode,
+  ar720Node: AR720Node,
+  panorama360Node: Panorama360Node,
+  routeNode: RouteNode,
   llmProcessor: LLMProcessorNode,
 };
 
@@ -45,10 +63,48 @@ const edgeTypes = {
 };
 
 const normalizeEdges = (edges = []) =>
-  edges.map((edge) => ({
-    ...edge,
-    type: 'default',
-  }));
+  normalizeImageInputEdgeLabels(
+    edges.map((edge) => ({
+      ...edge,
+      type: 'default',
+    }))
+  );
+
+const getImageInputTargetIds = (edges = []) => {
+  const targetIds = new Set();
+  for (const edge of edges) {
+    const targetHandle = edge.targetHandle ?? edge.targetHandleId;
+    if (targetHandle === 'image:in') {
+      targetIds.add(edge.target);
+    }
+  }
+  return targetIds;
+};
+
+const applyImageInputConnectionFlags = (nodes = [], edges = []) => {
+  const imageInputTargetIds = getImageInputTargetIds(edges);
+  let changed = false;
+
+  const nextNodes = nodes.map((node) => {
+    if (node.type !== 'imageInputNode') return node;
+
+    const hasImageInputConnection = imageInputTargetIds.has(node.id);
+    if (Boolean(node.data?.hasImageInputConnection) === hasImageInputConnection) {
+      return node;
+    }
+
+    changed = true;
+    return {
+      ...node,
+      data: {
+        ...(node.data || {}),
+        hasImageInputConnection,
+      },
+    };
+  });
+
+  return changed ? nextNodes : nodes;
+};
 
 const fileToDataUrl = (file) =>
   new Promise((resolve, reject) => {
@@ -165,10 +221,20 @@ const isEditableShortcutTarget = (target) => {
 
 function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) {
   const [nodes, setNodes, onNodesChange] = useNodesState(normalizeNodesForLoad(initialData?.nodes || []));
-  const [edges, setEdges, onEdgesChange] = useEdgesState(normalizeEdges(initialData?.edges || []));
+  const [edges, setEdges] = useEdgesState(normalizeEdges(initialData?.edges || []));
   const [saveStatus, setSaveStatus] = useState('idle');
   const [lastSavedAt, setLastSavedAt] = useState(null);
+  const [isMiniMapCollapsed, setIsMiniMapCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem(MINIMAP_COLLAPSED_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isDraggingNode, setIsDraggingNode] = useState(false);
   const isSavingRef = useRef(false);
+  const latestCanvasRef = useRef({ nodes: [], edges: [] });
+  const latestProjectRef = useRef({ projectPath, projectFilePath, projectName });
   const pendingConnectionRef = useRef(null);
   const connectionSuccessfulRef = useRef(false);
   const { commitHistory, undo, redo } = useCanvasHistory({
@@ -179,18 +245,46 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     maxHistory: 50,
   });
 
-  // 馃専 鏂板锛氬鏋?initialData 鍙樹簡锛堟瘮濡傞€氳繃 Launcher 鍔犺浇浜嗘柊椤圭洰锛夛紝寮哄埗鏇存柊鐢诲竷
+  //
   useEffect(() => {
     if (initialData && Array.isArray(initialData.nodes)) {
       const sanitizedNodes = normalizeNodesForLoad(initialData.nodes);
-      setNodes(sanitizedNodes);
-      setEdges(normalizeEdges(initialData.edges || []));
+      const sanitizedEdges = normalizeEdges(initialData.edges || []);
+      setNodes(applyImageInputConnectionFlags(sanitizedNodes, sanitizedEdges));
+      setEdges(sanitizedEdges);
     }
   }, [initialData, setNodes, setEdges]);
 
   const { screenToFlowPosition } = useReactFlow();
 
-  // 馃専 鎼縼浣嶇疆锛氬湪姝ゅ鎻掑叆鏂板 A (鍔犺浇椤圭洰)
+  const onEdgesChange = useCallback(
+    (changes) => {
+      setEdges((currentEdges) => normalizeImageInputEdgeLabels(applyEdgeChanges(changes, currentEdges)));
+    },
+    [setEdges]
+  );
+
+  useEffect(() => {
+    setNodes((currentNodes) => applyImageInputConnectionFlags(currentNodes, edges));
+  }, [edges, setNodes]);
+
+  useEffect(() => {
+    latestCanvasRef.current = { nodes, edges };
+  }, [nodes, edges]);
+
+  useEffect(() => {
+    latestProjectRef.current = { projectPath, projectFilePath, projectName };
+  }, [projectPath, projectFilePath, projectName]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MINIMAP_COLLAPSED_STORAGE_KEY, String(isMiniMapCollapsed));
+    } catch {
+      // localStorage can be unavailable in restricted browser modes.
+    }
+  }, [isMiniMapCollapsed]);
+
+  //
   useEffect(() => {
     const loadProject = async () => {
       const res = await fetch('http://127.0.0.1:8000/api/project/init', {
@@ -200,14 +294,15 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
       });
       const result = await res.json();
       if (result.status === 'success' && result.data) {
-        setNodes(normalizeNodesForLoad(result.data.nodes));
-        if (result.data.edges) setEdges(normalizeEdges(result.data.edges));
+        const nextEdges = normalizeEdges(result.data.edges || []);
+        setNodes(applyImageInputConnectionFlags(normalizeNodesForLoad(result.data.nodes), nextEdges));
+        setEdges(nextEdges);
       }
     };
     if (projectPath && !initialData) loadProject();
   }, [projectPath, initialData, setNodes, setEdges]);
 
-  // 馃専 鎼縼浣嶇疆锛氬湪姝ゅ鎻掑叆鏂板 B (鑷姩淇濆瓨)
+  //
   const saveProject = useCallback(
     async (reason = 'manual') => {
       if (!projectPath || nodes.length === 0 || isSavingRef.current) return { ok: false };
@@ -240,11 +335,44 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
   );
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      saveProject('auto');
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [saveProject]);
+    if (!projectPath) return undefined;
+
+    const saveLatestCanvas = async () => {
+      const { nodes: latestNodes, edges: latestEdges } = latestCanvasRef.current;
+      const {
+        projectPath: latestProjectPath,
+        projectFilePath: latestProjectFilePath,
+        projectName: latestProjectName,
+      } = latestProjectRef.current;
+
+      if (!latestProjectPath || latestNodes.length === 0 || isSavingRef.current) return;
+
+      isSavingRef.current = true;
+      setSaveStatus('saving');
+
+      const result = await saveProjectCore({
+        projectPath: latestProjectPath,
+        projectFilePath: latestProjectFilePath,
+        projectName: latestProjectName,
+        nodes: latestNodes,
+        edges: latestEdges,
+        reason: 'interval-auto-save',
+      });
+
+      isSavingRef.current = false;
+
+      if (result.ok) {
+        setLastSavedAt(result.savedAt);
+        setSaveStatus('saved');
+      } else {
+        console.error('[project:auto-save failed]', result.error);
+        setSaveStatus('error');
+      }
+    };
+
+    const interval = window.setInterval(saveLatestCanvas, 60_000);
+    return () => window.clearInterval(interval);
+  }, [projectPath]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -463,9 +591,32 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     commitHistory(nextNodes, edges);
   };
 
+  const selectedRunnableNode = nodes.find(
+    (node) => node.selected && RUNNABLE_NODE_TYPES.has(node.type)
+  );
+
+  const handleRunSelected = useCallback(() => {
+    if (!selectedRunnableNode) return;
+
+    const runRequestId = Date.now();
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === selectedRunnableNode.id
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                runRequestId,
+              },
+            }
+          : node
+      )
+    );
+  }, [selectedRunnableNode, setNodes]);
+
   const onConnect = (params) => {
     connectionSuccessfulRef.current = true;
-    const nextEdges = addEdge({ ...params, type: 'default' }, edges);
+    const nextEdges = normalizeImageInputEdgeLabels(addEdge({ ...params, type: 'default' }, edges));
     setEdges(nextEdges);
     commitHistory(nodes, nextEdges);
   };
@@ -543,8 +694,14 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     }
 
     const newNode = buildNode(type, connectionMenu.flowPos);
+    if (type === 'splitGridNode') {
+      newNode.data = {
+        ...newNode.data,
+        settingsOpen: true,
+      };
+    }
     const nextNodes = nodes.concat(newNode);
-    const nextEdges = addEdge(
+    const nextEdges = normalizeImageInputEdgeLabels(addEdge(
       {
         id: `${connectionMenu.source}-${connectionMenu.sourceHandle}-${newNode.id}-${targetHandle}`,
         source: connectionMenu.source,
@@ -554,7 +711,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         type: 'default',
       },
       edges
-    );
+    ));
 
     setNodes(nextNodes);
     setEdges(nextEdges);
@@ -586,7 +743,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
       onDoubleClick={handleContainerDoubleClick} 
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleCanvasDrop}
-      className="relative bg-[#0b0b0b]"
+      className={`relative bg-[#0b0b0b] ${isDraggingNode ? 'is-node-dragging' : ''}`}
     >
       {/* 鏍稿績鐢诲竷涓绘覆鏌撳尯 */}
       <TopProjectBar
@@ -605,6 +762,8 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         onConnect={onConnect}
         onConnectStart={handleConnectStart}
         onConnectEnd={handleConnectEnd}
+        onNodeDragStart={() => setIsDraggingNode(true)}
+        onNodeDragStop={() => setIsDraggingNode(false)}
         nodeTypes={nodeTypes} 
         edgeTypes={edgeTypes}
         isValidConnection={isValidConnection}
@@ -616,7 +775,30 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         onPaneClick={handlePaneClick}
       >
         <Background variant="dots" gap={20} size={1} color="#222" />
+        {!DISABLE_MINIMAP && !isDraggingNode && !isMiniMapCollapsed && (
+          <MiniMap
+            pannable
+            zoomable
+            nodeColor={() => 'rgba(255,255,255,0.32)'}
+            nodeStrokeColor={() => 'rgba(255,255,255,0.12)'}
+            maskColor="rgba(255,255,255,0.08)"
+          />
+        )}
       </ReactFlow>
+
+      <button
+        type="button"
+        onClick={() => setIsMiniMapCollapsed((value) => !value)}
+        className={`nodrag nopan absolute right-6 z-30 border border-white/10 bg-[#121212]/75 text-[10px] font-light uppercase tracking-[0.16em] text-white/55 shadow-[0_18px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl transition-all hover:border-white/20 hover:bg-[#181818]/90 hover:text-white/80 ${
+          isMiniMapCollapsed
+            ? 'bottom-6 h-10 w-10 rounded-full'
+            : 'bottom-[166px] rounded-full px-3 py-2'
+        }`}
+        aria-label={isMiniMapCollapsed ? 'Show minimap' : 'Hide minimap'}
+        title={isMiniMapCollapsed ? 'Show minimap' : 'Hide minimap'}
+      >
+        {isMiniMapCollapsed ? 'Map' : 'Hide map'}
+      </button>
 
       {/* 3. Flora AI 鏋佺畝鏆楅粦椋庡弻鍑绘悳绱㈤潰鏉?*/}
       {searchMenu.show && (
@@ -671,38 +853,11 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
       )}
 
       {/* 4. Flora AI 鏋佺畝楂橀樁鎮诞搴曟爮 (Dock) */}
-      <div 
-        onMouseDown={(e) => e.stopPropagation()} 
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[99] bg-[#141414]/60 backdrop-blur-md border border-white/5 px-4 py-2 rounded-full flex items-center gap-2 shadow-[0_15px_40px_rgba(0,0,0,0.5)] select-none pointer-events-auto"
-      >
-        <button
-          onClick={() => addNodeFromDock('textNode')}
-          className="px-4 py-1.5 rounded-full text-xs text-white/50 hover:text-white hover:bg-white/5 transition-all cursor-pointer font-light flex items-center gap-2 active:scale-95 group"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-500/60 group-hover:bg-blue-400 group-hover:shadow-[0_0_8px_rgba(96,165,250,0.6)] transition-all" />
-          Prompt
-        </button>
-
-        <div className="w-[1px] h-3 bg-white/10" />
-
-        <button
-          onClick={() => addNodeFromDock('textConstruction')}
-          className="px-4 py-1.5 rounded-full text-xs text-white/50 hover:text-white hover:bg-white/5 transition-all cursor-pointer font-light flex items-center gap-2 active:scale-95 group"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-white/30 group-hover:bg-white/70 group-hover:shadow-[0_0_8px_rgba(255,255,255,0.35)] transition-all" />
-          Construct
-        </button>
-
-        <div className="w-[1px] h-3 bg-white/10" />
-
-        <button
-          onClick={() => addNodeFromDock('imageNode')}
-          className="px-4 py-1.5 rounded-full text-xs text-white/50 hover:text-white hover:bg-white/5 transition-all cursor-pointer font-light flex items-center gap-2 active:scale-95 group"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-purple-500/60 group-hover:bg-purple-400 group-hover:shadow-[0_0_8px_rgba(192,132,252,0.6)] transition-all" />
-          Image
-        </button>
-      </div>
+      <NodeDock
+        onCreateNode={addNodeFromDock}
+        onRunSelected={handleRunSelected}
+        selectedRunnableNode={selectedRunnableNode}
+      />
     </div>
   );
 }

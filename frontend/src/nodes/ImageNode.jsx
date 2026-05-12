@@ -2,13 +2,27 @@ import { useState, useRef, useEffect } from 'react';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { useImageAspect } from '../hooks/useImageAspect';
-import { getNodeTextOutput } from '../utils/nodeOutputs';
+import { getNodeImageOutput, getNodeTextOutput } from '../utils/nodeOutputs';
 import { setLastNodeDefaults } from '../utils/nodeDefaults';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { getImageNodeAspectRatio, getImageNodeSizeByAspectRatio } from '../utils/nodeSizing';
+import { countRender } from '../utils/perfDebug';
+import { createImageThumbnail, getBestPreviewUrl } from '../utils/imagePreview';
+import {
+  fetchImageGenerationRegistry,
+  getImageAspectRatioOptions,
+  getImageModelConfig,
+  getImageModelOptions,
+  getImageProviderOptions,
+  getImageResolutionOptions,
+  normalizeImageGenerationSettings,
+} from '../utils/imageGenerationOptions';
 
 // 1. 追加解构 id
 export function ImageNode({ id, data }) {
+  countRender('ImageNode');
   const containerRef = useRef(null); // 🌟 建立容器引用
+  const lastHandledRunRequestRef = useRef(data?.runRequestId);
   const { setNodes, getNodes, getEdges, setEdges } = useReactFlow();
 
   const [registry, setRegistry] = useState(null); // 🌟 存储后端 specs
@@ -18,8 +32,7 @@ export function ImageNode({ id, data }) {
   useEffect(() => {
   const fetchSpecs = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/model-specs');
-      const result = await response.json();
+      const result = await fetchImageGenerationRegistry();
       setRegistry(result);
     } catch (err) {
       console.error("抓取规格失败:", err);
@@ -34,21 +47,19 @@ export function ImageNode({ id, data }) {
   // --- 2. 核心状态管理 (升级为全局受控) ---
   
   // 🌟 读取主画布派发过来的值，如果为空则自动fallback到默认值
-  const provider = data.provider || 'Yunwu';
-  // 🌟 动态获取当前服务商支持的模型
-  const availableModels = registry?.providers[provider] || [];
-  const model = availableModels.includes(data.model) ? data.model : availableModels[0] || data.model || 'Nano 2';
+  const normalizedGenerationSettings = normalizeImageGenerationSettings(data, registry);
+  const provider = normalizedGenerationSettings.provider;
+  const providerOptions = getImageProviderOptions(registry);
+  const availableModels = getImageModelOptions(provider, registry).map((item) => item.id);
+  const model = normalizedGenerationSettings.model;
 
-  // 🌟 从池子里抓取当前模型的“能力说明书”
-  const currentSpec = registry?.models[model] || {};
+  // 🌟 从统一配置源里抓取当前模型的“能力说明书”
+  const currentSpec = getImageModelConfig(provider, model, registry) || {};
 
-  const availableRatios = currentSpec.ratios || ['1:1'];
-  const availableResolutions = currentSpec.resolutions || ['1K'];
-
-  // 智能回退：如果当前比例不在新模型支持列表中，自动选第一个
-  const configuredRatio = getImageNodeAspectRatio(data);
-  const ratio = availableRatios.includes(configuredRatio) ? configuredRatio : availableRatios[0];
-  const resolution = data.resolution || '1K';
+  const availableRatios = getImageAspectRatioOptions(provider, model, registry).map((item) => item.id);
+  const availableResolutions = getImageResolutionOptions(provider, model, registry).map((item) => item.id);
+  const ratio = normalizedGenerationSettings.aspectRatio || getImageNodeAspectRatio(data);
+  const resolution = normalizedGenerationSettings.resolution;
 
   const imageUrlForBackend = async (url) => {
     if (!url || !url.startsWith('blob:')) return url;
@@ -105,9 +116,41 @@ export function ImageNode({ id, data }) {
 
   // 服务商切换联动
   const handleProviderSelect = (value) => {
+    const nextSettings = normalizeImageGenerationSettings(
+      {
+        ...data,
+        provider: value,
+        model: undefined,
+        ratio: undefined,
+        aspectRatio: undefined,
+        resolution: undefined,
+      },
+      registry
+    );
     updateNodeData({
-      provider: value,
-      model: registry.providers[value][0] // 联动更新该服务商的第一个默认模型
+      provider: nextSettings.provider,
+      model: nextSettings.model,
+      ratio: nextSettings.aspectRatio,
+      aspectRatio: nextSettings.aspectRatio,
+      resolution: nextSettings.resolution,
+    });
+    setActiveMenu(null);
+  };
+
+  const handleModelSelect = (value) => {
+    const nextSettings = normalizeImageGenerationSettings(
+      {
+        ...data,
+        provider,
+        model: value,
+      },
+      registry
+    );
+    updateNodeData({
+      model: nextSettings.model,
+      ratio: nextSettings.aspectRatio,
+      aspectRatio: nextSettings.aspectRatio,
+      resolution: nextSettings.resolution,
     });
     setActiveMenu(null);
   };
@@ -126,7 +169,7 @@ export function ImageNode({ id, data }) {
       .map((edge) => edge.id);
 
 // 2. 修改 handleRun 函数
-  const handleRun = async (e) => {
+  const handleRun = async (e = { stopPropagation: () => {} }) => {
     if (isLoading) return; // 🌟 防呆：如果正在加载，直接拦截
     e.stopPropagation(); // 防止点击按钮触发节点的选中状态
 
@@ -196,7 +239,8 @@ export function ImageNode({ id, data }) {
     const connectedImages = await Promise.all(imageEdges.map(async (edge, index) => {
       const sourceNode = allNodes.find((n) => n.id === edge.source);
       // 优先取单图 url，如果没有则取多图数组的第一张
-      const url = await imageUrlForBackend(sourceNode?.data?.url || sourceNode?.data?.urls?.[0]);
+      const urls = getNodeImageOutput(sourceNode, edge.sourceHandle, edge, allNodes, allEdges);
+      const url = await imageUrlForBackend(urls[0]);
       return { index, url };
     }));
 
@@ -207,6 +251,18 @@ export function ImageNode({ id, data }) {
           id: n.id,
           type: n.type,
           data: { ...n.data, text: resolvedText, resolvedText },
+          position: n.position,
+          width: n.width,
+          height: n.height,
+        };
+      }
+
+      if (n.type === 'routeNode') {
+        const routedText = getNodeTextOutput(n, allNodes, allEdges);
+        return {
+          id: n.id,
+          type: n.type,
+          data: { ...n.data, text: routedText, routedText },
           position: n.position,
           width: n.width,
           height: n.height,
@@ -272,13 +328,60 @@ export function ImageNode({ id, data }) {
   };
 
   // 🌟 核心：计算当前应显示的图片 URL
-  const displayUrl = Array.isArray(data.urls) && data.urls.length > 0
+  useEffect(() => {
+    if (!data?.runRequestId || lastHandledRunRequestRef.current === data.runRequestId) return;
+    lastHandledRunRequestRef.current = data.runRequestId;
+    handleRun();
+  }, [data?.runRequestId]);
+
+  const rawDisplayUrl = Array.isArray(data.urls) && data.urls.length > 0
     ? data.urls[currentIndex]
     : data.url
+  const hasMatchingPreview =
+    data?.previewUrl && (!data?.previewSourceUrl || data.previewSourceUrl === rawDisplayUrl);
+  const displayUrl = resolveImageUrl(
+    getBestPreviewUrl({
+      previewUrl: hasMatchingPreview ? data.previewUrl : '',
+      thumbnailUrl: data?.thumbnailUrl,
+      url: rawDisplayUrl,
+    })
+  );
+
+  useEffect(() => {
+    if (!rawDisplayUrl) return undefined;
+    if (data?.previewUrl && data?.previewSourceUrl === rawDisplayUrl) return undefined;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      createImageThumbnail(rawDisplayUrl).then((thumbnail) => {
+        if (cancelled || !thumbnail) return;
+
+        setNodes((nds) =>
+          nds.map((node) => {
+            if (node.id !== id) return node;
+            if (node.data?.previewUrl && node.data?.previewSourceUrl === rawDisplayUrl) return node;
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                previewUrl: thumbnail,
+                previewSourceUrl: rawDisplayUrl,
+              },
+            };
+          })
+        );
+      });
+    }, 160);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [data?.previewSourceUrl, data?.previewUrl, id, rawDisplayUrl, setNodes]);
 
   return (
     <div ref={containerRef} // 🌟 绑定引用
-      className="bg-[#181818] rounded-[24px] w-full h-full min-w-[50px] min-h-[50px] flex flex-col text-white select-none group hover:ring-2 hover:ring-white/50 hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.1)] transition-[box-shadow,filter] duration-150 relative">
+      className="canvas-node-card canvas-image-node-card bg-[#181818] rounded-[24px] w-full h-full min-w-[50px] min-h-[50px] flex flex-col text-white select-none group relative border border-white/5 transition-colors duration-100 hover:border-white/20">
       
     {showAdvanced && currentSpec.n && (
           <div className="absolute -top-28 left-[23%] -translate-x-1/2 bg-[#181818]/90 backdrop-blur-xl border border-white/5 rounded-2xl px-6 py-3 flex items-center shadow-2xl animate-in fade-in slide-in-from-bottom-2 z-[60] nodrag opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-[1000ms] group-hover:delay-0">
@@ -322,15 +425,15 @@ export function ImageNode({ id, data }) {
           >
             {provider} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
           </div>
-          {activeMenu === 'provider' && registry && (
+          {activeMenu === 'provider' && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[100px] text-center animate-in fade-in zoom-in-95 duration-150">
-              {Object.keys(registry.providers).map((item) => (
+              {providerOptions.map((option) => (
                 <div 
-                  key={item}
-                  onClick={() => handleProviderSelect(item)}
-                  className={`px-4 py-2 text-xs cursor-pointer transition-colors ${provider === item ? 'text-white bg-white/5 font-normal' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
+                  key={option.id}
+                  onClick={() => handleProviderSelect(option.id)}
+                  className={`px-4 py-2 text-xs cursor-pointer transition-colors ${provider === option.id ? 'text-white bg-white/5 font-normal' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
                 >
-                  {item}
+                  {option.label}
                 </div>
               ))}
             </div>
@@ -352,7 +455,7 @@ export function ImageNode({ id, data }) {
               {availableModels.map((item) => (
                 <div 
                   key={item}
-                  onClick={() => { updateNodeData({ model: item }); setActiveMenu(null); }}
+                  onClick={() => handleModelSelect(item)}
                   className={`px-4 py-2 text-xs cursor-pointer transition-colors ${model === item ? 'text-white bg-white/5 font-normal' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
                 >
                   {item}
@@ -476,7 +579,8 @@ export function ImageNode({ id, data }) {
             src={displayUrl}
             alt="AI Generated"
             onLoad={handleImageLoad} // 🌟 调用 Hook 返回的逻辑
-            className="absolute inset-0 w-full h-full object-contain pointer-events-none transition-opacity duration-150"
+            draggable={false}
+            className="canvas-image-preview absolute inset-0 w-full h-full object-contain pointer-events-none select-none transition-opacity duration-150"
           />
         ) : (
           <div className="text-white/10 text-sm font-extralight tracking-wide">

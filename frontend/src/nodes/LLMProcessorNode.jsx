@@ -8,15 +8,18 @@ import {
   getLLMParametersByProvider,
   getDefaultLLMParameters,
 } from '../utils/llmModels';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { FullscreenTextModal } from '../components/FullscreenTextModal';
 import { NodeFullscreenButton } from '../components/NodeFullscreenButton';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
-import { getNodeTextOutput } from '../utils/nodeOutputs';
+import { getNodeImageOutput, getNodeTextOutput } from '../utils/nodeOutputs';
+import { countRender } from '../utils/perfDebug';
 
 export function LLMProcessorNode({ id, data }) {
+  countRender('LLMProcessorNode');
   const { setNodes, getNodes, getEdges } = useReactFlow();
+  const lastHandledRunRequestRef = useRef(data?.runRequestId);
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -79,7 +82,7 @@ export function LLMProcessorNode({ id, data }) {
     }
   };
 
-  const handleRun = async (e) => {
+  const handleRun = async (e = { stopPropagation: () => {} }) => {
     e.stopPropagation();
 
     if (isRunning) return;
@@ -102,20 +105,54 @@ export function LLMProcessorNode({ id, data }) {
         .filter((text) => String(text ?? '').trim())
         .join('\n');
 
+      const orderedImageUrls = allEdges
+        .filter(
+          (edge) =>
+            edge.target === id &&
+            (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
+        )
+        .flatMap((edge) => {
+          const sourceNode = nodeMap.get(edge.source);
+          return getNodeImageOutput(sourceNode, edge.sourceHandle, edge, allNodes, allEdges)
+            .map((url) => (typeof url === 'string' ? url : url?.url || url?.src || url?.imageUrl))
+            .filter(Boolean);
+        });
+
+      const imageInputs = orderedImageUrls.map((url, index) => ({
+        index,
+        url,
+      }));
+
       const payload = {
         provider,
         model,
         inputText,
+        imageInputs,
+        projectPath: data.projectPath || window.currentProjectPath || '',
         temperature,
         maxTokens,
         ...(thinkingLevel ? { thinkingLevel } : {}),
       };
 
-      console.log('[LLMProcessor payload]', payload);
+      console.log('[LLMProcessor payload]', {
+        provider,
+        model,
+        inputTextLength: inputText.length,
+        imageInputsCount: imageInputs.length,
+        imageInputs: imageInputs.map((item) => ({
+          index: item.index,
+          urlPrefix: item.url?.startsWith?.('data:image/')
+            ? `${item.url.slice(0, 60)}...`
+            : item.url?.slice(0, 120),
+        })),
+        temperature,
+        maxTokens,
+        ...(thinkingLevel ? { thinkingLevel } : {}),
+      });
 
-      if (!inputText) {
+      if (!inputText.trim() && imageInputs.length === 0) {
         updateNodeData({
-          outputText: 'No input text connected. Please connect a Text Node to text:in.',
+          outputText: 'No text or image input connected. Please connect text:in or image:in.',
           status: 'error',
           lastRunAt: new Date().toISOString(),
         });
@@ -184,6 +221,12 @@ export function LLMProcessorNode({ id, data }) {
       setIsRunning(false);
     }
   };
+
+  useEffect(() => {
+    if (!data?.runRequestId || lastHandledRunRequestRef.current === data.runRequestId) return;
+    lastHandledRunRequestRef.current = data.runRequestId;
+    handleRun();
+  }, [data?.runRequestId]);
 
   const handleProviderSelect = (nextProvider) => {
     const defaults = getDefaultLLMParameters(nextProvider);
@@ -392,7 +435,7 @@ export function LLMProcessorNode({ id, data }) {
         </button>
       </div>
 
-      <div className="bg-[#181818] rounded-[24px] px-4 pt-3 pb-4 w-full h-full min-w-[320px] min-h-[200px] flex flex-col text-white select-none hover:ring-2 hover:ring-white/50 hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.1)] transition-all relative">
+      <div className="canvas-node-card bg-[#181818] rounded-[24px] px-4 pt-3 pb-4 w-full h-full min-w-[320px] min-h-[200px] flex flex-col text-white select-none relative border border-white/5 transition-colors duration-100 hover:border-white/20">
         <div className="flex items-center gap-2 mb-2 px-1">
           <div className="flex items-center gap-2 text-white/30 text-xs font-light">
             <svg className="w-3.5 h-3.5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -439,8 +482,8 @@ export function LLMProcessorNode({ id, data }) {
         <div className="pt-2 border-t border-white/5 text-[10px] text-white/25 font-light">
           {status === 'idle' && 'No output yet'}
           {status === 'running' && 'Running...'}
-          {status === 'success' && `Done 路 ${charCount} chars out`}
-          {status === 'edited' && `Edited 路 ${charCount} chars out`}
+          {status === 'success' && `Done  ${charCount} chars out`}
+          {status === 'edited' && `Edited  ${charCount} chars out`}
           {status === 'error' && 'Error'}
         </div>
 
@@ -448,14 +491,27 @@ export function LLMProcessorNode({ id, data }) {
           type="target"
           id="text:in"
           position={Position.Left}
-          className="!w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !left-[-4px] group-hover:!border-white transition-all"
+          className="!top-[38%] !w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !left-[-4px] group-hover:!border-white transition-all"
         />
+        <div className="pointer-events-none absolute left-3 top-[38%] -translate-y-1/2 text-[9px] font-light uppercase tracking-[0.18em] text-white/25">
+          Text
+        </div>
+
+        <Handle
+          type="target"
+          id="image:in"
+          position={Position.Left}
+          className="!top-[62%] !w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !left-[-4px] group-hover:!border-white transition-all"
+        />
+        <div className="pointer-events-none absolute left-3 top-[62%] -translate-y-1/2 text-[9px] font-light uppercase tracking-[0.18em] text-white/25">
+          Image
+        </div>
 
         <Handle
           type="source"
           id="text:out"
           position={Position.Right}
-          className="!w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !right-[-4px] group-hover:!border-white transition-all"
+          className="!top-1/2 !w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !right-[-4px] group-hover:!border-white transition-all"
         />
 
         <NodeResizeCorner minWidth={320} minHeight={200} />

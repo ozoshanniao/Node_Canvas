@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import { FullscreenTextModal } from '../components/FullscreenTextModal';
 import { NodeFullscreenButton } from '../components/NodeFullscreenButton';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { getTextConstructionOutput } from '../utils/textVariables';
+import { countRender, PERF_DEBUG } from '../utils/perfDebug';
 
-export function TextConstructionNode({ id, data }) {
+export const TextConstructionNode = memo(function TextConstructionNode({ id, data }) {
+  countRender('TextConstructionNode');
   const { setNodes } = useReactFlow();
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
   const nodes = useNodes();
@@ -16,6 +18,8 @@ export function TextConstructionNode({ id, data }) {
   const previewPanelOpen = Boolean(data.previewPanelOpen);
 
   useEffect(() => {
+    if (!PERF_DEBUG) return;
+
     console.log('[TextConstruction resolve]', {
       nodeId: id,
       template,
@@ -59,7 +63,7 @@ export function TextConstructionNode({ id, data }) {
   };
 
   return (
-    <div className="bg-[#181818] rounded-[24px] px-4 pt-3 pb-4 w-full h-full min-w-[360px] min-h-[220px] flex flex-col text-white select-none group hover:ring-2 hover:ring-white/50 hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.1)] transition-all relative">
+    <div className="canvas-node-card bg-[#181818] rounded-[24px] px-4 pt-3 pb-4 w-full h-full min-w-[360px] min-h-[220px] flex flex-col text-white select-none group relative border border-white/5 transition-colors duration-100 hover:border-white/20">
       <div className="flex items-center gap-2 mb-2 px-1">
         <div className="flex items-center gap-2 text-white/30 text-xs font-light">
           <svg className="w-3.5 h-3.5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -168,4 +172,4 @@ export function TextConstructionNode({ id, data }) {
       />
     </div>
   );
-}
+});

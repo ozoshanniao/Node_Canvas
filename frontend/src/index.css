@@ -62,6 +62,61 @@ html, body, #root {
   filter: none;
 }
 
+.canvas-image-preview {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.is-node-dragging .canvas-image-preview,
+.is-node-dragging img {
+  -webkit-user-drag: none;
+  filter: none !important;
+  pointer-events: none !important;
+  transition: none !important;
+  user-select: none;
+}
+
+.is-node-dragging .nowheel,
+.is-node-dragging .image-input-preview-surface {
+  transition: none !important;
+}
+
+.is-node-dragging .image-input-preview-surface {
+  pointer-events: none !important;
+}
+
+.is-node-dragging .canvas-node-card,
+.is-node-dragging .canvas-image-node-card,
+.is-node-dragging .canvas-node-card:hover,
+.is-node-dragging .canvas-image-node-card:hover {
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+  transition: none !important;
+}
+
+.is-node-dragging .canvas-node-card *,
+.is-node-dragging .canvas-image-node-card * {
+  transition-property: none !important;
+}
+
+.is-node-dragging .edge-flowing-overlay {
+  animation-play-state: paused;
+  opacity: 0.35;
+}
+
+.is-node-dragging .react-flow__edge-path {
+  transition: none !important;
+}
+
+.is-node-dragging .react-flow__edge.animated,
+.is-node-dragging .image-edge-flow,
+.is-node-dragging .flowing {
+  animation-play-state: paused !important;
+}
+
 @keyframes edgeMaskFlow {
   from {
     stroke-dashoffset: 32;
@@ -69,4 +124,36 @@ html, body, #root {
   to {
     stroke-dashoffset: 0;
   }
+}
+
+.react-flow__minimap {
+  right: 24px !important;
+  bottom: 24px !important;
+  width: 200px !important;
+  height: 130px !important;
+  border-radius: 20px !important;
+  overflow: hidden !important;
+  background: rgba(18, 18, 18, 0.72) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  opacity: 0.62;
+  transition: opacity 160ms ease, transform 160ms ease, border-color 160ms ease;
+}
+
+.react-flow__minimap:hover {
+  opacity: 0.95;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  transform: translateY(-1px);
+}
+
+.react-flow__minimap-mask {
+  fill: rgba(255, 255, 255, 0.08) !important;
+  stroke: rgba(255, 255, 255, 0.45) !important;
+  stroke-width: 1.5;
+}
+
+.react-flow__minimap-node {
+  fill: rgba(255, 255, 255, 0.28) !important;
+  stroke: rgba(255, 255, 255, 0.08) !important;
 }

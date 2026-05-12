@@ -1,17 +1,21 @@
-import { useState } from 'react';
-import { Handle, Position, useReactFlow } from '@xyflow/react';
+import { memo, useEffect, useMemo, useState } from 'react';
+import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import { FullscreenTextModal } from '../components/FullscreenTextModal';
 import { NodeFullscreenButton } from '../components/NodeFullscreenButton';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
+import { getNodeTextOutput } from '../utils/nodeOutputs';
 import { getVariableKey, normalizeVariableName } from '../utils/textVariables';
+import { countRender } from '../utils/perfDebug';
 
-export function TextNode({ id, data }) {
+export const TextNode = memo(function TextNode({ id, data }) {
+  countRender('TextNode');
   const { setNodes } = useReactFlow();
   const [isEditingVariable, setIsEditingVariable] = useState(false);
   const [draftVariableName, setDraftVariableName] = useState(data.variableName || '');
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
 
   const text = data.text ?? data.content ?? data.value ?? data.prompt ?? '';
+  const autoReceiveText = Boolean(data.autoReceiveText);
   const variableName = normalizeVariableName(data.variableName);
   const variableKey = getVariableKey(variableName);
 
@@ -47,7 +51,7 @@ export function TextNode({ id, data }) {
   };
 
   return (
-    <div className="bg-[#181818] rounded-[24px] px-4 pt-3 pb-4 w-full h-full min-w-[320px] min-h-[200px] flex flex-col text-white select-none group hover:ring-2 hover:ring-white/50 hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.1)] transition-all relative">
+    <div className="canvas-node-card bg-[#181818] rounded-[24px] px-4 pt-3 pb-4 w-full h-full min-w-[320px] min-h-[200px] flex flex-col text-white select-none group relative border border-white/5 transition-colors duration-100 hover:border-white/20">
       <div className="flex items-center gap-2 mb-2 px-1">
         <div className="flex items-center gap-2 text-white/30 text-xs font-light">
           <svg className="w-3.5 h-3.5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57,6 +61,20 @@ export function TextNode({ id, data }) {
         </div>
 
         <div className="ml-auto flex items-center gap-1.5 nodrag">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              updateNodeData({ autoReceiveText: !autoReceiveText });
+            }}
+            className={`text-[9px] px-1.5 py-0.5 rounded-md font-light tracking-tighter transition-colors ${
+              autoReceiveText ? 'bg-white/15 text-white/90' : 'bg-white/5 text-white/20 hover:text-white/50'
+            }`}
+            title="Auto receive text input"
+          >
+            Auto
+          </button>
+
           <button
             type="button"
             onClick={(e) => {
@@ -119,6 +137,14 @@ export function TextNode({ id, data }) {
         className="!w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !right-[-4px] group-hover:!border-white transition-all"
       />
 
+      {autoReceiveText && (
+        <AutoReceiveTextBridge
+          id={id}
+          currentText={text}
+          setNodes={setNodes}
+        />
+      )}
+
       <NodeResizeCorner minWidth={320} minHeight={200} />
 
       <FullscreenTextModal
@@ -133,4 +159,40 @@ export function TextNode({ id, data }) {
       />
     </div>
   );
+});
+
+function AutoReceiveTextBridge({ id, currentText, setNodes }) {
+  const nodes = useNodes();
+  const edges = useEdges();
+
+  const incomingText = useMemo(() => {
+    const inputEdge = edges.find(
+      (edge) => edge.target === id && (edge.targetHandle ?? edge.targetHandleId) === 'text:in'
+    );
+
+    if (!inputEdge || inputEdge.source === id) return '';
+
+    const sourceNode = nodes.find((node) => node.id === inputEdge.source);
+    return sourceNode ? getNodeTextOutput(sourceNode, nodes, edges) : '';
+  }, [edges, id, nodes]);
+
+  useEffect(() => {
+    if (!incomingText) return;
+    if (incomingText === currentText) return;
+
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id !== id) return node;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            text: incomingText,
+          },
+        };
+      })
+    );
+  }, [currentText, id, incomingText, setNodes]);
+
+  return null;
 }

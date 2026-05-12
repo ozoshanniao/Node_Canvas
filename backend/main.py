@@ -98,7 +98,12 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5174"], 
+    allow_origins=[
+        "http://127.0.0.1:5174",
+        "http://localhost:5174",
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+    ], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -143,6 +148,12 @@ async def get_specs():
 @app.post("/api/llm/generate")
 async def generate_llm(payload: LLMGenerateRequest):
     try:
+        print("[LLM generate]", {
+            "provider": payload.provider,
+            "model": payload.model,
+            "imageInputs": len(payload.imageInputs or []),
+            "inputTextLength": len(payload.inputText or ""),
+        })
         text = await llm_service.generate(payload)
         return {"status": "success", "data": {"text": text}}
     except NotImplementedError as e:

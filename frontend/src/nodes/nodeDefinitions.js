@@ -1,4 +1,5 @@
 import { mergeNodeDefaults } from '../utils/nodeDefaults';
+import { DEFAULT_IMAGE_GENERATION_SETTINGS } from '../utils/imageGenerationOptions';
 
 export const NODE_DEFINITIONS = [
   {
@@ -7,10 +8,10 @@ export const NODE_DEFINITIONS = [
     description: '文本输入节点',
     category: 'Text',
     order: 20,
-    showInConnectionMenu: false,
+    showInConnectionMenu: true,
     inputs: [{ id: 'text:in', kind: 'text' }],
     outputs: [{ id: 'text:out', kind: 'text' }],
-    defaultData: { text: '', variableName: '' },
+    defaultData: { text: '', variableName: '', autoReceiveText: false },
   },
   {
     type: 'textConstruction',
@@ -30,7 +31,10 @@ export const NODE_DEFINITIONS = [
     category: 'AI',
     order: 10,
     showInConnectionMenu: true,
-    inputs: [{ id: 'text:in', kind: 'text' }],
+    inputs: [
+      { id: 'text:in', kind: 'text' },
+      { id: 'image:in', kind: 'image' },
+    ],
     outputs: [{ id: 'text:out', kind: 'text' }],
     defaultData: {
       provider: 'Yunwu',
@@ -54,8 +58,116 @@ export const NODE_DEFINITIONS = [
       { id: 'image:in', kind: 'image' },
     ],
     outputs: [{ id: 'image:out', kind: 'image' }],
-    defaultData: { provider: 'Yunwu', model: 'Nano 2', ratio: '1:1', aspectRatio: '1:1', resolution: '1K' },
+    defaultData: { ...DEFAULT_IMAGE_GENERATION_SETTINGS },
     defaultsKind: 'imageGeneration',
+  },
+  {
+    type: 'splitGridNode',
+    label: 'Split Grid',
+    description: 'Configure an image grid split plan',
+    category: 'Image',
+    order: 20,
+    showInConnectionMenu: true,
+    inputs: [{ id: 'image:in', kind: 'image' }],
+    outputs: [{ id: 'image:out', kind: 'image' }],
+    defaultData: {
+      layout: '2x3',
+      rows: 2,
+      cols: 3,
+      defaultPrompt: '',
+      generateSettings: { ...DEFAULT_IMAGE_GENERATION_SETTINGS },
+      sourceImageUrl: '',
+      previewImageUrl: '',
+      slices: [],
+      settingsOpen: false,
+      splitReady: false,
+      status: 'idle',
+      error: '',
+      generatedSetCount: 0,
+      lastGeneratedAt: null,
+    },
+    defaultSize: { width: 340, height: 260 },
+  },
+  {
+    type: 'imageCompareNode',
+    label: 'Image Compare',
+    description: 'Compare two images with a draggable split view',
+    category: 'Image',
+    order: 22,
+    showInConnectionMenu: true,
+    inputs: [
+      { id: 'image:a', kind: 'image' },
+      { id: 'image:b', kind: 'image' },
+    ],
+    outputs: [],
+    defaultData: {
+      splitPosition: 50,
+    },
+    defaultSize: { width: 420, height: 300 },
+  },
+  {
+    type: 'ar720Node',
+    label: 'AR720°',
+    description: 'Full spherical panorama / HDRI preview',
+    category: 'Tools',
+    order: 34,
+    showInConnectionMenu: true,
+    inputs: [{ id: 'image:in', kind: 'image' }],
+    outputs: [],
+    defaultData: {
+      viewerState: {
+        yaw: 0,
+        pitch: 0,
+        fov: 70,
+      },
+      captureSettings: {
+        aspectRatio: '16:9',
+        width: 1536,
+        height: 864,
+      },
+    },
+    defaultSize: { width: 380, height: 280 },
+  },
+  {
+    type: 'panorama360Node',
+    label: '360°',
+    description: 'Horizontal 360 panorama preview',
+    category: 'Tools',
+    order: 35,
+    showInConnectionMenu: true,
+    inputs: [{ id: 'image:in', kind: 'image' }],
+    outputs: [],
+    defaultData: {
+      viewerState: {
+        yaw: 0,
+        pitch: 0,
+        fov: 70,
+      },
+      captureSettings: {
+        aspectRatio: '16:9',
+        width: 1536,
+        height: 864,
+      },
+    },
+    defaultSize: { width: 380, height: 280 },
+  },
+  {
+    type: 'routeNode',
+    label: 'Route',
+    description: '文本与图片中转节点',
+    category: 'Utility',
+    order: 40,
+    showInConnectionMenu: true,
+    inputs: [
+      { id: 'text:in', kind: 'text' },
+      { id: 'image:in', kind: 'image' },
+    ],
+    outputs: [
+      { id: 'text:out', kind: 'text' },
+      { id: 'image:out', kind: 'image' },
+    ],
+    defaultData: {},
+    defaultSize: { width: 280, height: 180 },
   },
   {
     type: 'outputNode',
@@ -67,7 +179,10 @@ export const NODE_DEFINITIONS = [
     inputs: [{ id: 'image:in', kind: 'image' }],
     outputs: [],
     defaultData: {
+      images: [],
       selectedIndex: 0,
+      displayScale: 1,
+      displaySizeBase: 360,
     },
   },
   {
@@ -76,8 +191,8 @@ export const NODE_DEFINITIONS = [
     description: '图片输入节点',
     category: 'Image',
     order: 50,
-    showInConnectionMenu: false,
-    inputs: [],
+    showInConnectionMenu: true,
+    inputs: [{ id: 'image:in', kind: 'image' }],
     outputs: [{ id: 'image:out', kind: 'image' }],
     defaultData: {},
   },
@@ -85,9 +200,14 @@ export const NODE_DEFINITIONS = [
 
 export const getNodeDefinition = (type) => NODE_DEFINITIONS.find((definition) => definition.type === type);
 
+const cloneDefaultData = (data = {}) => {
+  if (typeof structuredClone === 'function') return structuredClone(data);
+  return JSON.parse(JSON.stringify(data));
+};
+
 export const createDefaultNodeData = (type, projectPath) => ({
   projectPath,
   ...(getNodeDefinition(type)?.defaultsKind
-    ? mergeNodeDefaults(getNodeDefinition(type).defaultsKind, getNodeDefinition(type)?.defaultData || {})
-    : getNodeDefinition(type)?.defaultData || {}),
+    ? mergeNodeDefaults(getNodeDefinition(type).defaultsKind, cloneDefaultData(getNodeDefinition(type)?.defaultData || {}))
+    : cloneDefaultData(getNodeDefinition(type)?.defaultData || {})),
 });
