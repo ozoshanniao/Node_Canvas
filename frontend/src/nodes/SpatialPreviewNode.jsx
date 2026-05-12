@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense, useMemo, useState } from 'react';
+import { lazy, memo, Suspense, useEffect, useMemo, useState } from 'react';
 import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { getNodeImageOutput } from '../utils/nodeOutputs';
@@ -6,6 +6,7 @@ import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { getImageInputNodeSizeByRatio } from '../utils/imageInputSizing';
 import { countRender } from '../utils/perfDebug';
 import { getMatchingPreviewUrl } from '../utils/imagePreview';
+import { uploadImageToInput } from '../utils/uploadToInput';
 
 const PanoramaViewerModal = lazy(() =>
   import('../components/PanoramaViewerModal').then((module) => ({
@@ -26,30 +27,96 @@ const getFirstImageUrl = (output) => {
 const formatAngle = (value) => `${Math.round(Number(value) || 0)}°`;
 const getSourceType = (mode) => (mode === 'panorama360' ? 'panorama360Node' : 'ar720Node');
 
-export const SpatialPreviewNode = memo(function SpatialPreviewNode({ id, data, mode, title }) {
-  countRender('SpatialPreviewNode');
+// ---------------------------------------------------------------------------
+// Bridge: 只有有 image:in 入边时才挂载
+// 把上游原图 URL（sourceImageUrl）和预览 URL（sourcePreviewUrl）写入 data
+// ---------------------------------------------------------------------------
+function SpatialUpstreamBridge({ nodeId, currentData }) {
   const nodes = useNodes();
   const edges = useEdges();
+  const { setNodes } = useReactFlow();
+
+  const upstreamUrl = useMemo(() => {
+    const inputEdge = edges.find(
+      (edge) =>
+        edge.target === nodeId &&
+        (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
+    );
+    if (!inputEdge) return '';
+    const sourceNode = nodes.find((node) => node.id === inputEdge.source);
+    return getFirstImageUrl(
+      getNodeImageOutput(sourceNode, inputEdge.sourceHandle, inputEdge, nodes, edges)
+    );
+  }, [edges, nodeId, nodes]);
+
+  const upstreamPreviewUrl = useMemo(() => {
+    const inputEdge = edges.find(
+      (edge) =>
+        edge.target === nodeId &&
+        (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
+    );
+    if (!inputEdge) return '';
+    const sourceNode = nodes.find((node) => node.id === inputEdge.source);
+    return getMatchingPreviewUrl(sourceNode?.data, upstreamUrl);
+  }, [edges, nodeId, nodes, upstreamUrl]);
+
+  useEffect(() => {
+    const isSynced =
+      currentData?.sourceImageUrl === upstreamUrl &&
+      currentData?.sourcePreviewUrl === (upstreamPreviewUrl || upstreamUrl);
+
+    if (!upstreamUrl || isSynced) return;
+
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id !== nodeId) return node;
+        const nd = node.data || {};
+        if (
+          nd.sourceImageUrl === upstreamUrl &&
+          nd.sourcePreviewUrl === (upstreamPreviewUrl || upstreamUrl)
+        ) {
+          return node;
+        }
+        return {
+          ...node,
+          data: {
+            ...nd,
+            sourceImageUrl: upstreamUrl,
+            sourcePreviewUrl: upstreamPreviewUrl || upstreamUrl,
+          },
+        };
+      })
+    );
+  }, [
+    currentData?.sourceImageUrl,
+    currentData?.sourcePreviewUrl,
+    nodeId,
+    setNodes,
+    upstreamPreviewUrl,
+    upstreamUrl,
+  ]);
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Main component — 不再直接订阅 useNodes/useEdges
+// data.sourceImageUrl  => 原图（传给 Viewer，必须是完整 URL）
+// data.sourcePreviewUrl => 缩略预览（仅用于节点缩略图显示）
+// ---------------------------------------------------------------------------
+export const SpatialPreviewNode = memo(function SpatialPreviewNode({ id, data, mode, title }) {
+  countRender('SpatialPreviewNode');
   const { getNodes, setNodes } = useReactFlow();
   const [isViewerOpen, setIsViewerOpen] = useState(false);
 
-  const sourceImageUrl = useMemo(() => {
-    const inputEdge = edges.find(
-      (edge) => edge.target === id && (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
-    );
-    if (!inputEdge) return '';
+  // 从 data 读取（由 Bridge 写入）
+  // sourceImageUrl 是原图，传给 Viewer 必须用这个
+  const sourceImageUrl = data?.sourceImageUrl || '';
+  const sourcePreviewUrl = data?.sourcePreviewUrl || sourceImageUrl;
+  const resolvedSourceImageUrl = resolveImageUrl(sourcePreviewUrl, data?.projectPath);
 
-    const sourceNode = nodes.find((node) => node.id === inputEdge.source);
-    return getFirstImageUrl(getNodeImageOutput(sourceNode, inputEdge.sourceHandle, inputEdge, nodes, edges));
-  }, [edges, id, nodes]);
-  const sourcePreviewUrl = useMemo(() => {
-    const inputEdge = edges.find(
-      (edge) => edge.target === id && (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
-    );
-    const sourceNode = nodes.find((node) => node.id === inputEdge?.source);
-    return getMatchingPreviewUrl(sourceNode?.data, sourceImageUrl);
-  }, [edges, id, nodes, sourceImageUrl]);
-  const resolvedSourceImageUrl = resolveImageUrl(sourcePreviewUrl);
+  // 是否挂 Bridge：只要 hasImageInConnection 不为明确的 false，都挂
+  const shouldMountBridge = data?.hasImageInConnection !== false;
 
   const viewerState = {
     yaw: Number(data?.viewerState?.yaw) || 0,
@@ -76,9 +143,15 @@ export const SpatialPreviewNode = memo(function SpatialPreviewNode({ id, data, m
     updateNodeData({ viewerState: nextState });
   };
 
-  const createCaptureImageInputNodes = (captures = []) => {
+  const createCaptureImageInputNodes = async (captures = []) => {
     const validCaptures = captures.filter((capture) => capture?.dataUrl);
     if (!validCaptures.length) return;
+
+    const projectPath = data?.projectPath;
+    if (!projectPath) {
+      console.error('[SpatialPreview] projectPath not available for capture upload');
+      return;
+    }
 
     const allNodes = getNodes();
     const currentNode = allNodes.find((node) => node.id === id);
@@ -90,48 +163,69 @@ export const SpatialPreviewNode = memo(function SpatialPreviewNode({ id, data, m
     const baseY = (currentNode?.position?.y || 0) + SINGLE_CAPTURE_OFFSET.y + groupOffset;
     const batchId = Date.now();
 
-    const nodesToAdd = validCaptures.map((capture, index) => {
-      const isBatch = validCaptures.length > 1;
-      const fittedSize = getImageInputNodeSizeByRatio(capture.width, capture.height);
-      const position = isBatch
-        ? {
-            x: baseX + (index % 2) * FOUR_VIEW_GAP.x,
-            y: baseY + Math.floor(index / 2) * FOUR_VIEW_GAP.y,
-          }
-        : {
-            x: baseX,
-            y: baseY + existingCaptureCount * 36,
-          };
-
-      return {
-        id: `imageInputNode-${batchId}-${index}`,
-        type: 'imageInputNode',
-        position,
-        width: fittedSize.width,
-        height: fittedSize.height,
-        data: {
-          url: capture.dataUrl,
-          dataUrl: capture.dataUrl,
+    // Upload all captures to input directory
+    const uploadPromises = validCaptures.map(async (capture, index) => {
+      try {
+        const result = await uploadImageToInput(capture.dataUrl, {
+          projectPath,
+          sourceKind: 'capture',
           filename: capture.filename || `${mode}_capture_${batchId}_${index + 1}.png`,
-          generatedByPanorama: true,
-          displayMode: 'cover',
-          source: {
-            type: getSourceType(mode),
-            nodeId: id,
-            label: capture.label,
-            yaw: capture.yaw,
-            pitch: capture.pitch,
-            fov: capture.fov,
-            exportAspectRatio: capture.exportAspectRatio,
-            exportResolution: capture.exportResolution,
-            exportWidth: capture.width,
-            exportHeight: capture.height,
+          mimeType: 'image/png',
+        });
+
+        const isBatch = validCaptures.length > 1;
+        const fittedSize = getImageInputNodeSizeByRatio(capture.width, capture.height);
+        const position = isBatch
+          ? {
+              x: baseX + (index % 2) * FOUR_VIEW_GAP.x,
+              y: baseY + Math.floor(index / 2) * FOUR_VIEW_GAP.y,
+            }
+          : {
+              x: baseX,
+              y: baseY + existingCaptureCount * 36,
+            };
+
+        return {
+          id: `imageInputNode-${batchId}-${index}`,
+          type: 'imageInputNode',
+          position,
+          width: fittedSize.width,
+          height: fittedSize.height,
+          data: {
+            url: result.url,
+            filename: result.filename,
+            mimeType: result.mimeType,
+            width: result.width,
+            height: result.height,
+            bytes: result.bytes,
+            generatedByPanorama: true,
+            displayMode: 'cover',
+            sourceKind: 'capture',
+            projectPath,
+            source: {
+              type: getSourceType(mode),
+              nodeId: id,
+              label: capture.label,
+              yaw: capture.yaw,
+              pitch: capture.pitch,
+              fov: capture.fov,
+              exportAspectRatio: capture.exportAspectRatio,
+              exportResolution: capture.exportResolution,
+              exportWidth: capture.width,
+              exportHeight: capture.height,
+            },
           },
-        },
-      };
+        };
+      } catch (error) {
+        console.error('[SpatialPreview] Capture upload failed:', error);
+        return null;
+      }
     });
 
-    setNodes((nds) => nds.concat(nodesToAdd));
+    const nodesToAdd = (await Promise.all(uploadPromises)).filter(Boolean);
+    if (nodesToAdd.length > 0) {
+      setNodes((nds) => nds.concat(nodesToAdd));
+    }
   };
 
   const statusItems =
@@ -203,6 +297,14 @@ export const SpatialPreviewNode = memo(function SpatialPreviewNode({ id, data, m
 
       <NodeResizeCorner minWidth={340} minHeight={240} />
 
+      {/* Bridge: 只在有 image:in 连接时挂载 */}
+      {shouldMountBridge && (
+        <SpatialUpstreamBridge
+          nodeId={id}
+          currentData={data}
+        />
+      )}
+
       {isViewerOpen && (
         <Suspense
           fallback={
@@ -215,6 +317,7 @@ export const SpatialPreviewNode = memo(function SpatialPreviewNode({ id, data, m
             open={isViewerOpen}
             title={title}
             imageUrl={sourceImageUrl}
+            projectPath={data?.projectPath}
             mode={mode}
             viewerState={viewerState}
             onViewerStateCommit={handleViewerStateCommit}

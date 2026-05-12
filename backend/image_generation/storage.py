@@ -42,3 +42,57 @@ def save_image_bytes(image_bytes: bytes, generation_dir: str, prefix: str, mime_
     if os.path.getsize(file_path) <= 0:
         raise ValueError(f"Saved image is empty: {file_path}")
     return f"/api/image/{file_name}"
+
+
+def ensure_input_dir(project_path: str) -> str:
+    """Ensure input directory exists for user-uploaded and derived images."""
+    input_dir = os.path.join(project_path, "input")
+    os.makedirs(input_dir, exist_ok=True)
+    return input_dir
+
+
+def save_image_bytes_to_input(
+    image_bytes: bytes,
+    project_path: str,
+    source_kind: str = "upload",
+    mime_type: str | None = None,
+    original_filename: str | None = None,
+) -> dict:
+    """
+    Save image bytes to project input directory.
+
+    Returns:
+        dict with keys: relativePath, width, height, mimeType, bytes
+    """
+    input_dir = ensure_input_dir(project_path)
+    ext = mime_to_extension(mime_type)
+
+    # Generate filename with source kind prefix
+    prefix = source_kind.lower()
+    file_name = f"{prefix}_{uuid.uuid4().hex[:8]}.{ext}"
+    file_path = os.path.join(input_dir, file_name)
+
+    # Write file
+    with open(file_path, "wb") as f:
+        f.write(image_bytes)
+
+    if os.path.getsize(file_path) <= 0:
+        raise ValueError(f"Saved image is empty: {file_path}")
+
+    # Get image dimensions using PIL if available
+    width, height = None, None
+    try:
+        from PIL import Image
+        with Image.open(file_path) as img:
+            width, height = img.size
+    except Exception:
+        pass
+
+    return {
+        "relativePath": f"input/{file_name}",
+        "width": width,
+        "height": height,
+        "mimeType": mime_type or f"image/{ext}",
+        "bytes": len(image_bytes),
+        "filename": original_filename or file_name,
+    }

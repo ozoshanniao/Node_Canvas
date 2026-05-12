@@ -5,7 +5,7 @@ import { getNodeImageOutput } from '../utils/nodeOutputs';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { getImageInputNodeSizeByRatio, getImageInputNodeSizeFromImageUrl } from '../utils/imageInputSizing';
 import { countRender, PERF_DEBUG } from '../utils/perfDebug';
-import { createImageThumbnail, getBestPreviewUrl } from '../utils/imagePreview';
+import { uploadImageToInput } from '../utils/uploadToInput';
 
 const SPLIT_GRID_FIT_FALLBACK_SIZE = 260;
 
@@ -41,14 +41,7 @@ export const ImageInputNode = memo(function ImageInputNode({ id, data }) {
   const { setNodes } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
   const rawImageSrc = data?.url || data?.dataUrl || data?.imageUrl || data?.src;
-  const hasMatchingPreview =
-    data?.previewUrl && (!data?.previewSourceUrl || data.previewSourceUrl === rawImageSrc);
-  const rawPreviewSrc = getBestPreviewUrl({
-    previewUrl: hasMatchingPreview ? data.previewUrl : '',
-    thumbnailUrl: data?.thumbnailUrl,
-    url: rawImageSrc,
-  });
-  const imageSrc = resolveImageUrl(rawPreviewSrc);
+  const imageSrc = resolveImageUrl(rawImageSrc, data?.projectPath);
   const isGeneratedBySplitGrid = Boolean(data?.generatedBySplitGrid);
   const isFittedPreview = Boolean(
     data?.generatedBySplitGrid ||
@@ -57,39 +50,6 @@ export const ImageInputNode = memo(function ImageInputNode({ id, data }) {
       data?.importedByUser ||
       data?.displayMode === 'cover'
   );
-
-  useEffect(() => {
-    if (!rawImageSrc) return undefined;
-    if (data?.previewUrl && data?.previewSourceUrl === rawImageSrc) return undefined;
-
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      createImageThumbnail(rawImageSrc).then((thumbnail) => {
-        if (cancelled || !thumbnail) return;
-
-        setNodes((nds) =>
-          nds.map((node) => {
-            if (node.id !== id) return node;
-            if (node.data?.previewUrl && node.data?.previewSourceUrl === rawImageSrc) return node;
-
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                previewUrl: thumbnail,
-                previewSourceUrl: rawImageSrc,
-              },
-            };
-          })
-        );
-      });
-    }, 160);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [data?.previewSourceUrl, data?.previewUrl, id, rawImageSrc, setNodes]);
 
   const imageObjectFit =
     isFittedPreview
@@ -196,19 +156,31 @@ export const ImageInputNode = memo(function ImageInputNode({ id, data }) {
     );
   };
 
-  const fileToDataUrl = (file) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
-    if (file && file.type.startsWith('image/')) {
-      const dataUrl = await fileToDataUrl(file);
-      const nextSize = await getImageInputNodeSizeFromImageUrl(dataUrl).catch(() => null);
+    if (!file || !file.type.startsWith('image/')) return;
+
+    // Get projectPath from node data
+    const projectPath = data?.projectPath;
+    if (!projectPath) {
+      console.error('[ImageInputNode] projectPath not available for upload');
+      return;
+    }
+
+    try {
+      // Upload to input directory
+      const result = await uploadImageToInput(file, {
+        projectPath,
+        sourceKind: 'upload',
+        filename: file.name,
+        mimeType: file.type,
+      });
+
+      // Get node size from uploaded image
+      const imageUrl = resolveImageUrl(result.url, projectPath);
+      const nextSize = await getImageInputNodeSizeFromImageUrl(imageUrl).catch(() => null);
+
+      // Update node with relative path only
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === id) {
@@ -217,16 +189,16 @@ export const ImageInputNode = memo(function ImageInputNode({ id, data }) {
               ...(nextSize ? { width: nextSize.width, height: nextSize.height } : {}),
               data: {
                 ...node.data,
-                url: dataUrl,
-                dataUrl,
-                filename: file.name,
-                mimeType: file.type,
-                file: undefined,
-                displayMode: 'cover',
+                url: result.url, // e.g., "input/upload_a3f2b1c4.png"
+                filename: result.filename,
+                mimeType: result.mimeType,
+                width: result.width,
+                height: result.height,
+                bytes: result.bytes,
+                sourceKind: 'upload',
                 importedByUser: true,
-                fittedSourceUrl: dataUrl,
-                previewUrl: '',
-                previewSourceUrl: '',
+                displayMode: 'cover',
+                projectPath,
               },
             };
           }
@@ -234,23 +206,8 @@ export const ImageInputNode = memo(function ImageInputNode({ id, data }) {
         })
       );
       requestAnimationFrame(() => updateNodeInternals(id));
-
-      createImageThumbnail(dataUrl).then((thumbnail) => {
-        if (!thumbnail) return;
-        setNodes((nds) =>
-          nds.map((node) => {
-            if (node.id !== id || node.data?.dataUrl !== dataUrl) return node;
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                previewUrl: thumbnail,
-                previewSourceUrl: dataUrl,
-              },
-            };
-          })
-        );
-      });
+    } catch (error) {
+      console.error('[ImageInputNode] Upload failed:', error);
     }
   };
 
@@ -354,11 +311,11 @@ function UpstreamImageBridge({ nodeId, currentData }) {
   useEffect(() => {
     if (!incomingImageUrl) return;
 
-    const shouldSyncDataUrl = incomingImageUrl.startsWith('data:image/');
+    // Note: We no longer write dataUrl to node.data to avoid storing base64 in project files.
+    // If upstream sends data:image/, we accept it as url but don't duplicate to dataUrl field.
     const isSynced =
       currentData?.url === incomingImageUrl &&
-      currentData?.receivedImageUrl === incomingImageUrl &&
-      (!shouldSyncDataUrl || currentData?.dataUrl === incomingImageUrl);
+      currentData?.receivedImageUrl === incomingImageUrl;
 
     if (isSynced) return;
 
@@ -369,8 +326,7 @@ function UpstreamImageBridge({ nodeId, currentData }) {
         const nodeData = node.data || {};
         const nodeIsSynced =
           nodeData.url === incomingImageUrl &&
-          nodeData.receivedImageUrl === incomingImageUrl &&
-          (!shouldSyncDataUrl || nodeData.dataUrl === incomingImageUrl);
+          nodeData.receivedImageUrl === incomingImageUrl;
 
         if (nodeIsSynced) return node;
 
@@ -380,16 +336,11 @@ function UpstreamImageBridge({ nodeId, currentData }) {
             ...nodeData,
             ...(nodeData.url !== incomingImageUrl ? { url: incomingImageUrl } : {}),
             ...(nodeData.receivedImageUrl !== incomingImageUrl ? { receivedImageUrl: incomingImageUrl } : {}),
-            ...(shouldSyncDataUrl && nodeData.dataUrl !== incomingImageUrl ? { dataUrl: incomingImageUrl } : {}),
-            ...(nodeData.previewSourceUrl && nodeData.previewSourceUrl !== incomingImageUrl
-              ? { previewUrl: '', previewSourceUrl: '' }
-              : {}),
           },
         };
       })
     );
   }, [
-    currentData?.dataUrl,
     currentData?.receivedImageUrl,
     currentData?.url,
     incomingImageUrl,

@@ -120,6 +120,10 @@ async def init_project(config: ProjectConfig):
         # 鍒涘缓鍥剧墖瀛樻斁瀛愮洰褰?
         gen_dir = os.path.join(abs_path, "generation")
         os.makedirs(gen_dir, exist_ok=True)
+
+        # 鍒涘缓 input 鐩綍鐢ㄤ簬鐢ㄦ埛涓婁紶鍜屾淳鐢熷浘鐗?
+        input_dir = os.path.join(abs_path, "input")
+        os.makedirs(input_dir, exist_ok=True)
         
         # 鍒涘缓/璇诲彇 project.json
         project_file = os.path.join(abs_path, "project.json")
@@ -241,6 +245,96 @@ async def get_image(filename: str, projectPath: Optional[str] = None):
         return FileResponse(img_path, media_type=content_type)
         
     raise HTTPException(status_code=404)
+
+
+# 新增：保存图片到 input 目录
+@app.post("/api/input/save")
+async def save_input_image(payload: dict):
+    """
+    Save image to project input directory.
+
+    Accepts:
+    - projectPath: str (required)
+    - imageData: str (base64 or data URL)
+    - sourceKind: str (upload, paste, drop, split, capture, output)
+    - filename: str (optional original filename)
+    - mimeType: str (optional)
+
+    Returns:
+    - url: relative path like "input/xxx.png"
+    - width, height, mimeType, bytes
+    """
+    from image_generation.storage import save_image_bytes_to_input
+    from engines.image_utils import decode_base64_payload, infer_mime_type
+
+    project_path = payload.get("projectPath")
+    if not project_path:
+        raise HTTPException(status_code=400, detail="projectPath is required")
+
+    image_data = payload.get("imageData", "")
+    if not image_data:
+        raise HTTPException(status_code=400, detail="imageData is required")
+
+    source_kind = payload.get("sourceKind", "upload")
+    original_filename = payload.get("filename")
+    mime_type = payload.get("mimeType")
+
+    # Decode base64 or data URL
+    try:
+        if image_data.startswith("data:image/"):
+            # Extract mime type from data URL if not provided
+            if not mime_type:
+                header = image_data.split(",")[0]
+                if ":" in header:
+                    mime_type = header.split(":")[1].split(";")[0]
+            image_bytes = decode_base64_payload(image_data)
+        else:
+            # Assume raw base64
+            image_bytes = decode_base64_payload(image_data)
+
+        if not mime_type:
+            mime_type = infer_mime_type(image_bytes)
+
+        result = save_image_bytes_to_input(
+            image_bytes=image_bytes,
+            project_path=project_path,
+            source_kind=source_kind,
+            mime_type=mime_type,
+            original_filename=original_filename,
+        )
+
+        return {"status": "success", "data": result}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save image: {str(e)}")
+
+
+# 新增：读取 input 目录图片
+@app.get("/api/input/{filename}")
+async def get_input_image(filename: str, projectPath: Optional[str] = None):
+    """Read image from project input directory."""
+    base_path = projectPath or CURRENT_PROJECT_PATH
+    if not base_path:
+        raise HTTPException(status_code=400, detail="Project path not identified")
+
+    # Security: prevent path traversal
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    img_path = os.path.join(base_path, "input", filename)
+
+    if os.path.exists(img_path):
+        lower_name = filename.lower()
+        if lower_name.endswith((".jpg", ".jpeg")):
+            content_type = "image/jpeg"
+        elif lower_name.endswith(".webp"):
+            content_type = "image/webp"
+        else:
+            content_type = "image/png"
+        return FileResponse(img_path, media_type=content_type)
+
+    raise HTTPException(status_code=404, detail="Image not found")
+
 
 @app.post("/run-workflow")
 async def run_workflow(payload: WorkflowPayload):

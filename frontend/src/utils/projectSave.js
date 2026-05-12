@@ -21,6 +21,22 @@ export const sanitizeNodesForSave = (nodes = []) =>
     delete data.hover;
     delete data.resolvedText;
 
+    // Strip base64 image fields - images are now stored as relative paths
+    delete data.dataUrl;
+    delete data.previewUrl;
+    delete data.previewSourceUrl;
+    delete data.thumbnailUrl;
+    delete data.fittedSourceUrl;
+
+    // Strip base64 from images array if present
+    if (Array.isArray(data.images)) {
+      data.images = data.images.map((img) => {
+        if (!img || typeof img !== 'object') return img;
+        const { dataUrl, previewUrl, previewSourceUrl, thumbnailUrl, ...restImg } = img;
+        return restImg;
+      });
+    }
+
     if (node.type === 'imageInputNode' && data.url?.startsWith?.('blob:')) {
       console.warn('[project:save image warning]', {
         nodeId: node.id,
@@ -29,10 +45,6 @@ export const sanitizeNodesForSave = (nodes = []) =>
         preview: data.url.slice(0, 80),
       });
       delete data.url;
-    }
-
-    if (node.type === 'imageInputNode' && data.dataUrl && !data.url) {
-      data.url = data.dataUrl;
     }
 
     return { ...persistedNode, data };

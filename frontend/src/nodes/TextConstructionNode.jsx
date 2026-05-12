@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import { FullscreenTextModal } from '../components/FullscreenTextModal';
 import { NodeFullscreenButton } from '../components/NodeFullscreenButton';
@@ -13,7 +13,12 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
   const nodes = useNodes();
   const edges = useEdges();
   const template = data.template ?? data.text ?? '';
-  const { resolvedText, variables } = getTextConstructionOutput({ id, data: { ...data, template } }, nodes, edges);
+  // useMemo: 只有 template / nodes / edges 变化时才重新解析，避免每次 render 都同步执行
+  const { resolvedText, variables } = useMemo(
+    () => getTextConstructionOutput({ id, data: { ...data, template } }, nodes, edges),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [id, template, nodes, edges]
+  );
   const variableKeys = Object.keys(variables);
   const previewPanelOpen = Boolean(data.previewPanelOpen);
 

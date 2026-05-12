@@ -34,7 +34,8 @@ export function getMatchingPreviewUrl(source, originalUrl = '') {
 }
 
 export function createImageThumbnail(url, options = {}) {
-  const sourceUrl = resolveImageUrl(url);
+  const projectPath = options.projectPath;
+  const sourceUrl = resolveImageUrl(url, projectPath);
   if (!sourceUrl) return Promise.resolve(null);
 
   const maxWidth = options.maxWidth ?? 512;

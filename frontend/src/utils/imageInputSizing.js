@@ -32,7 +32,8 @@ export function getImageInputNodeSizeByRatio(width, height, options = {}) {
 
 export function getImageInputNodeSizeFromImageUrl(url, options = {}) {
   return new Promise((resolve, reject) => {
-    const resolvedUrl = resolveImageUrl(url);
+    const projectPath = options.projectPath;
+    const resolvedUrl = resolveImageUrl(url, projectPath);
     if (!resolvedUrl) {
       resolve(getImageInputNodeSizeByRatio(1, 1, options));
       return;

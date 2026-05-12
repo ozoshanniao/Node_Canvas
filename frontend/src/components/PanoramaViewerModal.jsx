@@ -59,6 +59,7 @@ export function PanoramaViewerModal({
   open,
   title,
   imageUrl,
+  projectPath,
   mode,
   viewerState,
   onViewerStateCommit,
@@ -382,6 +383,7 @@ export function PanoramaViewerModal({
               <PanoramaViewerCanvas
                 ref={viewerRef}
                 imageUrl={imageUrl}
+                projectPath={projectPath}
                 mode={mode}
                 state={localViewerState}
                 onStateChange={setLocalViewerState}

@@ -6,7 +6,7 @@ import { getNodeImageOutput } from '../utils/nodeOutputs';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { getImageInputNodeSizeByRatio, getImageInputNodeSizeFromImageUrl } from '../utils/imageInputSizing';
 import { countRender } from '../utils/perfDebug';
-import { createImageThumbnail, getBestPreviewUrl } from '../utils/imagePreview';
+import { uploadImageToInput } from '../utils/uploadToInput';
 
 const DEFAULT_SCALE = 1;
 const MIN_SCALE = 0.6;
@@ -98,15 +98,8 @@ export const OutputNode = memo(function OutputNode({ id, data }) {
   const selectedIndex = clampIndex(data.selectedIndex ?? 0, imageUrls.length);
   const selectedItem = imageItems[selectedIndex];
   const selectedUrl = imageUrls[selectedIndex];
-  const hasMatchingPreview =
-    selectedItem?.previewUrl && (!selectedItem?.previewSourceUrl || selectedItem.previewSourceUrl === selectedUrl);
-  const resolvedSelectedUrl = resolveImageUrl(
-    getBestPreviewUrl({
-      ...selectedItem,
-      previewUrl: hasMatchingPreview ? selectedItem.previewUrl : '',
-      url: selectedUrl,
-    })
-  );
+  // Directly use selectedUrl without getBestPreviewUrl to avoid reading old previewUrl
+  const resolvedSelectedUrl = resolveImageUrl(selectedUrl, data?.projectPath);
   const currentMeta = selectedUrl ? imageMeta[selectedUrl] : null;
   const hasCurrentMeta = !!currentMeta?.width && !!currentMeta?.height;
   const currentRatio =
@@ -156,48 +149,8 @@ export const OutputNode = memo(function OutputNode({ id, data }) {
     if (!selectedUrl) return undefined;
     if (selectedItem?.previewUrl && selectedItem?.previewSourceUrl === selectedUrl) return undefined;
 
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      createImageThumbnail(selectedUrl).then((thumbnail) => {
-        if (cancelled || !thumbnail) return;
-
-        setNodes((nds) =>
-          nds.map((node) => {
-            if (node.id !== id) return node;
-
-            const currentImages = normalizeImageItems(node.data?.images);
-            const nextImages = currentImages.map((item, index) => {
-              const isSelectedItem =
-                index === selectedIndex ||
-                (selectedItem?.id && item.id === selectedItem.id) ||
-                item.url === selectedUrl;
-
-              if (!isSelectedItem) return item;
-              if (item.previewUrl && item.previewSourceUrl === selectedUrl) return item;
-
-              return {
-                ...item,
-                previewUrl: thumbnail,
-                previewSourceUrl: selectedUrl,
-              };
-            });
-
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                images: nextImages,
-              },
-            };
-          })
-        );
-      });
-    }, 180);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
+    // Thumbnail generation removed - images are now stored as relative paths
+    return undefined;
   }, [id, selectedIndex, selectedItem?.id, selectedItem?.previewSourceUrl, selectedItem?.previewUrl, selectedUrl, setNodes]);
 
   const selectIndex = (nextIndex) => {
@@ -219,16 +172,55 @@ export const OutputNode = memo(function OutputNode({ id, data }) {
   const handleUseAsImageInput = async (url) => {
     if (!url) return;
 
+    const projectPath = data?.projectPath;
+    if (!projectPath) {
+      console.error('[OutputNode] projectPath not available for use-as-image-input');
+      return;
+    }
+
     const currentNode = nodes.find((node) => node.id === id);
     const imageIndex = imageUrls.indexOf(url);
     const meta = imageMeta[url];
+
+    // Upload to input directory if it's a generation output
+    let finalUrl = url;
+    let uploadedMeta = {};
+
+    if (url.startsWith('/api/image/') || url.startsWith('generation/')) {
+      try {
+        // Fetch the image and upload to input
+        const resolvedUrl = resolveImageUrl(url, projectPath);
+        const response = await fetch(resolvedUrl);
+        const blob = await response.blob();
+
+        const result = await uploadImageToInput(blob, {
+          projectPath,
+          sourceKind: 'output',
+          mimeType: blob.type || 'image/png',
+        });
+
+        finalUrl = result.url;
+        uploadedMeta = {
+          filename: result.filename,
+          mimeType: result.mimeType,
+          width: result.width,
+          height: result.height,
+          bytes: result.bytes,
+        };
+      } catch (error) {
+        console.error('[OutputNode] Upload failed:', error);
+        return;
+      }
+    }
+
     let imageInputSize = meta?.width && meta?.height
       ? getImageInputNodeSizeByRatio(meta.width, meta.height)
       : getImageInputNodeSizeByRatio(16, 9);
 
     if (!meta?.width || !meta?.height) {
       try {
-        imageInputSize = await getImageInputNodeSizeFromImageUrl(url);
+        const sizeUrl = resolveImageUrl(finalUrl, projectPath);
+        imageInputSize = await getImageInputNodeSizeFromImageUrl(sizeUrl);
       } catch (error) {
         console.warn('[OutputNode use-as-image-input size failed]', {
           nodeId: id,
@@ -250,11 +242,12 @@ export const OutputNode = memo(function OutputNode({ id, data }) {
       width: imageInputSize.width,
       height: imageInputSize.height,
       data: {
-        url,
-        ...(url.startsWith('data:image/') ? { dataUrl: url } : {}),
-        ...(selectedItem?.previewUrl ? { previewUrl: selectedItem.previewUrl, previewSourceUrl: url } : {}),
+        url: finalUrl,
         generatedByOutput: true,
         displayMode: 'cover',
+        sourceKind: 'output',
+        projectPath,
+        ...uploadedMeta,
         source: {
           type: 'outputNode',
           nodeId: id,
@@ -371,6 +364,7 @@ export const OutputNode = memo(function OutputNode({ id, data }) {
         open={isModalOpen}
         images={imageUrls}
         selectedIndex={selectedIndex}
+        projectPath={data?.projectPath}
         onSelectIndex={selectIndex}
         onClose={() => setIsModalOpen(false)}
         onUseAsImageInput={handleUseAsImageInput}

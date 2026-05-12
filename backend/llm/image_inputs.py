@@ -44,6 +44,12 @@ def _generation_dir(project_path: str | None) -> str | None:
     return str(Path(project_path) / "generation")
 
 
+def _input_dir(project_path: str | None) -> str | None:
+    if not project_path:
+        return None
+    return str(Path(project_path) / "input")
+
+
 def _item_index(item, fallback_index: int) -> int:
     if isinstance(item, dict):
         return int(item.get("index", fallback_index))
@@ -98,9 +104,15 @@ async def prepare_llm_image_inputs(
             continue
 
         try:
+            # Support both generation/ and input/ relative paths
+            search_dirs = []
+            if project_path:
+                search_dirs.append(_generation_dir(project_path))
+                search_dirs.append(_input_dir(project_path))
+
             prepared = await prepare_provider_image_inputs(
                 [url],
-                _generation_dir(project_path),
+                search_dirs[0] if search_dirs else None,
                 prefer="base64",
             )
         except Exception as exc:

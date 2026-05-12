@@ -7,7 +7,6 @@ import { setLastNodeDefaults } from '../utils/nodeDefaults';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { getImageNodeAspectRatio, getImageNodeSizeByAspectRatio } from '../utils/nodeSizing';
 import { countRender } from '../utils/perfDebug';
-import { createImageThumbnail, getBestPreviewUrl } from '../utils/imagePreview';
 import {
   fetchImageGenerationRegistry,
   getImageAspectRatioOptions,
@@ -337,46 +336,14 @@ export function ImageNode({ id, data }) {
   const rawDisplayUrl = Array.isArray(data.urls) && data.urls.length > 0
     ? data.urls[currentIndex]
     : data.url
-  const hasMatchingPreview =
-    data?.previewUrl && (!data?.previewSourceUrl || data.previewSourceUrl === rawDisplayUrl);
-  const displayUrl = resolveImageUrl(
-    getBestPreviewUrl({
-      previewUrl: hasMatchingPreview ? data.previewUrl : '',
-      thumbnailUrl: data?.thumbnailUrl,
-      url: rawDisplayUrl,
-    })
-  );
+  const displayUrl = resolveImageUrl(rawDisplayUrl, data?.projectPath);
 
   useEffect(() => {
     if (!rawDisplayUrl) return undefined;
     if (data?.previewUrl && data?.previewSourceUrl === rawDisplayUrl) return undefined;
 
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      createImageThumbnail(rawDisplayUrl).then((thumbnail) => {
-        if (cancelled || !thumbnail) return;
-
-        setNodes((nds) =>
-          nds.map((node) => {
-            if (node.id !== id) return node;
-            if (node.data?.previewUrl && node.data?.previewSourceUrl === rawDisplayUrl) return node;
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                previewUrl: thumbnail,
-                previewSourceUrl: rawDisplayUrl,
-              },
-            };
-          })
-        );
-      });
-    }, 160);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
+    // Thumbnail generation removed - images are now stored as relative paths
+    return undefined;
   }, [data?.previewSourceUrl, data?.previewUrl, id, rawDisplayUrl, setNodes]);
 
   return (

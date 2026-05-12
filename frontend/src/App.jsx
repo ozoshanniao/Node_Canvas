@@ -38,8 +38,9 @@ import { useCanvasHistory } from './hooks/useCanvasHistory';
 import { getImageNodeAspectRatio, getImageNodeSizeByAspectRatio, hasValidNodeSize } from './utils/nodeSizing';
 import { saveProjectCore } from './utils/projectSave';
 import { RUNNABLE_NODE_TYPES } from './utils/nodeCategories';
-import { DISABLE_MINIMAP } from './utils/perfDebug';
+import { DISABLE_MINIMAP, ONLY_RENDER_VISIBLE_ELEMENTS } from './utils/perfDebug';
 import { normalizeImageInputEdgeLabels } from './utils/edgeLabels';
+import { uploadImageToInput } from './utils/uploadToInput';
 //import { ButtonEdge } from './edges/ButtonEdge';
 
 const MINIMAP_COLLAPSED_STORAGE_KEY = 'node-ai-canvas:minimap-collapsed';
@@ -81,26 +82,82 @@ const getImageInputTargetIds = (edges = []) => {
   return targetIds;
 };
 
+// 收集 image:a / image:b 各自有连接的节点 ID
+const getImageCompareConnectedIds = (edges = []) => {
+  const aIds = new Set();
+  const bIds = new Set();
+  for (const edge of edges) {
+    const targetHandle = edge.targetHandle ?? edge.targetHandleId;
+    if (targetHandle === 'image:a') aIds.add(edge.target);
+    if (targetHandle === 'image:b') bIds.add(edge.target);
+  }
+  return { aIds, bIds };
+};
+
 const applyImageInputConnectionFlags = (nodes = [], edges = []) => {
   const imageInputTargetIds = getImageInputTargetIds(edges);
+  const { aIds, bIds } = getImageCompareConnectedIds(edges);
   let changed = false;
 
   const nextNodes = nodes.map((node) => {
-    if (node.type !== 'imageInputNode') return node;
-
-    const hasImageInputConnection = imageInputTargetIds.has(node.id);
-    if (Boolean(node.data?.hasImageInputConnection) === hasImageInputConnection) {
-      return node;
+    // ---- imageInputNode：原有逻辑保持不变 ----
+    if (node.type === 'imageInputNode') {
+      const hasImageInputConnection = imageInputTargetIds.has(node.id);
+      if (Boolean(node.data?.hasImageInputConnection) === hasImageInputConnection) {
+        return node;
+      }
+      changed = true;
+      return {
+        ...node,
+        data: {
+          ...(node.data || {}),
+          hasImageInputConnection,
+        },
+      };
     }
 
-    changed = true;
-    return {
-      ...node,
-      data: {
-        ...(node.data || {}),
-        hasImageInputConnection,
-      },
-    };
+    // ---- splitGridNode / spatialPreviewNode (ar720Node / panorama360Node) ----
+    if (
+      node.type === 'splitGridNode' ||
+      node.type === 'ar720Node' ||
+      node.type === 'panorama360Node'
+    ) {
+      const hasImageInConnection = imageInputTargetIds.has(node.id);
+      if (Boolean(node.data?.hasImageInConnection) === hasImageInConnection) {
+        return node;
+      }
+      changed = true;
+      return {
+        ...node,
+        data: {
+          ...(node.data || {}),
+          hasImageInConnection,
+        },
+      };
+    }
+
+    // ---- imageCompareNode：分别标记 A / B ----
+    if (node.type === 'imageCompareNode') {
+      const hasImageAConnection = aIds.has(node.id);
+      const hasImageBConnection = bIds.has(node.id);
+      if (
+        Boolean(node.data?.hasImageAConnection) === hasImageAConnection &&
+        Boolean(node.data?.hasImageBConnection) === hasImageBConnection
+      ) {
+        return node;
+      }
+      changed = true;
+      return {
+        ...node,
+        data: {
+          ...(node.data || {}),
+          hasImageAConnection,
+          hasImageBConnection,
+        },
+      };
+    }
+
+    return node;
   });
 
   return changed ? nextNodes : nodes;
@@ -488,12 +545,41 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
       if (targetFile || targetUrl) {
         e.preventDefault();
 
+        if (!projectPath) {
+          console.error('[App] projectPath not available for paste');
+          return;
+        }
+
         const flowPos = screenToFlowPosition({
           x: window.innerWidth / 2,
           y: window.innerHeight / 2,
         });
 
-        const finalImageUrl = targetUrl ? targetUrl : await fileToDataUrl(targetFile);
+        let finalImageUrl = targetUrl;
+        let imageMetadata = {};
+
+        // Upload file to input directory
+        if (targetFile) {
+          try {
+            const result = await uploadImageToInput(targetFile, {
+              projectPath,
+              sourceKind: 'paste',
+              filename: targetFile.name,
+              mimeType: targetFile.type,
+            });
+            finalImageUrl = result.url;
+            imageMetadata = {
+              filename: result.filename,
+              mimeType: result.mimeType,
+              width: result.width,
+              height: result.height,
+              bytes: result.bytes,
+            };
+          } catch (error) {
+            console.error('[App] Paste upload failed:', error);
+            return;
+          }
+        }
 
         const newNode = {
           id: `imageInputNode-${Date.now()}`,
@@ -501,9 +587,9 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
           position: flowPos,
           data: {
             url: finalImageUrl,
-            ...(finalImageUrl.startsWith('data:image/') ? { dataUrl: finalImageUrl } : {}),
-            filename: targetFile?.name,
-            mimeType: targetFile?.type,
+            sourceKind: targetFile ? 'paste' : 'url',
+            projectPath,
+            ...imageMetadata,
           },
         };
 
@@ -515,32 +601,51 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
 
     window.addEventListener('paste', handleCanvasPaste);
     return () => window.removeEventListener('paste', handleCanvasPaste);
-  }, [commitHistory, edges, nodes, screenToFlowPosition, setNodes]);
+  }, [commitHistory, edges, nodes, screenToFlowPosition, setNodes, projectPath]);
   
 
   // --- 馃専 2. 澶栭儴鏂囦欢澶瑰浘鍍忔嫋鍔ㄩ噴鏀撅紙Drop锛夊搷搴斿櫒 ---
   const handleCanvasDrop = async (e) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
-    
-    if (file && file.type.startsWith('image/')) {
+
+    if (!file || !file.type.startsWith('image/')) return;
+
+    if (!projectPath) {
+      console.error('[App] projectPath not available for drop');
+      return;
+    }
+
+    try {
+      const result = await uploadImageToInput(file, {
+        projectPath,
+        sourceKind: 'drop',
+        filename: file.name,
+        mimeType: file.type,
+      });
+
       const flowPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      const dataUrl = await fileToDataUrl(file);
-      
+
       const newNode = {
         id: `imageInputNode-${Date.now()}`,
         type: 'imageInputNode',
         position: flowPos,
         data: {
-          url: dataUrl,
-          dataUrl,
-          filename: file.name,
-          mimeType: file.type,
+          url: result.url,
+          filename: result.filename,
+          mimeType: result.mimeType,
+          width: result.width,
+          height: result.height,
+          bytes: result.bytes,
+          sourceKind: 'drop',
+          projectPath,
         },
       };
       const nextNodes = nodes.concat(newNode);
       setNodes(nextNodes);
       commitHistory(nextNodes, edges);
+    } catch (error) {
+      console.error('[App] Drop upload failed:', error);
     }
   };
 
@@ -773,6 +878,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         deleteKeyCode={['Backspace', 'Delete']} // 蹇嵎閿竴閿垹闄?        selectionMode="Partial" // 鏆楅粦楂樼骇妗嗛€?        onPaneClick={handlePaneClick} 
         selectionMode="partial"
         onPaneClick={handlePaneClick}
+        onlyRenderVisibleElements={ONLY_RENDER_VISIBLE_ELEMENTS}
       >
         <Background variant="dots" gap={20} size={1} color="#222" />
         {!DISABLE_MINIMAP && !isDraggingNode && !isMiniMapCollapsed && (

@@ -19,30 +19,94 @@ const getFirstImageUrl = (output) => {
   return first.url || first.src || first.imageUrl || '';
 };
 
-export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
-  countRender('SplitGridNode');
+// ---------------------------------------------------------------------------
+// Bridge: 只有存在 image:in 入边时才挂载，负责订阅全局并把 URL 写入 data
+// ---------------------------------------------------------------------------
+function SplitGridUpstreamBridge({ nodeId, currentData }) {
   const nodes = useNodes();
   const edges = useEdges();
+  const { setNodes } = useReactFlow();
+
+  const upstreamUrl = useMemo(() => {
+    const inputEdge = edges.find(
+      (edge) =>
+        edge.target === nodeId &&
+        (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
+    );
+    if (!inputEdge) return '';
+
+    const sourceNode = nodes.find((node) => node.id === inputEdge.source);
+    const url = getFirstImageUrl(
+      getNodeImageOutput(sourceNode, inputEdge.sourceHandle, inputEdge, nodes, edges)
+    );
+    return url;
+  }, [edges, nodeId, nodes]);
+
+  const upstreamPreviewUrl = useMemo(() => {
+    const inputEdge = edges.find(
+      (edge) =>
+        edge.target === nodeId &&
+        (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
+    );
+    if (!inputEdge) return '';
+    const sourceNode = nodes.find((node) => node.id === inputEdge.source);
+    return getMatchingPreviewUrl(sourceNode?.data, upstreamUrl);
+  }, [edges, nodeId, nodes, upstreamUrl]);
+
+  useEffect(() => {
+    if (!upstreamUrl) return;
+    if (
+      currentData?.sourceImageUrl === upstreamUrl &&
+      currentData?.previewImageUrl === (upstreamPreviewUrl || upstreamUrl)
+    ) {
+      return;
+    }
+
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id !== nodeId) return node;
+        const nd = node.data || {};
+        if (
+          nd.sourceImageUrl === upstreamUrl &&
+          nd.previewImageUrl === (upstreamPreviewUrl || upstreamUrl)
+        ) {
+          return node;
+        }
+        return {
+          ...node,
+          data: {
+            ...nd,
+            sourceImageUrl: upstreamUrl,
+            previewImageUrl: upstreamPreviewUrl || upstreamUrl,
+          },
+        };
+      })
+    );
+  }, [currentData?.previewImageUrl, currentData?.sourceImageUrl, nodeId, setNodes, upstreamPreviewUrl, upstreamUrl]);
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Main component — 主组件：不再直接订阅 useNodes/useEdges
+// 只从 data.sourceImageUrl / data.previewImageUrl 读取图片
+// ---------------------------------------------------------------------------
+export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
+  countRender('SplitGridNode');
   const { getNodes, setNodes, setEdges } = useReactFlow();
   const lastHandledRunRequestRef = useRef(data?.runRequestId);
 
-  const upstreamImage = useMemo(() => {
-    const inputEdge = edges.find(
-      (edge) => edge.target === id && (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
-    );
-    if (!inputEdge) return { connected: false, url: '' };
+  // 从 data 直接读取（由 Bridge 写入）
+  const sourceImageUrl = data?.sourceImageUrl || '';
+  const previewImageUrl = data?.previewImageUrl || '';
+  const previewUrl = resolveImageUrl(previewImageUrl || sourceImageUrl, data?.projectPath);
 
-    const sourceNode = nodes.find((node) => node.id === inputEdge.source);
-    const url = getFirstImageUrl(getNodeImageOutput(sourceNode, inputEdge.sourceHandle, inputEdge, nodes, edges));
-    return {
-      connected: true,
-      url,
-      previewUrl: getMatchingPreviewUrl(sourceNode?.data, url),
-    };
-  }, [edges, id, nodes]);
+  // 是否有 image:in 连接——主组件不订阅 edges，由 App 层注入 data.hasImageInConnection
+  // 这里用 data.sourceImageUrl 有值来判断是否挂载 Bridge 不够精确，
+  // 因此我们改为：只要 data.hasImageInConnection 为 true 才挂 Bridge；
+  // 若该字段不存在（旧数据兼容），则始终挂 Bridge（最保守策略）。
+  const shouldMountBridge = data?.hasImageInConnection !== false;
 
-  const upstreamPreviewUrl = upstreamImage.url;
-  const previewUrl = upstreamImage.connected ? resolveImageUrl(upstreamImage.previewUrl || upstreamPreviewUrl) : '';
   const rows = Number(data?.rows) || 2;
   const cols = Number(data?.cols) || 3;
   const sliceCount = getSplitGridCount(rows, cols);
@@ -79,16 +143,6 @@ export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
       })
     );
   };
-
-  useEffect(() => {
-    if (!upstreamPreviewUrl) return;
-    if (data?.sourceImageUrl === upstreamPreviewUrl && data?.previewImageUrl === upstreamPreviewUrl) return;
-
-    updateNodeData({
-      sourceImageUrl: upstreamPreviewUrl,
-      previewImageUrl: upstreamPreviewUrl,
-    });
-  }, [data?.previewImageUrl, data?.sourceImageUrl, upstreamPreviewUrl]);
 
   const openSettings = (event) => {
     event.stopPropagation();
@@ -182,14 +236,30 @@ export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
   const handleSplit = async (event = { stopPropagation: () => {} }) => {
     event.stopPropagation();
 
-    const sourceImageUrl = upstreamPreviewUrl || data?.previewImageUrl || data?.sourceImageUrl;
+    // 优先用 data 里已缓存的 URL（Bridge 写入的）
+    const splitSourceUrl = sourceImageUrl || data?.previewImageUrl || data?.sourceImageUrl;
     const validRows = Number.isInteger(rows) && rows > 0;
     const validCols = Number.isInteger(cols) && cols > 0;
 
-    if (!sourceImageUrl) {
+    console.log('[SplitGridNode handleSplit]', {
+      splitSourceUrl,
+      projectPath: data?.projectPath,
+      rows,
+      cols,
+    });
+
+    if (!splitSourceUrl) {
       updateNodeData({
         status: 'error',
         error: 'No source image to split.',
+      });
+      return;
+    }
+
+    if (!data?.projectPath) {
+      updateNodeData({
+        status: 'error',
+        error: 'SplitGrid requires projectPath to resolve input image',
       });
       return;
     }
@@ -202,15 +272,20 @@ export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
     updateNodeData({
       status: 'splitting',
       error: '',
-      sourceImageUrl,
-      previewImageUrl: sourceImageUrl,
+      sourceImageUrl: splitSourceUrl,
+      previewImageUrl: splitSourceUrl,
     });
 
     try {
       const nextSlices = await splitImageToGrid({
-        imageUrl: sourceImageUrl,
+        imageUrl: splitSourceUrl,
         rows,
         cols,
+        projectPath: data?.projectPath,
+      });
+
+      console.log('[SplitGridNode split success]', {
+        sliceCount: nextSlices.length,
       });
 
       updateNodeData({
@@ -219,8 +294,8 @@ export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
         status: 'success',
         error: '',
         lastSplitAt: new Date().toISOString(),
-        sourceImageUrl,
-        previewImageUrl: sourceImageUrl,
+        sourceImageUrl: splitSourceUrl,
+        previewImageUrl: splitSourceUrl,
       });
     } catch (error) {
       console.error('[SplitGrid split failed]', error);
@@ -332,6 +407,14 @@ export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
         onCreateSets={handleCreateGenerateSets}
         onClose={closeSettings}
       />
+
+      {/* Bridge: 只在有 image:in 连接时挂载，避免无用的全局订阅 */}
+      {shouldMountBridge && (
+        <SplitGridUpstreamBridge
+          nodeId={id}
+          currentData={data}
+        />
+      )}
     </div>
   );
 });

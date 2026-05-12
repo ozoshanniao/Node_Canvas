@@ -11,9 +11,27 @@ const cloneValue = (value) => {
 const sanitizeNodesForHistory = (nodes = []) =>
   nodes.map((node) => {
     const { selected, dragging, resizing, ...restNode } = node;
+    const nodeData = { ...(restNode.data || {}) };
+
+    // Strip base64 image fields to reduce snapshot size
+    delete nodeData.dataUrl;
+    delete nodeData.previewUrl;
+    delete nodeData.previewSourceUrl;
+    delete nodeData.thumbnailUrl;
+    delete nodeData.fittedSourceUrl;
+
+    // Strip base64 from images array if present
+    if (Array.isArray(nodeData.images)) {
+      nodeData.images = nodeData.images.map((img) => {
+        if (!img || typeof img !== 'object') return img;
+        const { dataUrl, previewUrl, previewSourceUrl, thumbnailUrl, ...restImg } = img;
+        return restImg;
+      });
+    }
+
     return {
       ...restNode,
-      data: { ...(restNode.data || {}) },
+      data: nodeData,
     };
   });
 

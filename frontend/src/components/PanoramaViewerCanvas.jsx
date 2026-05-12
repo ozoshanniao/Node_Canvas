@@ -30,6 +30,7 @@ const getLookTarget = ({ yaw, pitch }) => {
 export const PanoramaViewerCanvas = forwardRef(function PanoramaViewerCanvas(
   {
     imageUrl,
+    projectPath,
     mode = 'ar720',
     state,
     onStateChange,
@@ -194,7 +195,7 @@ export const PanoramaViewerCanvas = forwardRef(function PanoramaViewerCanvas(
     setIsLoading(true);
     textureReadyRef.current = false;
     onReadyChange?.(false);
-    const resolvedUrl = resolveImageUrl(imageUrl);
+    const resolvedUrl = resolveImageUrl(imageUrl, projectPath);
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 2000);
     camera.position.set(0, 0, 0);

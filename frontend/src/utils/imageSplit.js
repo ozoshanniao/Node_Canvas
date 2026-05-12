@@ -1,18 +1,5 @@
-const API_BASE_URL = 'http://127.0.0.1:8000';
-
-const resolveCanvasImageUrl = (url) => {
-  if (!url) return url;
-
-  if (url.startsWith('data:image/') || url.startsWith('blob:') || /^https?:\/\//.test(url)) {
-    return url;
-  }
-
-  if (url.startsWith('/api/')) {
-    return `${API_BASE_URL}${url}`;
-  }
-
-  return url;
-};
+import { uploadImageToInput } from './uploadToInput';
+import { resolveImageUrl } from './resolveImageUrl';
 
 const getUrlOrigin = (url) => {
   if (typeof window === 'undefined') return '';
@@ -31,21 +18,47 @@ const shouldSetCrossOrigin = (resolvedUrl) => {
   return Boolean(origin && typeof window !== 'undefined' && origin !== window.location.origin);
 };
 
-const loadImage = (imageUrl) =>
+const loadImage = (imageUrl, projectPath) =>
   new Promise((resolve, reject) => {
     if (!imageUrl) {
       reject(new Error('No image URL provided for grid split.'));
       return;
     }
 
-    const resolvedUrl = resolveCanvasImageUrl(imageUrl);
+    const resolvedUrl = resolveImageUrl(imageUrl, projectPath);
+
+    console.log('[SplitGrid loadImage]', {
+      rawImageUrl: imageUrl,
+      projectPath,
+      resolvedUrl,
+    });
+
+    if (!resolvedUrl) {
+      reject(new Error(`Failed to resolve image URL: ${imageUrl}`));
+      return;
+    }
+
     const image = new Image();
     if (shouldSetCrossOrigin(resolvedUrl)) {
       image.crossOrigin = 'anonymous';
     }
 
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`Failed to load image for splitting: ${resolvedUrl}`));
+    image.onload = () => {
+      console.log('[SplitGrid loadImage success]', {
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+      });
+      resolve(image);
+    };
+
+    image.onerror = () => {
+      console.error('[SplitGrid loadImage failed]', {
+        rawImageUrl: imageUrl,
+        resolvedUrl,
+      });
+      reject(new Error(`Failed to load image for splitting: ${resolvedUrl}`));
+    };
+
     image.src = resolvedUrl;
   });
 
@@ -55,7 +68,19 @@ export const splitImageToGrid = async ({
   cols,
   outputType = 'image/png',
   quality = 0.95,
+  projectPath = null,
 }) => {
+  console.log('[SplitGrid splitImageToGrid start]', {
+    imageUrl,
+    rows,
+    cols,
+    projectPath,
+  });
+
+  if (!projectPath) {
+    throw new Error('SplitGrid requires projectPath to resolve input image');
+  }
+
   const safeRows = Number(rows);
   const safeCols = Number(cols);
 
@@ -67,13 +92,19 @@ export const splitImageToGrid = async ({
     throw new Error('Split columns must be a positive integer.');
   }
 
-  const image = await loadImage(imageUrl);
+  const image = await loadImage(imageUrl, projectPath);
   const imageWidth = image.naturalWidth || image.width;
   const imageHeight = image.naturalHeight || image.height;
 
   if (!imageWidth || !imageHeight) {
     throw new Error('Source image has no readable dimensions.');
   }
+
+  console.log('[SplitGrid image loaded]', {
+    imageWidth,
+    imageHeight,
+    totalSlices: safeRows * safeCols,
+  });
 
   const tileWidth = imageWidth / safeCols;
   const tileHeight = imageHeight / safeRows;
@@ -103,8 +134,24 @@ export const splitImageToGrid = async ({
 
       let url = '';
       try {
-        url = canvas.toDataURL(outputType, quality);
+        const dataUrl = canvas.toDataURL(outputType, quality);
+
+        const result = await uploadImageToInput(dataUrl, {
+          projectPath,
+          sourceKind: 'split',
+          mimeType: outputType,
+        });
+        url = result.url; // e.g., "input/split_a3f2b1c4.png"
+
+        console.log('[SplitGrid slice uploaded]', {
+          sliceIndex: row * safeCols + col,
+          url,
+        });
       } catch (error) {
+        console.error('[SplitGrid slice upload failed]', {
+          sliceIndex: row * safeCols + col,
+          error: error?.message,
+        });
         throw new Error(
           `Failed to export split image. Canvas may be tainted by a cross-origin image. ${error?.message || ''}`
         );
@@ -120,6 +167,10 @@ export const splitImageToGrid = async ({
       });
     }
   }
+
+  console.log('[SplitGrid splitImageToGrid complete]', {
+    sliceCount: slices.length,
+  });
 
   return slices;
 };

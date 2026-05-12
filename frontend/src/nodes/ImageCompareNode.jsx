@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { getNodeImageOutput } from '../utils/nodeOutputs';
@@ -15,34 +15,98 @@ const getFirstImageUrl = (output) => {
   return typeof first === 'string' ? first : first.url || first.src || first.imageUrl || '';
 };
 
-export const ImageCompareNode = memo(function ImageCompareNode({ id, data }) {
-  countRender('ImageCompareNode');
-  const containerRef = useRef(null);
+// ---------------------------------------------------------------------------
+// Bridge: 同步单个输入句柄（image:a 或 image:b）的上游图片到 data
+// ---------------------------------------------------------------------------
+function ImageCompareInputBridge({ nodeId, handleId, dataUrlKey, dataPreviewKey, currentData }) {
   const nodes = useNodes();
   const edges = useEdges();
   const { setNodes } = useReactFlow();
+
+  const upstreamUrl = useMemo(() => {
+    const edge = edges.find(
+      (e) =>
+        e.target === nodeId &&
+        (e.targetHandle ?? e.targetHandleId) === handleId
+    );
+    if (!edge) return '';
+    const sourceNode = nodes.find((n) => n.id === edge.source);
+    return getFirstImageUrl(
+      getNodeImageOutput(sourceNode, edge.sourceHandle, edge, nodes, edges)
+    );
+  }, [edges, handleId, nodeId, nodes]);
+
+  const upstreamPreviewUrl = useMemo(() => {
+    const edge = edges.find(
+      (e) =>
+        e.target === nodeId &&
+        (e.targetHandle ?? e.targetHandleId) === handleId
+    );
+    if (!edge) return '';
+    const sourceNode = nodes.find((n) => n.id === edge.source);
+    return getMatchingPreviewUrl(sourceNode?.data, upstreamUrl);
+  }, [edges, handleId, nodeId, nodes, upstreamUrl]);
+
+  useEffect(() => {
+    const isSynced =
+      currentData?.[dataUrlKey] === upstreamUrl &&
+      currentData?.[dataPreviewKey] === (upstreamPreviewUrl || upstreamUrl);
+
+    if (isSynced) return;
+
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id !== nodeId) return node;
+        const nd = node.data || {};
+        if (
+          nd[dataUrlKey] === upstreamUrl &&
+          nd[dataPreviewKey] === (upstreamPreviewUrl || upstreamUrl)
+        ) {
+          return node;
+        }
+        return {
+          ...node,
+          data: {
+            ...nd,
+            [dataUrlKey]: upstreamUrl,
+            [dataPreviewKey]: upstreamPreviewUrl || upstreamUrl,
+          },
+        };
+      })
+    );
+  }, [
+    currentData,
+    dataPreviewKey,
+    dataUrlKey,
+    nodeId,
+    setNodes,
+    upstreamPreviewUrl,
+    upstreamUrl,
+  ]);
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Main component — 不再直接订阅 useNodes/useEdges
+// data.imageAUrl / data.imageBUrl   => 原图 URL（完整）
+// data.imageAPreview / data.imageBPreview => 缩略预览（用于显示）
+// ---------------------------------------------------------------------------
+export const ImageCompareNode = memo(function ImageCompareNode({ id, data }) {
+  countRender('ImageCompareNode');
+  const containerRef = useRef(null);
+  const { setNodes } = useReactFlow();
   const splitPosition = clamp(Number(data?.splitPosition) || 50, 0, 100);
 
-  const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  // 从 data 读取（由 Bridge 写入）
+  const imageAUrl = data?.imageAUrl || '';
+  const imageBUrl = data?.imageBUrl || '';
+  const imageAPreview = data?.imageAPreview || imageAUrl;
+  const imageBPreview = data?.imageBPreview || imageBUrl;
 
-  const getInputImage = (handleId) => {
-    const edge = edges.find(
-      (item) => item.target === id && (item.targetHandle ?? item.targetHandleId) === handleId
-    );
-    if (!edge) return { url: '', previewUrl: '' };
+  const resolvedImageA = resolveImageUrl(imageAPreview || imageAUrl, data?.projectPath);
+  const resolvedImageB = resolveImageUrl(imageBPreview || imageBUrl, data?.projectPath);
 
-    const sourceNode = nodeMap.get(edge.source);
-    const url = getFirstImageUrl(getNodeImageOutput(sourceNode, edge.sourceHandle, edge, nodes, edges));
-    return {
-      url,
-      previewUrl: getMatchingPreviewUrl(sourceNode?.data, url),
-    };
-  };
-
-  const imageA = useMemo(() => getInputImage('image:a'), [edges, id, nodeMap, nodes]);
-  const imageB = useMemo(() => getInputImage('image:b'), [edges, id, nodeMap, nodes]);
-  const resolvedImageA = resolveImageUrl(imageA.previewUrl || imageA.url);
-  const resolvedImageB = resolveImageUrl(imageB.previewUrl || imageB.url);
   const hasBothImages = Boolean(resolvedImageA && resolvedImageB);
   const singleImage = resolvedImageA || resolvedImageB;
   const missingLabel = !resolvedImageA && !resolvedImageB
@@ -52,6 +116,13 @@ export const ImageCompareNode = memo(function ImageCompareNode({ id, data }) {
       : !resolvedImageB
         ? 'Connect image B'
         : '';
+
+  // 是否挂载 Bridge：有连接时挂
+  const hasAConnection = data?.hasImageAConnection !== false;
+  const hasBConnection = data?.hasImageBConnection !== false;
+  // 至少有一个连接时才挂 Bridge（保守策略：有任意图片数据就挂）
+  const shouldMountBridgeA = hasAConnection;
+  const shouldMountBridgeB = hasBConnection;
 
   const updateNodeData = (nextData) => {
     setNodes((nds) =>
@@ -202,6 +273,28 @@ export const ImageCompareNode = memo(function ImageCompareNode({ id, data }) {
       />
 
       <NodeResizeCorner minWidth={320} minHeight={220} />
+
+      {/* Bridge A — 只在 image:a 有连接时挂载 */}
+      {shouldMountBridgeA && (
+        <ImageCompareInputBridge
+          nodeId={id}
+          handleId="image:a"
+          dataUrlKey="imageAUrl"
+          dataPreviewKey="imageAPreview"
+          currentData={data}
+        />
+      )}
+
+      {/* Bridge B — 只在 image:b 有连接时挂载 */}
+      {shouldMountBridgeB && (
+        <ImageCompareInputBridge
+          nodeId={id}
+          handleId="image:b"
+          dataUrlKey="imageBUrl"
+          dataPreviewKey="imageBPreview"
+          currentData={data}
+        />
+      )}
     </div>
   );
 });

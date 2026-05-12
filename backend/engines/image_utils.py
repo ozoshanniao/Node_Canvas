@@ -63,6 +63,16 @@ def _project_file_path(value: str, gen_dir: str | None) -> tuple[str | None, str
     file_name = _file_name_from_input(value)
     if not file_name:
         return None, None
+
+    # Handle relative paths like "input/xxx.png" or "generation/xxx.png"
+    if value.startswith("input/") or value.startswith("generation/"):
+        if gen_dir:
+            # gen_dir points to generation/, so we need to go up one level for input/
+            project_dir = os.path.dirname(gen_dir)
+            full_path = os.path.join(project_dir, value)
+            return file_name, full_path if os.path.exists(full_path) else None
+        return file_name, value if os.path.exists(value) else None
+
     if gen_dir:
         return file_name, os.path.join(gen_dir, file_name)
     return file_name, value if os.path.exists(value) else None
@@ -94,6 +104,21 @@ def normalize_image_input(value, gen_dir: str | None = None) -> NormalizedImageI
             file_path=value,
             filename=os.path.basename(value),
         )
+
+    # Support relative paths like "input/xxx.png" or "generation/xxx.png"
+    if value.startswith("input/") or value.startswith("generation/"):
+        file_name, local_path = _project_file_path(value, gen_dir)
+        if local_path and os.path.exists(local_path):
+            raw_data = open(local_path, "rb").read()
+            mime_type = mimetypes.guess_type(local_path)[0] or infer_mime_type(raw_data)
+            return NormalizedImageInput(
+                source_type="file_path",
+                mime_type=mime_type,
+                raw_data=raw_data,
+                base64_data=encode_base64(raw_data),
+                file_path=local_path,
+                filename=file_name,
+            )
 
     parsed = urlparse(value)
     if parsed.scheme in {"http", "https"}:

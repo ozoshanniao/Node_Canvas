@@ -6,13 +6,14 @@ export function OutputImageModal({
   open,
   images = [],
   selectedIndex = 0,
+  projectPath,
   onSelectIndex,
   onClose,
   onUseAsImageInput,
 }) {
   const imageCount = images.length;
   const selectedUrl = images[selectedIndex];
-  const resolvedSelectedUrl = resolveImageUrl(selectedUrl);
+  const resolvedSelectedUrl = resolveImageUrl(selectedUrl, projectPath);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -146,7 +147,7 @@ export function OutputImageModal({
                   }`}
                 >
                   <img
-                    src={resolveImageUrl(url)}
+                    src={resolveImageUrl(url, projectPath)}
                     alt={`Output thumbnail ${index + 1}`}
                     draggable={false}
                     className="h-full w-full object-cover pointer-events-none select-none"
