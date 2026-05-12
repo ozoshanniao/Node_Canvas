@@ -881,7 +881,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         onlyRenderVisibleElements={ONLY_RENDER_VISIBLE_ELEMENTS}
       >
         <Background variant="dots" gap={20} size={1} color="#222" />
-        {!DISABLE_MINIMAP && !isDraggingNode && !isMiniMapCollapsed && (
+        {!DISABLE_MINIMAP && !isMiniMapCollapsed && (
           <MiniMap
             pannable
             zoomable

@@ -1,10 +1,10 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import { FullscreenTextModal } from '../components/FullscreenTextModal';
 import { NodeFullscreenButton } from '../components/NodeFullscreenButton';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { getNodeTextOutput } from '../utils/nodeOutputs';
-import { getVariableKey, normalizeVariableName } from '../utils/textVariables';
+import { getVariableKey, normalizeVariableName, getAllAvailableVariables, parseAtTokenAtCursor } from '../utils/textVariables';
 import { countRender } from '../utils/perfDebug';
 
 export const TextNode = memo(function TextNode({ id, data }) {
@@ -13,11 +13,25 @@ export const TextNode = memo(function TextNode({ id, data }) {
   const [isEditingVariable, setIsEditingVariable] = useState(false);
   const [draftVariableName, setDraftVariableName] = useState(data.variableName || '');
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
+  const [autocompleteVisible, setAutocompleteVisible] = useState(false);
+  const [autocompleteQuery, setAutocompleteQuery] = useState('');
+  const [autocompletePosition, setAutocompletePosition] = useState({ start: 0, end: 0 });
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const textareaRef = useRef(null);
+  const nodes = useNodes();
 
   const text = data.text ?? data.content ?? data.value ?? data.prompt ?? '';
   const autoReceiveText = Boolean(data.autoReceiveText);
   const variableName = normalizeVariableName(data.variableName);
   const variableKey = getVariableKey(variableName);
+
+  const availableVariables = useMemo(() => getAllAvailableVariables(nodes), [nodes]);
+
+  const filteredCandidates = useMemo(() => {
+    if (!autocompleteQuery) return availableVariables;
+    const query = autocompleteQuery.toLowerCase();
+    return availableVariables.filter((v) => v.name.toLowerCase().includes(query));
+  }, [availableVariables, autocompleteQuery]);
 
   const updateNodeData = (nextData) => {
     setNodes((nds) =>
@@ -31,7 +45,76 @@ export const TextNode = memo(function TextNode({ id, data }) {
   };
 
   const handleTextChange = (e) => {
-    updateNodeData({ text: e.target.value });
+    const nextText = e.target.value;
+    updateNodeData({ text: nextText });
+
+    const cursorPos = e.target.selectionStart;
+    const parsed = parseAtTokenAtCursor(nextText, cursorPos);
+
+    if (parsed) {
+      setAutocompleteQuery(parsed.query);
+      setAutocompletePosition({ start: parsed.start, end: parsed.end });
+      setAutocompleteVisible(true);
+      setSelectedIndex(0);
+    } else {
+      setAutocompleteVisible(false);
+    }
+  };
+
+  const getCaretCoordinates = () => {
+    if (!textareaRef.current) return { x: 0, y: 0 };
+
+    const textarea = textareaRef.current;
+    const textBeforeCaret = text.slice(0, autocompletePosition.end);
+    const lines = textBeforeCaret.split('\n');
+    const currentLine = lines.length - 1;
+    const lineHeight = 24; // Approximate line height from leading-relaxed text-sm
+    const charWidth = 8; // Approximate character width
+    const lastLineLength = lines[lines.length - 1].length;
+
+    return {
+      x: Math.min(lastLineLength * charWidth, 180),
+      y: currentLine * lineHeight + lineHeight,
+    };
+  };
+
+  const caretCoords = autocompleteVisible ? getCaretCoordinates() : { x: 0, y: 0 };
+
+  const handleKeyDown = (e) => {
+    if (!autocompleteVisible || filteredCandidates.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev + 1) % filteredCandidates.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev - 1 + filteredCandidates.length) % filteredCandidates.length);
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      insertVariable(filteredCandidates[selectedIndex].name);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setAutocompleteVisible(false);
+    }
+  };
+
+  const insertVariable = (variableName) => {
+    if (!textareaRef.current) return;
+
+    const before = text.slice(0, autocompletePosition.start);
+    const after = text.slice(autocompletePosition.end);
+    const nextText = `${before}@${variableName}${after}`;
+    const nextCursorPos = autocompletePosition.start + variableName.length + 1;
+
+    updateNodeData({ text: nextText });
+    setAutocompleteVisible(false);
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(nextCursorPos, nextCursorPos);
+      }
+    }, 0);
   };
 
   const commitVariableName = () => {
@@ -116,11 +199,48 @@ export const TextNode = memo(function TextNode({ id, data }) {
 
       <div className="flex-1 relative">
         <textarea
+          ref={textareaRef}
           value={text}
           onChange={handleTextChange}
+          onKeyDown={handleKeyDown}
           placeholder="Type your prompt here..."
           className="nodrag nowheel w-full h-full bg-transparent text-white/90 placeholder-white/20 resize-none focus:outline-none text-sm font-light tracking-wide leading-relaxed pr-4 pb-4"
         />
+
+        {autocompleteVisible && filteredCandidates.length > 0 && (
+          <div
+            className="nodrag nopan absolute bg-[#1a1a1a] border border-white/15 rounded-lg shadow-2xl z-50 overflow-hidden"
+            style={{
+              left: `${caretCoords.x}px`,
+              top: `${caretCoords.y}px`,
+              minWidth: '180px',
+              maxWidth: '240px',
+              maxHeight: '200px',
+            }}
+          >
+            <div className="overflow-y-auto max-h-[200px]">
+              {filteredCandidates.slice(0, 6).map((candidate, index) => (
+                <button
+                  key={candidate.key}
+                  type="button"
+                  onClick={() => insertVariable(candidate.name)}
+                  className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors flex items-center gap-2 ${
+                    index === selectedIndex
+                      ? 'bg-white/15 text-white'
+                      : 'text-white/70 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <span className="font-medium">@{candidate.name}</span>
+                  {candidate.preview && (
+                    <span className="text-[9px] text-white/25 truncate flex-1">
+                      {candidate.preview.slice(0, 25)}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <Handle

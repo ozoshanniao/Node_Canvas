@@ -20,6 +20,69 @@ export const getTextNodeOutput = (node) => {
   };
 };
 
+// Get all available variable names from TextNode nodes
+export const getAllAvailableVariables = (nodes = []) => {
+  const variables = [];
+  nodes.forEach((node) => {
+    if (node.type === 'textNode') {
+      const output = getTextNodeOutput(node);
+      if (output.variableName) {
+        variables.push({
+          name: output.variableName,
+          key: output.variableKey,
+          preview: output.text.slice(0, 50) + (output.text.length > 50 ? '...' : ''),
+        });
+      }
+    }
+  });
+  return variables;
+};
+
+// Get missing variables from template
+export const getMissingVariables = (template = '', variables = {}) => {
+  const missing = new Set();
+  String(template ?? '').replace(/@([A-Za-z0-9_\u4e00-\u9fa5]+)/g, (match, variableName) => {
+    if (!Object.prototype.hasOwnProperty.call(variables, variableName)) {
+      missing.add(variableName);
+    }
+    return match;
+  });
+  return Array.from(missing);
+};
+
+// Parse @token at cursor position
+export const parseAtTokenAtCursor = (text = '', cursorPos = 0) => {
+  if (cursorPos < 0 || cursorPos > text.length) return null;
+
+  // Find the @ symbol before cursor
+  let atPos = -1;
+  for (let i = cursorPos - 1; i >= 0; i--) {
+    if (text[i] === '@') {
+      atPos = i;
+      break;
+    }
+    // Stop if we hit whitespace or newline
+    if (/\s/.test(text[i])) {
+      break;
+    }
+  }
+
+  if (atPos === -1) return null;
+
+  // Extract the token from @ to cursor
+  const token = text.slice(atPos, cursorPos);
+
+  // Validate token format: @[A-Za-z0-9_\u4e00-\u9fa5]*
+  if (!/^@[A-Za-z0-9_\u4e00-\u9fa5]*$/.test(token)) return null;
+
+  return {
+    token,
+    start: atPos,
+    end: cursorPos,
+    query: token.slice(1), // Remove @
+  };
+};
+
 // Replaces @variables with connected Text node values. Unknown variables are intentionally preserved.
 export const resolveTextTemplate = (template = '', variables = {}) =>
   String(template ?? '').replace(/@([A-Za-z0-9_\u4e00-\u9fa5]+)/g, (match, variableName) => {

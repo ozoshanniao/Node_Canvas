@@ -1,15 +1,20 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import { FullscreenTextModal } from '../components/FullscreenTextModal';
 import { NodeFullscreenButton } from '../components/NodeFullscreenButton';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
-import { getTextConstructionOutput } from '../utils/textVariables';
+import { getTextConstructionOutput, getAllAvailableVariables, getMissingVariables, parseAtTokenAtCursor } from '../utils/textVariables';
 import { countRender, PERF_DEBUG } from '../utils/perfDebug';
 
 export const TextConstructionNode = memo(function TextConstructionNode({ id, data }) {
   countRender('TextConstructionNode');
   const { setNodes } = useReactFlow();
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
+  const [autocompleteVisible, setAutocompleteVisible] = useState(false);
+  const [autocompleteQuery, setAutocompleteQuery] = useState('');
+  const [autocompletePosition, setAutocompletePosition] = useState({ start: 0, end: 0 });
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const textareaRef = useRef(null);
   const nodes = useNodes();
   const edges = useEdges();
   const template = data.template ?? data.text ?? '';
@@ -21,6 +26,15 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
   );
   const variableKeys = Object.keys(variables);
   const previewPanelOpen = Boolean(data.previewPanelOpen);
+
+  const availableVariables = useMemo(() => getAllAvailableVariables(nodes), [nodes]);
+  const missingVariables = useMemo(() => getMissingVariables(template, variables), [template, variables]);
+
+  const filteredCandidates = useMemo(() => {
+    if (!autocompleteQuery) return availableVariables;
+    const query = autocompleteQuery.toLowerCase();
+    return availableVariables.filter((v) => v.name.toLowerCase().includes(query));
+  }, [availableVariables, autocompleteQuery]);
 
   useEffect(() => {
     if (!PERF_DEBUG) return;
@@ -50,6 +64,79 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
     );
   };
 
+  const handleTextareaChange = (e) => {
+    const nextTemplate = e.target.value;
+    updateTemplate(nextTemplate);
+
+    const cursorPos = e.target.selectionStart;
+    const parsed = parseAtTokenAtCursor(nextTemplate, cursorPos);
+
+    if (parsed) {
+      setAutocompleteQuery(parsed.query);
+      setAutocompletePosition({ start: parsed.start, end: parsed.end });
+      setAutocompleteVisible(true);
+      setSelectedIndex(0);
+    } else {
+      setAutocompleteVisible(false);
+    }
+  };
+
+  const getCaretCoordinates = () => {
+    if (!textareaRef.current) return { x: 0, y: 0 };
+
+    const textarea = textareaRef.current;
+    const textBeforeCaret = template.slice(0, autocompletePosition.end);
+    const lines = textBeforeCaret.split('\n');
+    const currentLine = lines.length - 1;
+    const lineHeight = 24; // Approximate line height from leading-relaxed text-sm
+    const charWidth = 8; // Approximate character width
+    const lastLineLength = lines[lines.length - 1].length;
+
+    return {
+      x: Math.min(lastLineLength * charWidth, 180),
+      y: currentLine * lineHeight + lineHeight,
+    };
+  };
+
+  const caretCoords = autocompleteVisible ? getCaretCoordinates() : { x: 0, y: 0 };
+
+  const handleKeyDown = (e) => {
+    if (!autocompleteVisible || filteredCandidates.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev + 1) % filteredCandidates.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev - 1 + filteredCandidates.length) % filteredCandidates.length);
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      insertVariable(filteredCandidates[selectedIndex].name);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setAutocompleteVisible(false);
+    }
+  };
+
+  const insertVariable = (variableName) => {
+    if (!textareaRef.current) return;
+
+    const before = template.slice(0, autocompletePosition.start);
+    const after = template.slice(autocompletePosition.end);
+    const nextTemplate = `${before}@${variableName}${after}`;
+    const nextCursorPos = autocompletePosition.start + variableName.length + 1;
+
+    updateTemplate(nextTemplate);
+    setAutocompleteVisible(false);
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(nextCursorPos, nextCursorPos);
+      }
+    }, 0);
+  };
+
   const togglePreviewPanel = () => {
     setNodes((nds) =>
       nds.map((node) => {
@@ -68,7 +155,7 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
   };
 
   return (
-    <div className="canvas-node-card bg-[#181818] rounded-[24px] px-4 pt-3 pb-4 w-full h-full min-w-[360px] min-h-[220px] flex flex-col text-white select-none group relative border border-white/5 transition-colors duration-100 hover:border-white/20">
+    <div className="canvas-node-card bg-[#181818] rounded-[24px] px-4 pt-3 pb-4 w-full h-full min-w-[360px] max-w-[480px] min-h-[220px] flex flex-col text-white select-none group relative border border-white/5 transition-colors duration-100 hover:border-white/20">
       <div className="flex items-center gap-2 mb-2 px-1">
         <div className="flex items-center gap-2 text-white/30 text-xs font-light">
           <svg className="w-3.5 h-3.5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -112,15 +199,62 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
 
       <div className="flex-1 relative">
         <textarea
+          ref={textareaRef}
           value={template}
-          onChange={(e) => updateTemplate(e.target.value)}
+          onChange={handleTextareaChange}
+          onKeyDown={handleKeyDown}
           placeholder="Use @A, @prompt, @scene_1..."
           className="nodrag nowheel w-full h-full bg-transparent text-white/90 placeholder-white/20 resize-none focus:outline-none text-sm font-light tracking-wide leading-relaxed pr-4 pb-4"
         />
+
+        {autocompleteVisible && filteredCandidates.length > 0 && (
+          <div
+            className="nodrag nopan absolute bg-[#1a1a1a] border border-white/15 rounded-lg shadow-2xl z-50 overflow-hidden"
+            style={{
+              left: `${caretCoords.x}px`,
+              top: `${caretCoords.y}px`,
+              minWidth: '180px',
+              maxWidth: '240px',
+              maxHeight: '200px',
+            }}
+          >
+            <div className="overflow-y-auto max-h-[200px]">
+              {filteredCandidates.slice(0, 6).map((candidate, index) => (
+                <button
+                  key={candidate.key}
+                  type="button"
+                  onClick={() => insertVariable(candidate.name)}
+                  className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors flex items-center gap-2 ${
+                    index === selectedIndex
+                      ? 'bg-white/15 text-white'
+                      : 'text-white/70 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <span className="font-medium">@{candidate.name}</span>
+                  {candidate.preview && (
+                    <span className="text-[9px] text-white/25 truncate flex-1">
+                      {candidate.preview.slice(0, 25)}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="mt-2 border-t border-white/5 pt-2 text-[10px] text-white/30 font-light leading-relaxed truncate">
-        <span className="text-white/20">Resolved:</span> {resolvedText || 'Empty'}
+      <div className="mt-2 border-t border-white/5 pt-2 text-[10px] text-white/30 font-light leading-relaxed flex items-center gap-3">
+        <span className="text-white/20">Input:</span>
+        <span>{template.length} chars</span>
+        <span className="text-white/10">·</span>
+        <span className="text-white/20">Resolved:</span>
+        <span>{resolvedText.length} chars</span>
+        {missingVariables.length > 0 && (
+          <>
+            <span className="text-white/10">·</span>
+            <span className="text-amber-400/60">Missing: {missingVariables.length}</span>
+          </>
+        )}
       </div>
 
       <Handle

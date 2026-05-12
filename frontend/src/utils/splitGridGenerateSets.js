@@ -68,11 +68,8 @@ export const buildSplitGridGenerateSets = ({
   }
 
   const batchId = `${Date.now()}-${existingNodes.length}`;
-  const maxRight =
-    existingNodes.length > 0
-      ? Math.max(...existingNodes.map((node) => getNodeRight(node)))
-      : getNodeRight(splitGridNode);
-  const originX = Math.max(splitGridNode.position.x + 80, maxRight + 40);
+  const splitGridRight = getNodeRight(splitGridNode);
+  const originX = splitGridRight + 80;
   const originY = splitGridNode.position.y;
   const nodesToAdd = [];
   const edgesToAdd = [];

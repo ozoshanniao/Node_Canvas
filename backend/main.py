@@ -230,11 +230,10 @@ async def get_image(filename: str, projectPath: Optional[str] = None):
     base_path = projectPath or CURRENT_PROJECT_PATH
     if not base_path:
         raise HTTPException(status_code=400, detail="Project path not identified")
-    
+
     img_path = os.path.join(base_path, "generation", filename)
-    
+
     if os.path.exists(img_path):
-        # 馃専 淇锛氭牴鎹悗缂€鍔ㄦ€佸垽鏂?MIME 绫诲瀷锛岀‘淇濇祻瑙堝櫒娓叉煋
         lower_name = filename.lower()
         if lower_name.endswith((".jpg", ".jpeg")):
             content_type = "image/jpeg"
@@ -242,8 +241,11 @@ async def get_image(filename: str, projectPath: Optional[str] = None):
             content_type = "image/webp"
         else:
             content_type = "image/png"
-        return FileResponse(img_path, media_type=content_type)
-        
+        response = FileResponse(img_path, media_type=content_type)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
+        return response
+
     raise HTTPException(status_code=404)
 
 
@@ -331,7 +333,10 @@ async def get_input_image(filename: str, projectPath: Optional[str] = None):
             content_type = "image/webp"
         else:
             content_type = "image/png"
-        return FileResponse(img_path, media_type=content_type)
+        response = FileResponse(img_path, media_type=content_type)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
+        return response
 
     raise HTTPException(status_code=404, detail="Image not found")
 
