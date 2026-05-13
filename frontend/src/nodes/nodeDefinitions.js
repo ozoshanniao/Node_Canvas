@@ -38,7 +38,7 @@ export const NODE_DEFINITIONS = [
     outputs: [{ id: 'text:out', kind: 'text' }],
     defaultData: {
       provider: 'Yunwu',
-      model: 'gemini-3.1-flash-lite-preview',
+      model: 'gemini-3.1-flash-lite',
       temperature: 0.85,
       maxTokens: 65535,
       outputText: '',

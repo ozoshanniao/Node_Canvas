@@ -46,7 +46,7 @@ export const LLM_PROVIDERS = [
     label: 'Yunwu',
     models: [
       {
-        id: 'gemini-3.1-flash-lite-preview',
+        id: 'gemini-3.1-flash-lite',
         label: 'Gemini 3.1 Flash',
       },
       {
