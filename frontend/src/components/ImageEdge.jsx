@@ -1,11 +1,13 @@
 // src/components/ImageEdge.jsx
 import { memo, useCallback, useEffect } from 'react';
-import { getBezierPath, EdgeLabelRenderer, useReactFlow } from '@xyflow/react';
+import { getBezierPath, EdgeLabelRenderer, useReactFlow, useStore } from '@xyflow/react';
 import { countRender, DISABLE_EDGE_ANIMATION, PERF_DEBUG } from '../utils/perfDebug';
 import { normalizeImageInputEdgeLabels } from '../utils/edgeLabels';
 
 function ImageEdge({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
@@ -23,10 +25,24 @@ function ImageEdge({
   countRender('ImageEdge');
   const { setEdges } = useReactFlow();
   const resolvedTargetHandle = targetHandleId ?? targetHandle;
-  const isImageInputEdge = resolvedTargetHandle === 'image:in';
+  const isImageInputEdge =
+    resolvedTargetHandle === 'image:in' ||
+    resolvedTargetHandle === 'image:images' ||
+    resolvedTargetHandle === 'image:references' ||
+    resolvedTargetHandle === 'image:end';
+
+  const sourceSelected = useStore(
+    (store) => store.nodeLookup?.get(source)?.selected
+  );
+  const targetSelected = useStore(
+    (store) => store.nodeLookup?.get(target)?.selected
+  );
+  const showLabel = selected || sourceSelected || targetSelected;
+
   const inputLabel =
     data?.inputLabel ||
     data?.label ||
+    (resolvedTargetHandle === 'image:end' ? 'END' : '') ||
     (typeof data?.imageIndex === 'number' ? `image${data.imageIndex + 1}` : '');
   const isFlowing = Boolean(data?.flowing);
 
@@ -85,7 +101,7 @@ function ImageEdge({
         />
       )}
 
-      {selected && (
+      {showLabel && (
         <EdgeLabelRenderer>
           <>
             {isImageInputEdge && inputLabel && (

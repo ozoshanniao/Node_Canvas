@@ -127,6 +127,7 @@ html, body, #root {
 .react-flow__minimap {
   right: 24px !important;
   bottom: 24px !important;
+  z-index: 40 !important;
   width: 200px !important;
   height: 130px !important;
   border-radius: 20px !important;

@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { 
   ReactFlow, 
   Background, 
@@ -21,6 +21,9 @@ import { TextNode } from './nodes/TextNode';
 import { TextConstructionNode } from './nodes/TextConstructionNode';
 import { LLMProcessorNode } from './nodes/LLMProcessorNode';
 import { ImageNode } from './nodes/ImageNode';
+import { VideoNode } from './nodes/VideoNode';
+import { ShotListNode } from './nodes/ShotListNode';
+import { OmniComposerNode } from './nodes/OmniComposerNode';
 import { ImageInputNode } from './nodes/ImageInputNode';
 import { OutputNode } from './nodes/OutputNode';
 import { SplitGridNode } from './nodes/SplitGridNode';
@@ -43,12 +46,13 @@ import { normalizeImageInputEdgeLabels } from './utils/edgeLabels';
 import { uploadImageToInput } from './utils/uploadToInput';
 //import { ButtonEdge } from './edges/ButtonEdge';
 
-const MINIMAP_COLLAPSED_STORAGE_KEY = 'node-ai-canvas:minimap-collapsed';
-
 const nodeTypes = {
   textNode: TextNode,
   textConstruction: TextConstructionNode,
   imageNode: ImageNode,
+  videoNode: VideoNode,
+  shotListNode: ShotListNode,
+  omniComposerNode: OmniComposerNode,
   imageInputNode: ImageInputNode,
   outputNode: OutputNode,
   splitGridNode: SplitGridNode,
@@ -163,14 +167,6 @@ const applyImageInputConnectionFlags = (nodes = [], edges = []) => {
   return changed ? nextNodes : nodes;
 };
 
-const fileToDataUrl = (file) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-
 const normalizeNodesForLoad = (nodes = []) =>
   nodes.map((node) => {
     const data = { ...(node.data || {}) };
@@ -189,10 +185,15 @@ const normalizeNodesForLoad = (nodes = []) =>
       data.template = data.template ?? data.text ?? '';
     }
 
+    const defaultSize = getNodeDefinition(node.type)?.defaultSize;
     const sizePatch =
-      node.type === 'imageNode' && !hasValidNodeSize(node)
-        ? getImageNodeSizeByAspectRatio(getImageNodeAspectRatio(data))
-        : {};
+      (node.type === 'imageNode' || node.type === 'videoNode') && !hasValidNodeSize(node)
+        ? getImageNodeSizeByAspectRatio(
+            node.type === 'videoNode' ? data.aspectRatio || '16:9' : getImageNodeAspectRatio(data)
+          )
+        : !hasValidNodeSize(node) && defaultSize
+          ? defaultSize
+          : {};
 
     return {
       ...node,
@@ -203,27 +204,6 @@ const normalizeNodesForLoad = (nodes = []) =>
       ...sizePatch,
     };
   });
-
-function Flow() {
-  return (
-    <ReactFlow 
-      nodes={nodes} 
-      edges={edges}
-      edgeTypes={edgeTypes} // 馃専 娉ㄥ唽
-      // ...
-    />
-  );
-}
-
-// 鍒濆蹇収鏁版嵁
-const initialNodes = [
-  { id: '1', type: 'textNode', position: { x: 100, y: 150 }, data: {} },
-  { id: '2', type: 'imageNode', position: { x: 520, y: 150 }, data: {}, width:480, height:270 },
-];
-
-const initialEdges = [
-  { id: 'e1-2', source: '1', target: '2', sourceHandle: 'text:out', targetHandle: 'text:prompt' }
-];
 
 const isValidConnection = (c) => {
   if (!c.sourceHandle || !c.targetHandle) return false;
@@ -281,13 +261,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
   const [edges, setEdges] = useEdgesState(normalizeEdges(initialData?.edges || []));
   const [saveStatus, setSaveStatus] = useState('idle');
   const [lastSavedAt, setLastSavedAt] = useState(null);
-  const [isMiniMapCollapsed, setIsMiniMapCollapsed] = useState(() => {
-    try {
-      return window.localStorage.getItem(MINIMAP_COLLAPSED_STORAGE_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [isMiniMapCollapsed, setIsMiniMapCollapsed] = useState(false);
   const [isDraggingNode, setIsDraggingNode] = useState(false);
   const isSavingRef = useRef(false);
   const latestCanvasRef = useRef({ nodes: [], edges: [] });
@@ -332,14 +306,6 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
   useEffect(() => {
     latestProjectRef.current = { projectPath, projectFilePath, projectName };
   }, [projectPath, projectFilePath, projectName]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(MINIMAP_COLLAPSED_STORAGE_KEY, String(isMiniMapCollapsed));
-    } catch {
-      // localStorage can be unavailable in restricted browser modes.
-    }
-  }, [isMiniMapCollapsed]);
 
   //
   useEffect(() => {
@@ -663,7 +629,9 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     const size =
       type === 'imageNode'
         ? getImageNodeSizeByAspectRatio(getImageNodeAspectRatio(data))
-        : getNodeDefinition(type)?.defaultSize || {};
+        : type === 'videoNode'
+          ? getImageNodeSizeByAspectRatio(data.aspectRatio || '16:9')
+          : getNodeDefinition(type)?.defaultSize || {};
 
     return {
       id: `${type}-${Date.now()}`,

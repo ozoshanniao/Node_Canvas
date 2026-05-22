@@ -1,5 +1,6 @@
 import { mergeNodeDefaults } from '../utils/nodeDefaults';
 import { DEFAULT_IMAGE_GENERATION_SETTINGS } from '../utils/imageGenerationOptions';
+import { DEFAULT_VIDEO_GENERATION_SETTINGS } from '../utils/videoGenerationOptions';
 
 export const NODE_DEFINITIONS = [
   {
@@ -60,6 +61,60 @@ export const NODE_DEFINITIONS = [
     outputs: [{ id: 'image:out', kind: 'image' }],
     defaultData: { ...DEFAULT_IMAGE_GENERATION_SETTINGS },
     defaultsKind: 'imageGeneration',
+  },
+  {
+    type: 'videoNode',
+    label: 'Video Generator',
+    description: 'Specs-driven video generation shell',
+    category: 'Video',
+    order: 10,
+    showInConnectionMenu: true,
+    inputs: [
+      { id: 'text:prompt', kind: 'text' },
+      { id: 'multiPrompt:in', kind: 'multiPrompt' },
+      { id: 'omniParams:in', kind: 'omniParams' },
+      { id: 'image:images', kind: 'image' },
+      { id: 'image:end', kind: 'image' },
+    ],
+    outputs: [{ id: 'video:out', kind: 'video' }],
+    defaultData: { ...DEFAULT_VIDEO_GENERATION_SETTINGS },
+    defaultsKind: 'videoGeneration',
+    defaultSize: { width: 520, height: 293 },
+  },
+  {
+    type: 'shotListNode',
+    label: 'Shot List',
+    description: 'Structured multi-shot prompt list',
+    category: 'Video',
+    order: 20,
+    showInConnectionMenu: true,
+    inputs: [],
+    outputs: [{ id: 'multiPrompt:out', kind: 'multiPrompt' }],
+    defaultData: {
+      shots: [{ id: 'shot-1', prompt: '', duration: 3 }],
+    },
+    defaultSize: { width: 520, height: 360 },
+  },
+  {
+    type: 'omniComposerNode',
+    label: 'Omni Composer',
+    description: 'Structured Kling Omni prompt composer',
+    category: 'Video',
+    order: 25,
+    showInConnectionMenu: true,
+    inputs: [
+      { id: 'image:references', kind: 'image' },
+      { id: 'multiPrompt:in', kind: 'multiPrompt' },
+    ],
+    outputs: [{ id: 'omniParams:out', kind: 'omniParams' }],
+    defaultData: {
+      prompt: '',
+      multiShot: false,
+      shotType: 'intelligence',
+      imageRoles: {},
+      elements: [''],
+    },
+    defaultSize: { width: 520, height: 420 },
   },
   {
     type: 'splitGridNode',

@@ -24,6 +24,8 @@ from image_generation.service import ImageGenerationService
 from llm.providers.base import LLMProviderError
 from llm.schemas import LLMGenerateRequest
 from llm.service import LLMService
+from video_generation.schemas import VideoGenerateRequest
+from video_generation.service import VideoGenerationService
 from engines.specs import get_frontend_specs # 馃専 寮曞叆鑳藉姏澶ф睜瀛?
 
 load_dotenv()
@@ -42,6 +44,10 @@ image_generation_service = ImageGenerationService(engines)
 llm_service = LLMService(
     yunwu_api_key=os.getenv("YUNWU_API_KEY"),
     google_api_key=os.getenv("GOOGLE_CLOUD_API_KEY"),
+)
+
+video_generation_service = VideoGenerationService(
+    yunwu_api_key=os.getenv("YUNWU_API_KEY"),
 )
 
 # --- 1. 鏁版嵁妯″瀷涓庡叏灞€閰嶇疆 ---
@@ -67,6 +73,7 @@ class EdgeData(BaseModel):
     target: str
     sourceHandle: Optional[str] = None
     targetHandle: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
 
 class WorkflowPayload(BaseModel):
     triggerId: str
@@ -148,6 +155,57 @@ async def get_specs():
     鏍规嵁杩斿洖鐨勫瓧鍏稿姩鎬佺敓鎴?ImageNode 鐨勪笅鎷夎彍鍗曞拰婊戝潡銆?
     """
     return get_frontend_specs()
+
+@app.get("/api/video/model-specs")
+async def get_video_specs():
+    return video_generation_service.get_model_specs()
+
+@app.post("/api/video/generate")
+async def generate_video(payload: VideoGenerateRequest):
+    project_path = payload.projectPath or CURRENT_PROJECT_PATH
+    if not project_path:
+        raise HTTPException(status_code=400, detail="projectPath is required")
+    try:
+        task = await video_generation_service.create_task(project_path, payload)
+        return {"status": "success", "data": task.model_dump()}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/video/tasks/{task_id}")
+async def get_video_task(task_id: str, projectPath: Optional[str] = None):
+    project_path = projectPath or CURRENT_PROJECT_PATH
+    if not project_path:
+        raise HTTPException(status_code=400, detail="projectPath is required")
+    try:
+        task = await video_generation_service.query_task(project_path, task_id)
+        return {"status": "success", "data": task.model_dump()}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/video/{filename}")
+async def get_video(filename: str, projectPath: Optional[str] = None):
+    base_path = projectPath or CURRENT_PROJECT_PATH
+    if not base_path:
+        raise HTTPException(status_code=400, detail="Project path not identified")
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    if not filename.lower().endswith(".mp4"):
+        raise HTTPException(status_code=400, detail="Invalid video filename")
+
+    video_path = os.path.join(base_path, "generation", "videos", filename)
+    if not os.path.exists(video_path):
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    response = FileResponse(video_path, media_type="video/mp4")
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
+    return response
 
 @app.post("/api/llm/generate")
 async def generate_llm(payload: LLMGenerateRequest):
