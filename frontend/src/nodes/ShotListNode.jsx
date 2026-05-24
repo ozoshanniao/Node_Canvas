@@ -21,6 +21,7 @@ export const ShotListNode = memo(function ShotListNode({ id, data }) {
     () => getNodeMultiPromptOutput({ type: 'shotListNode', data: { shots } }),
     [shots]
   );
+  // TODO: Phase 2 - Keep ShotListNode as the source of multi-shot composition before broader video workflow cleanup.
 
   const updateShots = (nextShots) => {
     setNodes((nodes) =>

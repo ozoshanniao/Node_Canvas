@@ -8,10 +8,12 @@ import { getImageNodeSizeByAspectRatio } from '../utils/nodeSizing';
 import {
   VIDEO_GENERATION_REGISTRY,
   VIDEO_MODE_OPTIONS,
+  fetchVideoGenerationRegistry,
   getActiveVideoHandlesForMode,
   getKlingShotMode,
   getVideoModelConfig,
   getVideoProvider,
+  isVideoTaskActive,
   isKlingOmniModel,
   normalizeVideoGenerationSettings,
   supportsKlingCameraControl,
@@ -130,16 +132,20 @@ export function VideoNode({ id, data }) {
   const [activeMenu, setActiveMenu] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [cameraControlOpen, setCameraControlOpen] = useState(false);
+  const [registry, setRegistry] = useState(null);
   const toolbarRef = useRef(null);
   const pollingTimerRef = useRef(null);
+  const pollingTaskIdRef = useRef('');
+  const settingsRef = useRef(null);
   const lastHandledRunRequestRef = useRef(data?.runRequestId);
   const lastHandleSignatureRef = useRef('');
 
-  const settings = useMemo(() => normalizeVideoGenerationSettings(data), [data]);
-  const providerConfig = getVideoProvider(settings.provider);
+  const activeRegistry = registry || VIDEO_GENERATION_REGISTRY;
+  const settings = useMemo(() => normalizeVideoGenerationSettings(data, registry), [data, registry]);
+  const providerConfig = getVideoProvider(settings.provider, registry);
   const modelConfig = useMemo(
-    () => getVideoModelConfig(settings.provider, settings.model) || {},
-    [settings.provider, settings.model]
+    () => getVideoModelConfig(settings.provider, settings.model, registry) || {},
+    [registry, settings.provider, settings.model]
   );
   const isOmniModel = isKlingOmniModel(modelConfig) || isKlingOmniModel(settings);
   const activeInputHandles = getActiveVideoHandlesForMode(settings.videoMode, modelConfig, settings);
@@ -153,6 +159,11 @@ export function VideoNode({ id, data }) {
     if (modelConfig.params?.qualityMode && !keys.includes('qualityMode')) keys.push('qualityMode');
     return keys;
   }, [modelConfig]);
+
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
   const updateNodeData = useCallback((patch) => {
     setLastNodeDefaults('videoGeneration', patch);
     setNodes((nds) =>
@@ -191,8 +202,8 @@ export function VideoNode({ id, data }) {
     const nextSettings = normalizeVideoGenerationSettings({
       ...settings,
       ...patch,
-    });
-    const nextModelConfig = getVideoModelConfig(nextSettings.provider, nextSettings.model) || {};
+    }, registry);
+    const nextModelConfig = getVideoModelConfig(nextSettings.provider, nextSettings.model, registry) || {};
 
     if (options.pruneModeEdges || nextSettings.videoMode !== settings.videoMode || nextSettings.qualityMode !== settings.qualityMode) {
       pruneInvalidInputEdges(nextSettings, nextModelConfig);
@@ -200,12 +211,12 @@ export function VideoNode({ id, data }) {
 
     updateNodeData(nextSettings);
     refreshHandles();
-  }, [pruneInvalidInputEdges, refreshHandles, settings, updateNodeData]);
+  }, [pruneInvalidInputEdges, refreshHandles, registry, settings, updateNodeData]);
 
   const handleProviderSelect = (providerId) => {
-    const provider = getVideoProvider(providerId);
+    const provider = getVideoProvider(providerId, registry);
     const nextModel = provider?.models?.[0]?.id;
-    const nextModelConfig = getVideoModelConfig(providerId, nextModel);
+    const nextModelConfig = getVideoModelConfig(providerId, nextModel, registry);
     applySettings(
       { provider: providerId, model: nextModel, customParams: { ...(nextModelConfig?.customParams || {}) } },
       { pruneModeEdges: true }
@@ -214,7 +225,7 @@ export function VideoNode({ id, data }) {
   };
 
   const handleModelSelect = (modelId) => {
-    const nextModelConfig = getVideoModelConfig(settings.provider, modelId);
+    const nextModelConfig = getVideoModelConfig(settings.provider, modelId, registry);
     applySettings({ model: modelId, customParams: { ...(nextModelConfig?.customParams || {}) } }, { pruneModeEdges: true });
     setActiveMenu(null);
   };
@@ -223,7 +234,7 @@ export function VideoNode({ id, data }) {
     const nextSettings = normalizeVideoGenerationSettings({
       ...settings,
       aspectRatio: nextRatio,
-    });
+    }, registry);
     const { width, height } = getImageNodeSizeByAspectRatio(nextSettings.aspectRatio || '16:9');
 
     updateNodeData(nextSettings);
@@ -239,7 +250,7 @@ export function VideoNode({ id, data }) {
       )
     );
     refreshHandles();
-  }, [id, refreshHandles, setNodes, settings, updateNodeData]);
+  }, [id, refreshHandles, registry, setNodes, settings, updateNodeData]);
 
   const handleParamChange = (key, value) => {
     const config = modelConfig.params?.[key];
@@ -345,43 +356,47 @@ export function VideoNode({ id, data }) {
   };
 
   const setTask = useCallback((taskPatch) => {
+    const currentSettings = settingsRef.current || {};
     updateNodeData({
       task: {
-        ...settings.task,
+        ...currentSettings.task,
         ...taskPatch,
       },
     });
-  }, [settings.task, updateNodeData]);
+  }, [updateNodeData]);
 
   const clearPollingTimer = useCallback(() => {
     if (pollingTimerRef.current) {
       window.clearInterval(pollingTimerRef.current);
       pollingTimerRef.current = null;
     }
+    pollingTaskIdRef.current = '';
   }, []);
 
   const applyTaskResponse = useCallback((task) => {
     if (!task) return;
+    const currentSettings = settingsRef.current || {};
     updateNodeData({
       task: {
-        ...settings.task,
+        ...currentSettings.task,
         ...task,
-        status: task.status || settings.task?.status || 'idle',
-        progress: task.progress ?? settings.task?.progress ?? 0,
+        status: task.status || currentSettings.task?.status || 'idle',
+        progress: task.progress ?? currentSettings.task?.progress ?? 0,
         message: task.message || task.error || '',
-        queuePosition: task.queuePosition ?? settings.task?.queuePosition ?? 0,
+        queuePosition: task.queuePosition ?? currentSettings.task?.queuePosition ?? 0,
       },
       outputs: {
-        ...(settings.outputs || {}),
+        ...(currentSettings.outputs || {}),
         ...(task.outputs || {}),
-        videoUrl: task.outputs?.videoUrl || task.localVideoUrl || settings.outputs?.videoUrl || '',
+        videoUrl: task.outputs?.videoUrl || task.localVideoUrl || currentSettings.outputs?.videoUrl || '',
       },
     });
-  }, [settings.outputs, settings.task, updateNodeData]);
+  }, [updateNodeData]);
 
   const pollTask = useCallback(async (taskId) => {
     try {
-      const projectPath = settings.projectPath || window.currentProjectPath || '';
+      const currentSettings = settingsRef.current || {};
+      const projectPath = currentSettings.projectPath || window.currentProjectPath || '';
       const query = projectPath ? `?projectPath=${encodeURIComponent(projectPath)}` : '';
       const response = await fetch(`http://127.0.0.1:8000/api/video/tasks/${encodeURIComponent(taskId)}${query}`);
       const result = await response.json();
@@ -391,7 +406,7 @@ export function VideoNode({ id, data }) {
 
       const task = result.data;
       applyTaskResponse(task);
-      if (task?.status === 'success' || task?.status === 'error' || task?.status === 'cancelled') {
+      if (!isVideoTaskActive(task?.status)) {
         clearPollingTimer();
       }
     } catch (error) {
@@ -402,10 +417,13 @@ export function VideoNode({ id, data }) {
         message: error instanceof Error ? error.message : 'Video task query failed.',
       });
     }
-  }, [applyTaskResponse, clearPollingTimer, setTask, settings.projectPath]);
+  }, [applyTaskResponse, clearPollingTimer, setTask]);
 
   const startPolling = useCallback((taskId) => {
+    if (!taskId) return;
+    if (pollingTimerRef.current && pollingTaskIdRef.current === taskId) return;
     clearPollingTimer();
+    pollingTaskIdRef.current = taskId;
     pollTask(taskId);
     pollingTimerRef.current = window.setInterval(() => pollTask(taskId), 4000);
   }, [clearPollingTimer, pollTask]);
@@ -648,7 +666,7 @@ export function VideoNode({ id, data }) {
 
       const task = result.data;
       applyTaskResponse(task);
-      if (task?.id && !['success', 'error', 'cancelled'].includes(task.status)) {
+      if (task?.id && isVideoTaskActive(task.status)) {
         startPolling(task.id);
       }
     } catch (error) {
@@ -672,6 +690,30 @@ export function VideoNode({ id, data }) {
     startPolling,
     updateNodeData,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchVideoGenerationRegistry()
+      .then((nextRegistry) => {
+        if (!cancelled) setRegistry(nextRegistry);
+      })
+      .catch((error) => {
+        console.warn('Failed to fetch video specs; using local fallback.', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const taskId = settings.task?.id;
+    if (taskId && isVideoTaskActive(settings.task?.status)) {
+      startPolling(taskId);
+      return undefined;
+    }
+    clearPollingTimer();
+    return undefined;
+  }, [clearPollingTimer, settings.task?.id, settings.task?.status, startPolling]);
 
   useEffect(() => {
     if (!activeMenu) return undefined;
@@ -811,7 +853,7 @@ export function VideoNode({ id, data }) {
       return <div className="text-sm font-light text-white/35">Submitting video task...</div>;
     }
 
-    if (settings.task?.status === 'running') {
+    if (['running', 'processing'].includes(settings.task?.status)) {
       return (
         <div className="flex flex-col items-center gap-3 text-white/45">
           <div className="text-sm font-light">Generating video...</div>
@@ -826,7 +868,7 @@ export function VideoNode({ id, data }) {
       );
     }
 
-    if (settings.task?.status === 'queued') {
+    if (['queued', 'pending', 'submitted'].includes(settings.task?.status)) {
       const queueText = settings.task.queuePosition ? `Queued · #${settings.task.queuePosition}` : 'Queued...';
       return <div className="text-sm font-light text-white/35">{queueText}</div>;
     }
@@ -870,7 +912,7 @@ export function VideoNode({ id, data }) {
     typeof settings.customParamsText === 'string'
       ? settings.customParamsText
       : JSON.stringify(settings.customParams || {}, null, 2);
-  const isTaskActive = ['submitting', 'queued', 'running'].includes(settings.task?.status);
+  const isTaskActive = isVideoTaskActive(settings.task?.status);
   const cameraControl = settings.customParams?.kling?.cameraControl || {
     type: 'none',
     axis: 'pan',
@@ -912,6 +954,7 @@ export function VideoNode({ id, data }) {
 
             {supportsCameraControl && (
               <div className="nodrag nowheel mt-2.5 rounded-xl border border-white/10 bg-black/15">
+                {/* TODO: Phase 2 - Move Kling camera-control ownership out of VideoNode. */}
                 <button
                   type="button"
                   onClick={() => setCameraControlOpen((value) => !value)}
@@ -978,6 +1021,7 @@ export function VideoNode({ id, data }) {
 
             {showElements && (
               <div className="nodrag nowheel mt-2.5 grid gap-1.5">
+                {/* TODO: Phase 2 - Move elements edit and validation to OmniComposerNode. */}
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">Elements</span>
                   {(settings.customParams?.kling?.elementIds || [""]).length < 3 && (
@@ -1079,7 +1123,7 @@ export function VideoNode({ id, data }) {
           minWidth={110}
           onOpen={handleMenuOpen}
           onSelect={handleProviderSelect}
-          options={VIDEO_GENERATION_REGISTRY.providers}
+          options={activeRegistry.providers}
           value={settings.provider}
         />
 

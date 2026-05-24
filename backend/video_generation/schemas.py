@@ -31,6 +31,8 @@ class VideoTask(BaseModel):
     provider: str
     model: str
     videoMode: str
+    # Canonical backend statuses are queued, running, success, error, and cancelled.
+    # Older project files may still contain frontend transitional statuses.
     status: str
     progress: int
     message: str

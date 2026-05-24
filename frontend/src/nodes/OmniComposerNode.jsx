@@ -20,6 +20,7 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
     () => (Array.isArray(data?.elements) && data.elements.length ? data.elements : ['']),
     [data]
   );
+  // TODO: Phase 2 - OmniComposerNode will natively manage element aliases and validation shared with VideoNode.
 
   const output = useMemo(
     () => getNodeOmniParamsOutput({ id, type: 'omniComposerNode', data: { ...data, elements } }, edges, nodes),

@@ -160,6 +160,10 @@ async def get_specs():
 async def get_video_specs():
     return video_generation_service.get_model_specs()
 
+@app.get("/api/video/specs")
+async def get_video_specs_alias():
+    return video_generation_service.get_model_specs()
+
 @app.post("/api/video/generate")
 async def generate_video(payload: VideoGenerateRequest):
     project_path = payload.projectPath or CURRENT_PROJECT_PATH

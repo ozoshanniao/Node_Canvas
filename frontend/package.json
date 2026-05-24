@@ -7,6 +7,7 @@
     "dev": "concurrently \"vite --port 5174\" \"cd ../backend && python main.py\"",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "node src/utils/videoGenerationOptions.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -492,20 +492,49 @@ export const DEFAULT_VIDEO_GENERATION_SETTINGS = {
   },
 };
 
+const VIDEO_ACTIVE_TASK_STATUSES = new Set([
+  'submitting',
+  'queued',
+  'running',
+  'processing',
+  'pending',
+  'submitted',
+]);
+
+export const isVideoTaskActive = (status) => VIDEO_ACTIVE_TASK_STATUSES.has(String(status || '').toLowerCase());
+
+export const fetchVideoGenerationRegistry = async () => {
+  const response = await fetch('http://127.0.0.1:8000/api/video/specs');
+  const registry = await response.json();
+  if (!response.ok) {
+    throw new Error(registry?.detail || `Video specs fetch failed: ${response.status}`);
+  }
+  return registry;
+};
+
+const resolveVideoGenerationRegistry = (registry) =>
+  registry?.providers?.length ? registry : VIDEO_GENERATION_REGISTRY;
+
 const parseDurationSeconds = (value) => {
   const number = Number(String(value || '').replace(/s$/i, ''));
   return Number.isFinite(number) ? number : DEFAULT_VIDEO_GENERATION_SETTINGS.durationSeconds;
 };
 
-const getDefaultProvider = () =>
-  VIDEO_GENERATION_REGISTRY.providers.find((provider) => provider.id === DEFAULT_VIDEO_GENERATION_SETTINGS.provider) ||
-  VIDEO_GENERATION_REGISTRY.providers[0];
+const getDefaultProvider = (registry) => {
+  const activeRegistry = resolveVideoGenerationRegistry(registry);
+  return (
+    activeRegistry.providers.find((provider) => provider.id === DEFAULT_VIDEO_GENERATION_SETTINGS.provider) ||
+    activeRegistry.providers[0]
+  );
+};
 
-export const getVideoProvider = (providerId) =>
-  VIDEO_GENERATION_REGISTRY.providers.find((provider) => provider.id === providerId) || getDefaultProvider();
+export const getVideoProvider = (providerId, registry) => {
+  const activeRegistry = resolveVideoGenerationRegistry(registry);
+  return activeRegistry.providers.find((provider) => provider.id === providerId) || getDefaultProvider(activeRegistry);
+};
 
-export const getVideoModel = (providerId, modelId) => {
-  const provider = getVideoProvider(providerId);
+export const getVideoModel = (providerId, modelId, registry) => {
+  const provider = getVideoProvider(providerId, registry);
   return (
     provider?.models?.find((model) => model.id === modelId) ||
     provider?.models?.find((model) => model.id === DEFAULT_VIDEO_GENERATION_SETTINGS.model) ||
@@ -514,7 +543,7 @@ export const getVideoModel = (providerId, modelId) => {
   );
 };
 
-export const getVideoModelConfig = (providerId, modelId) => getVideoModel(providerId, modelId);
+export const getVideoModelConfig = (providerId, modelId, registry) => getVideoModel(providerId, modelId, registry);
 
 const getParamDefault = (paramConfig) => {
   if (!paramConfig) return undefined;
@@ -546,9 +575,9 @@ const applyModelConstraints = (settings, modelConfig) => {
   return nextSettings;
 };
 
-export const normalizeVideoGenerationSettings = (settings = {}) => {
-  const provider = getVideoProvider(settings.provider);
-  const model = getVideoModel(provider?.id, settings.model);
+export const normalizeVideoGenerationSettings = (settings = {}, registry) => {
+  const provider = getVideoProvider(settings.provider, registry);
+  const model = getVideoModel(provider?.id, settings.model, registry);
   const params = model?.params || {};
   const nextSettings = {
     ...DEFAULT_VIDEO_GENERATION_SETTINGS,
