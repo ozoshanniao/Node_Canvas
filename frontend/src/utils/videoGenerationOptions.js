@@ -227,7 +227,6 @@ const createKlingProvider = (id, label) => {
               axis: 'pan',
               value: 0,
             },
-            elementIds: [""],
           },
         },
       },
@@ -503,6 +502,11 @@ const VIDEO_ACTIVE_TASK_STATUSES = new Set([
 
 export const isVideoTaskActive = (status) => VIDEO_ACTIVE_TASK_STATUSES.has(String(status || '').toLowerCase());
 
+export const resolveKlingOmniElements = (omniParamsOutput) => {
+  const omniElements = Array.isArray(omniParamsOutput?.elements) ? omniParamsOutput.elements : [];
+  return omniElements;
+};
+
 export const fetchVideoGenerationRegistry = async () => {
   const response = await fetch('http://127.0.0.1:8000/api/video/specs');
   const registry = await response.json();
@@ -629,17 +633,6 @@ export const normalizeVideoGenerationSettings = (settings = {}, registry) => {
   }
 
   nextSettings.durationSeconds = parseDurationSeconds(nextSettings.duration);
-  if (
-    (nextSettings.provider === 'kling' || nextSettings.provider === 'yunwu-kling') &&
-    nextSettings.model === 'kling-v3'
-  ) {
-    if (!nextSettings.customParams.kling) {
-      nextSettings.customParams.kling = {};
-    }
-    if (!Array.isArray(nextSettings.customParams.kling.elementIds)) {
-      nextSettings.customParams.kling.elementIds = [""];
-    }
-  }
   return applyModelConstraints(nextSettings, model);
 };
 

@@ -5,6 +5,7 @@ import {
   getVideoModelConfig,
   isVideoTaskActive,
   normalizeVideoGenerationSettings,
+  resolveKlingOmniElements,
 } from './videoGenerationOptions.js';
 
 const dynamicRegistry = structuredClone(VIDEO_GENERATION_REGISTRY);
@@ -47,5 +48,29 @@ globalThis.fetch = async () => ({
 });
 await assert.rejects(fetchVideoGenerationRegistry, /offline/, 'failed specs response should reject for fallback handling');
 globalThis.fetch = originalFetch;
+
+const omniElements = [
+  {
+    alias: 'element_1',
+    elementId: 123456,
+  },
+];
+assert.deepEqual(
+  resolveKlingOmniElements({ elements: omniElements }),
+  omniElements,
+  'Omni elements should be returned from omniParamsOutput'
+);
+
+assert.deepEqual(
+  resolveKlingOmniElements({ elements: [] }),
+  [],
+  'Empty Omni elements should return an empty array'
+);
+
+assert.deepEqual(
+  resolveKlingOmniElements(undefined, { customParams: { kling: { elementIds: ['999999'] } } }),
+  [],
+  'Legacy VideoNode elementIds should not be read'
+);
 
 console.log('videoGenerationOptions tests passed');

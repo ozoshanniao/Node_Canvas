@@ -1,4 +1,4 @@
-import { getTextConstructionOutput, getTextNodeOutput } from './textVariables';
+import { getTextConstructionOutput, getTextNodeOutput } from './textVariables.js';
 
 export const getNodeTextOutput = (node, nodes = [], edges = [], visited = new Set()) => {
   if (!node) return '';
@@ -225,7 +225,7 @@ export const getNodeOmniParamsOutput = (node, edges = [], nodes = []) => {
     }
     return {
       alias: `element_${index + 1}`,
-      elementId: /^\d+$/.test(value) ? Number(value) : value,
+      elementId: Number(value),
     };
   });
 

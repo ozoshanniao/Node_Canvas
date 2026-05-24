@@ -20,7 +20,6 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
     () => (Array.isArray(data?.elements) && data.elements.length ? data.elements : ['']),
     [data]
   );
-  // TODO: Phase 2 - OmniComposerNode will natively manage element aliases and validation shared with VideoNode.
 
   const output = useMemo(
     () => getNodeOmniParamsOutput({ id, type: 'omniComposerNode', data: { ...data, elements } }, edges, nodes),
@@ -159,7 +158,7 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
               value={prompt}
               onChange={(event) => updateData({ prompt: event.target.value })}
               className="nodrag nowheel w-full flex-grow flex-1 min-h-[96px] resize-none rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-white/75 outline-none transition-colors hover:border-white/20"
-              placeholder="Use @image_1 and @element_1 in your prompt..."
+              placeholder="Use <<<image_1>>> and <<<element_1>>> in your prompt..."
             />
           </label>
 
@@ -221,6 +220,9 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
               >
                 + Add Element
               </button>
+            </div>
+            <div className="rounded-xl border border-white/5 bg-black/15 px-3 py-2 text-[11px] text-white/30">
+              Add up to 3 Kling element IDs. Reference them in Prompt as &lt;&lt;&lt;element_1&gt;&gt;&gt;, &lt;&lt;&lt;element_2&gt;&gt;&gt;, &lt;&lt;&lt;element_3&gt;&gt;&gt;.
             </div>
             <div className="grid gap-1.5">
               {elements.map((element, index) => (

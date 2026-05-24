@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, useEdges, useReactFlow, useUpdateNodeInternals } from '@xyflow/react';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import CustomSelect from '../components/CustomSelect';
+import { useVideoTask } from '../hooks/useVideoTask';
 import { setLastNodeDefaults } from '../utils/nodeDefaults';
 import { getNodeImageOutput, getNodeMultiPromptOutput, getNodeOmniParamsOutput, getNodeTextOutput } from '../utils/nodeOutputs';
 import { getImageNodeSizeByAspectRatio } from '../utils/nodeSizing';
@@ -16,6 +17,7 @@ import {
   isVideoTaskActive,
   isKlingOmniModel,
   normalizeVideoGenerationSettings,
+  resolveKlingOmniElements,
   supportsKlingCameraControl,
   supportsKlingMultiShot,
 } from '../utils/videoGenerationOptions';
@@ -134,9 +136,6 @@ export function VideoNode({ id, data }) {
   const [cameraControlOpen, setCameraControlOpen] = useState(false);
   const [registry, setRegistry] = useState(null);
   const toolbarRef = useRef(null);
-  const pollingTimerRef = useRef(null);
-  const pollingTaskIdRef = useRef('');
-  const settingsRef = useRef(null);
   const lastHandledRunRequestRef = useRef(data?.runRequestId);
   const lastHandleSignatureRef = useRef('');
 
@@ -159,10 +158,6 @@ export function VideoNode({ id, data }) {
     if (modelConfig.params?.qualityMode && !keys.includes('qualityMode')) keys.push('qualityMode');
     return keys;
   }, [modelConfig]);
-
-  useEffect(() => {
-    settingsRef.current = settings;
-  }, [settings]);
 
   const updateNodeData = useCallback((patch) => {
     setLastNodeDefaults('videoGeneration', patch);
@@ -309,124 +304,10 @@ export function VideoNode({ id, data }) {
     });
   };
 
-  const handleAddElement = () => {
-    const currentIds = settings.customParams?.kling?.elementIds || [""];
-    if (currentIds.length >= 3) return;
-    updateNodeData({
-      customParams: {
-        ...(settings.customParams || {}),
-        kling: {
-          ...(settings.customParams?.kling || {}),
-          elementIds: [...currentIds, ""],
-        },
-      },
-    });
-  };
-
-  const handleRemoveElement = (index) => {
-    const currentIds = [...(settings.customParams?.kling?.elementIds || [""])];
-    if (currentIds.length <= 1) {
-      currentIds[0] = "";
-    } else {
-      currentIds.splice(index, 1);
-    }
-    updateNodeData({
-      customParams: {
-        ...(settings.customParams || {}),
-        kling: {
-          ...(settings.customParams?.kling || {}),
-          elementIds: currentIds,
-        },
-      },
-    });
-  };
-
-  const handleElementIdChange = (index, value) => {
-    const currentIds = [...(settings.customParams?.kling?.elementIds || [""])];
-    currentIds[index] = value;
-    updateNodeData({
-      customParams: {
-        ...(settings.customParams || {}),
-        kling: {
-          ...(settings.customParams?.kling || {}),
-          elementIds: currentIds,
-        },
-      },
-    });
-  };
-
-  const setTask = useCallback((taskPatch) => {
-    const currentSettings = settingsRef.current || {};
-    updateNodeData({
-      task: {
-        ...currentSettings.task,
-        ...taskPatch,
-      },
-    });
-  }, [updateNodeData]);
-
-  const clearPollingTimer = useCallback(() => {
-    if (pollingTimerRef.current) {
-      window.clearInterval(pollingTimerRef.current);
-      pollingTimerRef.current = null;
-    }
-    pollingTaskIdRef.current = '';
-  }, []);
-
-  const applyTaskResponse = useCallback((task) => {
-    if (!task) return;
-    const currentSettings = settingsRef.current || {};
-    updateNodeData({
-      task: {
-        ...currentSettings.task,
-        ...task,
-        status: task.status || currentSettings.task?.status || 'idle',
-        progress: task.progress ?? currentSettings.task?.progress ?? 0,
-        message: task.message || task.error || '',
-        queuePosition: task.queuePosition ?? currentSettings.task?.queuePosition ?? 0,
-      },
-      outputs: {
-        ...(currentSettings.outputs || {}),
-        ...(task.outputs || {}),
-        videoUrl: task.outputs?.videoUrl || task.localVideoUrl || currentSettings.outputs?.videoUrl || '',
-      },
-    });
-  }, [updateNodeData]);
-
-  const pollTask = useCallback(async (taskId) => {
-    try {
-      const currentSettings = settingsRef.current || {};
-      const projectPath = currentSettings.projectPath || window.currentProjectPath || '';
-      const query = projectPath ? `?projectPath=${encodeURIComponent(projectPath)}` : '';
-      const response = await fetch(`http://127.0.0.1:8000/api/video/tasks/${encodeURIComponent(taskId)}${query}`);
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result?.detail || `Video task query failed: ${response.status}`);
-      }
-
-      const task = result.data;
-      applyTaskResponse(task);
-      if (!isVideoTaskActive(task?.status)) {
-        clearPollingTimer();
-      }
-    } catch (error) {
-      clearPollingTimer();
-      setTask({
-        status: 'error',
-        progress: 0,
-        message: error instanceof Error ? error.message : 'Video task query failed.',
-      });
-    }
-  }, [applyTaskResponse, clearPollingTimer, setTask]);
-
-  const startPolling = useCallback((taskId) => {
-    if (!taskId) return;
-    if (pollingTimerRef.current && pollingTaskIdRef.current === taskId) return;
-    clearPollingTimer();
-    pollingTaskIdRef.current = taskId;
-    pollTask(taskId);
-    pollingTimerRef.current = window.setInterval(() => pollTask(taskId), 4000);
-  }, [clearPollingTimer, pollTask]);
+  const { setTask, startTask } = useVideoTask({
+    data: settings,
+    updateNodeData,
+  });
 
   const collectVideoInputs = useCallback(() => {
     const allNodes = getNodes();
@@ -497,198 +378,117 @@ export function VideoNode({ id, data }) {
     event.stopPropagation();
     setActiveMenu(null);
     setShowAdvanced(false);
-    clearPollingTimer();
-
-    // 运行前强校验 ELEMENTS（仅 kling-v3 / kling-v3-omni）
-    const showElements =
-      !isOmniModel &&
-      (settings.provider === 'kling' || settings.provider === 'yunwu-kling') &&
-      (settings.model === 'kling-v3' || settings.model === 'kling-v3-omni');
-    if (showElements) {
-      const elementIds = settings.customParams?.kling?.elementIds || [""];
-      const activeIds = elementIds
-        .map((id) => String(id || "").trim())
-        .filter(Boolean);
-
-      // 非数字校验或超过 3 个
-      const allDigits = activeIds.every((id) => /^\d+$/.test(id));
-      if (!allDigits || activeIds.length > 3) {
-        updateNodeData({
-          task: {
-            ...settings.task,
-            status: 'error',
-            progress: 0,
-            message: 'Invalid Kling element ID.',
-          },
-        });
-        return;
-      }
-    }
 
     const { prompt, images, endImage, multiPromptOutput, omniParamsOutput } = collectVideoInputs();
     const runShotMode = supportsKlingMultiShot(modelConfig) ? getKlingShotMode(settings) : 'single';
     if (isOmniModel && !omniParamsOutput) {
-      updateNodeData({
-        task: {
-          ...settings.task,
-          status: 'error',
-          progress: 0,
-          message: 'Omni Composer input is required for Kling V3 Omni.',
-        },
+      setTask({
+        status: 'error',
+        progress: 0,
+        message: 'Connect an OmniComposerNode to provide Kling Omni prompt and elements.',
       });
       return;
     }
     if (isOmniModel && !omniParamsOutput?.isValid) {
-      updateNodeData({
-        task: {
-          ...settings.task,
-          status: 'error',
-          progress: 0,
-          message: omniParamsOutput?.errors?.[0] || 'Omni Composer input is invalid.',
-        },
+      setTask({
+        status: 'error',
+        progress: 0,
+        message: omniParamsOutput?.errors?.[0] || 'Omni Composer input is invalid.',
       });
       return;
     }
     if (runShotMode === 'customize' && !multiPromptOutput) {
-      updateNodeData({
-        task: {
-          ...settings.task,
-          status: 'error',
-          progress: 0,
-          message: 'Multi-shot customize requires a ShotList input.',
-        },
+      setTask({
+        status: 'error',
+        progress: 0,
+        message: 'Multi-shot customize requires a ShotList input.',
       });
       return;
     }
     if (runShotMode === 'customize' && !multiPromptOutput?.isValid) {
-      updateNodeData({
-        task: {
-          ...settings.task,
-          status: 'error',
-          progress: 0,
-          message: multiPromptOutput?.errors?.[0] || 'ShotList input is invalid.',
-        },
+      setTask({
+        status: 'error',
+        progress: 0,
+        message: multiPromptOutput?.errors?.[0] || 'ShotList input is invalid.',
       });
       return;
     }
     if (!isOmniModel && runShotMode !== 'customize' && !prompt) {
-      updateNodeData({
-        task: {
-          ...settings.task,
-          status: 'error',
-          progress: 0,
-          message: 'Prompt is required.',
-        },
+      setTask({
+        status: 'error',
+        progress: 0,
+        message: 'Prompt is required.',
       });
       return;
     }
 
-    updateNodeData({
-      task: {
-        ...settings.task,
-        status: 'submitting',
-        progress: 0,
-        message: 'Submitting video task...',
-        queuePosition: 0,
-      },
-      outputs: {
-        ...(settings.outputs || {}),
-        videoUrl: '',
-      },
-    });
+    const omniElements = resolveKlingOmniElements(omniParamsOutput);
+    const klingParams = settings.customParams?.kling || {};
+    const videoNodeKlingParams = {
+      ...(klingParams.cfgScale !== undefined ? { cfgScale: klingParams.cfgScale } : {}),
+      ...(klingParams.cameraControl ? { cameraControl: klingParams.cameraControl } : {}),
+    };
 
-    try {
-      // 提取有效的经过 trim 的 elementIds 发送给后端
-      const cleanElementIds = (settings.customParams?.kling?.elementIds || [""])
-        .map((id) => String(id || "").trim())
-        .filter(Boolean)
-        .slice(0, 3);
-
-      const payload = {
-        projectPath: settings.projectPath || window.currentProjectPath || undefined,
-        provider: settings.provider,
-        model: settings.model,
-        videoMode: isOmniModel ? 'omni-video' : settings.videoMode,
-        prompt: isOmniModel ? prompt : runShotMode === 'customize' ? '' : prompt,
-        negativePrompt: settings.negativePrompt || '',
-        aspectRatio: settings.aspectRatio,
-        duration: isOmniModel && omniParamsOutput?.shotMode === 'customize' && omniParamsOutput?.durationSeconds
-          ? `${omniParamsOutput.durationSeconds}s`
-          : runShotMode === 'customize'
-            ? `${multiPromptOutput.totalDuration}s`
-            : settings.duration,
-        durationSeconds: isOmniModel && omniParamsOutput?.shotMode === 'customize' && omniParamsOutput?.durationSeconds
-          ? omniParamsOutput.durationSeconds
-          : runShotMode === 'customize'
-            ? multiPromptOutput.totalDuration
-            : settings.durationSeconds,
-        resolution: settings.resolution,
-        enableUpsample: settings.enableUpsample ?? false,
-        generateAudio: settings.generateAudio ?? false,
-        seed: settings.seed ?? -1,
-        numberOfVideos: settings.numberOfVideos ?? 1,
-        images: isOmniModel ? [] : images,
-        endImage: isOmniModel ? null : endImage || null,
-        customParams: isOmniModel
-          ? {
-              ...(settings.customParams || {}),
-              kling: {
-                omniParams: omniParamsOutput,
-              },
-            }
-          : {
-              ...(settings.customParams || {}),
-              kling: {
-                ...(settings.customParams?.kling || {}),
-                elementIds: cleanElementIds,
-                ...(runShotMode === 'customize'
-                  ? {
-                      shotMode: 'customize',
-                      shotType: 'customize',
-                      multiPrompt: multiPromptOutput.multiPrompt,
-                    }
-                  : runShotMode === 'intelligence'
-                    ? { shotMode: 'intelligence', shotType: 'intelligence' }
-                    : { shotMode: 'single' }),
+    const payload = {
+      projectPath: settings.projectPath || window.currentProjectPath || undefined,
+      provider: settings.provider,
+      model: settings.model,
+      videoMode: isOmniModel ? 'omni-video' : settings.videoMode,
+      prompt: isOmniModel ? prompt : runShotMode === 'customize' ? '' : prompt,
+      negativePrompt: settings.negativePrompt || '',
+      aspectRatio: settings.aspectRatio,
+      duration: isOmniModel && omniParamsOutput?.shotMode === 'customize' && omniParamsOutput?.durationSeconds
+        ? `${omniParamsOutput.durationSeconds}s`
+        : runShotMode === 'customize'
+          ? `${multiPromptOutput.totalDuration}s`
+          : settings.duration,
+      durationSeconds: isOmniModel && omniParamsOutput?.shotMode === 'customize' && omniParamsOutput?.durationSeconds
+        ? omniParamsOutput.durationSeconds
+        : runShotMode === 'customize'
+          ? multiPromptOutput.totalDuration
+          : settings.durationSeconds,
+      resolution: settings.resolution,
+      enableUpsample: settings.enableUpsample ?? false,
+      generateAudio: settings.generateAudio ?? false,
+      seed: settings.seed ?? -1,
+      numberOfVideos: settings.numberOfVideos ?? 1,
+      images: isOmniModel ? [] : images,
+      endImage: isOmniModel ? null : endImage || null,
+      customParams: isOmniModel
+        ? {
+            ...(settings.customParams || {}),
+            kling: {
+              omniParams: {
+                ...omniParamsOutput,
+                elements: omniElements,
               },
             },
-      };
+          }
+        : {
+            ...(settings.customParams || {}),
+            kling: {
+              ...videoNodeKlingParams,
+              ...(runShotMode === 'customize'
+                ? {
+                    shotMode: 'customize',
+                    shotType: 'customize',
+                    multiPrompt: multiPromptOutput.multiPrompt,
+                  }
+                : runShotMode === 'intelligence'
+                  ? { shotMode: 'intelligence', shotType: 'intelligence' }
+                  : { shotMode: 'single' }),
+            },
+          },
+    };
 
-      const response = await fetch('http://127.0.0.1:8000/api/video/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result?.detail || `Video task submit failed: ${response.status}`);
-      }
-
-      const task = result.data;
-      applyTaskResponse(task);
-      if (task?.id && isVideoTaskActive(task.status)) {
-        startPolling(task.id);
-      }
-    } catch (error) {
-      clearPollingTimer();
-      updateNodeData({
-        task: {
-          ...settings.task,
-          status: 'error',
-          progress: 0,
-          message: error instanceof Error ? error.message : 'Video task submit failed.',
-        },
-      });
-    }
+    await startTask(payload);
   }, [
-    applyTaskResponse,
-    clearPollingTimer,
     collectVideoInputs,
     isOmniModel,
     modelConfig,
+    setTask,
     settings,
-    startPolling,
-    updateNodeData,
+    startTask,
   ]);
 
   useEffect(() => {
@@ -704,16 +504,6 @@ export function VideoNode({ id, data }) {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    const taskId = settings.task?.id;
-    if (taskId && isVideoTaskActive(settings.task?.status)) {
-      startPolling(taskId);
-      return undefined;
-    }
-    clearPollingTimer();
-    return undefined;
-  }, [clearPollingTimer, settings.task?.id, settings.task?.status, startPolling]);
 
   useEffect(() => {
     if (!activeMenu) return undefined;
@@ -761,13 +551,6 @@ export function VideoNode({ id, data }) {
     pruneInvalidInputEdges(settings, modelConfig);
     refreshHandles();
   }, [activeInputHandles, modelConfig, pruneInvalidInputEdges, refreshHandles, settings]);
-
-  useEffect(
-    () => () => {
-      clearPollingTimer();
-    },
-    [clearPollingTimer]
-  );
 
   const renderParamControl = (key, config) => {
     const customValue = config.customParamPath
@@ -904,10 +687,6 @@ export function VideoNode({ id, data }) {
         .map((key) => [key, modelConfig.params[key]]),
     [modelConfig.params]
   );
-  const showElements =
-    !isOmniModel &&
-    (settings.provider === 'kling' || settings.provider === 'yunwu-kling') &&
-    (settings.model === 'kling-v3' || settings.model === 'kling-v3-omni');
   const customParamsValue =
     typeof settings.customParamsText === 'string'
       ? settings.customParamsText
@@ -1016,60 +795,6 @@ export function VideoNode({ id, data }) {
                     )}
                   </div>
                 )}
-              </div>
-            )}
-
-            {showElements && (
-              <div className="nodrag nowheel mt-2.5 grid gap-1.5">
-                {/* TODO: Phase 2 - Move elements edit and validation to OmniComposerNode. */}
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">Elements</span>
-                  {(settings.customParams?.kling?.elementIds || [""]).length < 3 && (
-                    <button
-                      type="button"
-                      onClick={handleAddElement}
-                      className="nodrag nowheel text-[10px] text-white/45 hover:text-white transition-colors"
-                    >
-                      + Add Element
-                    </button>
-                  )}
-                </div>
-                <div className="grid gap-1.5">
-                  {(settings.customParams?.kling?.elementIds || [""]).map((elementId, idx) => (
-                    <div key={idx} className="nodrag nowheel flex items-center gap-1.5">
-                      <div className="nodrag nowheel flex-1 overflow-hidden rounded-xl border border-white/10 bg-black/25 transition-colors hover:border-white/20">
-                        <input
-                          type="text"
-                          value={elementId}
-                          onChange={(e) => handleElementIdChange(idx, e.target.value)}
-                          className="nodrag nowheel block w-full bg-transparent px-3 py-1.5 text-xs text-white/70 outline-none"
-                          placeholder="Element ID"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveElement(idx)}
-                        className="nodrag nowheel flex h-7 w-7 items-center justify-center rounded-xl border border-white/5 bg-black/25 text-white/40 transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400"
-                        title="Remove Element"
-                      >
-                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-16v1a1 1 0 001 1h3m-10 0h3m0 0V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5 text-[10px] text-white/35 flex flex-col gap-0.5">
-                  {(settings.customParams?.kling?.elementIds || [""])
-                    .map((id, idx) => ({ id, idx }))
-                    .filter((item) => String(item.id || "").trim())
-                    .map((item, index) => (
-                      <span key={item.idx}>• Use &lt;&lt;&lt;element_{index + 1}&gt;&gt;&gt; in prompt</span>
-                    ))}
-                  {((settings.customParams?.kling?.elementIds || [""]).filter((id) => String(id || "").trim()).length === 0) && (
-                    <span>• Add element and use &lt;&lt;&lt;element_1&gt;&gt;&gt; in prompt</span>
-                  )}
-                </div>
               </div>
             )}
 
