@@ -158,7 +158,7 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
               value={prompt}
               onChange={(event) => updateData({ prompt: event.target.value })}
               className="nodrag nowheel w-full flex-grow flex-1 min-h-[96px] resize-none rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-white/75 outline-none transition-colors hover:border-white/20"
-              placeholder="Use <<<image_1>>> and <<<element_1>>> in your prompt..."
+              placeholder="Use @image_1 and @element_1 in your prompt..."
             />
           </label>
 
@@ -221,9 +221,6 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
                 + Add Element
               </button>
             </div>
-            <div className="rounded-xl border border-white/5 bg-black/15 px-3 py-2 text-[11px] text-white/30">
-              Add up to 3 Kling element IDs. Reference them in Prompt as &lt;&lt;&lt;element_1&gt;&gt;&gt;, &lt;&lt;&lt;element_2&gt;&gt;&gt;, &lt;&lt;&lt;element_3&gt;&gt;&gt;.
-            </div>
             <div className="grid gap-1.5">
               {elements.map((element, index) => (
                 <div key={index} className="flex items-center gap-1.5">
@@ -267,17 +264,19 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
         </span>
       </div>
 
-      <div className="absolute left-0 top-[66%] z-20 flex -translate-y-1/2 items-center">
-        <Handle
-          type="target"
-          id="multiPrompt:in"
-          position={Position.Left}
-          className="!left-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] transition-colors group-hover:!border-white"
-        />
-        <span className="pointer-events-none absolute left-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
-          shots
-        </span>
-      </div>
+      {multiShot && (
+        <div className="absolute left-0 top-[66%] z-20 flex -translate-y-1/2 items-center">
+          <Handle
+            type="target"
+            id="multiPrompt:in"
+            position={Position.Left}
+            className="!left-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] transition-colors group-hover:!border-white"
+          />
+          <span className="pointer-events-none absolute left-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
+            shots
+          </span>
+        </div>
+      )}
 
       <div className="absolute right-0 top-1/2 z-20 flex -translate-y-1/2 items-center">
         <span className="pointer-events-none absolute right-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
