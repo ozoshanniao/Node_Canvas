@@ -12,7 +12,7 @@ export const DOCK_CATEGORIES = [
   {
     id: 'Video',
     label: 'Video',
-    nodeTypes: [],
+    nodeTypes: ['videoNode', 'shotListNode', 'omniComposerNode'],
   },
   {
     id: 'Tools',
@@ -23,6 +23,7 @@ export const DOCK_CATEGORIES = [
 
 export const RUNNABLE_NODE_TYPES = new Set([
   'imageNode',
+  'videoNode',
   'llmProcessor',
   'splitGridNode',
 ]);

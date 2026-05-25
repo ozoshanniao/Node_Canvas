@@ -61,7 +61,11 @@ export const ImageInputNode = memo(function ImageInputNode({ id, data }) {
           : 'object-contain';
   const containerSizeClass = isFittedPreview
     ? 'min-w-0 min-h-0'
-    : 'min-w-[320px] min-h-[240px]';
+    : imageSrc
+      ? 'min-w-[160px] min-h-[120px]'
+      : 'min-w-[320px] min-h-[240px]';
+  const minResizeWidth = isFittedPreview ? 24 : imageSrc ? 160 : 320;
+  const minResizeHeight = isFittedPreview ? 24 : imageSrc ? 120 : 240;
 
   useEffect(() => {
     const describeImageValue = (value) => {
@@ -94,7 +98,7 @@ export const ImageInputNode = memo(function ImageInputNode({ id, data }) {
         preview: data.url.slice(0, 80),
       });
     }
-  }, [id, data?.url, data?.dataUrl, data?.imageUrl, data?.src, imageSrc]);
+  }, [id, data?.url, data?.dataUrl, data?.imageUrl, data?.src, data?.previewUrl, imageSrc]);
 
   // 核心智能逻辑：当图片加载完毕后，自动精准校准整个卡片的宽高比
   const handleImageLoad = (e) => {
@@ -275,8 +279,8 @@ export const ImageInputNode = memo(function ImageInputNode({ id, data }) {
 
       {/* 智能等比例拉伸触控区 */}
       <NodeResizeCorner
-        minWidth={isFittedPreview ? 24 : 320}
-        minHeight={isFittedPreview ? 24 : 240}
+        minWidth={minResizeWidth}
+        minHeight={minResizeHeight}
         keepAspectRatio={!!imageSrc}
       />
 
@@ -295,18 +299,23 @@ function UpstreamImageBridge({ nodeId, currentData }) {
   const edges = useEdges();
   const { setNodes } = useReactFlow();
 
-  const incomingImageUrl = useMemo(() => {
+  const incomingImage = useMemo(() => {
     const inputEdge = edges.find(
       (edge) => edge.target === nodeId && (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
     );
-    if (!inputEdge) return '';
+    if (!inputEdge) return { url: '', edgeHasSliceIndex: false };
 
     const currentNode = nodes.find((node) => node.id === nodeId);
-    if (currentNode?.dragging || currentNode?.resizing) return '';
+    if (currentNode?.dragging || currentNode?.resizing) return { url: '', edgeHasSliceIndex: false };
 
     const sourceNode = nodes.find((node) => node.id === inputEdge.source);
-    return getFirstImageUrl(getNodeImageOutput(sourceNode, inputEdge.sourceHandle, inputEdge, nodes, edges));
+    return {
+      url: getFirstImageUrl(getNodeImageOutput(sourceNode, inputEdge.sourceHandle, inputEdge, nodes, edges)),
+      edgeHasSliceIndex: typeof inputEdge.data?.sliceIndex === 'number',
+    };
   }, [edges, nodeId, nodes]);
+  const incomingImageUrl = incomingImage.url;
+  const edgeHasSliceIndex = incomingImage.edgeHasSliceIndex;
 
   useEffect(() => {
     if (!incomingImageUrl) return;
@@ -319,6 +328,25 @@ function UpstreamImageBridge({ nodeId, currentData }) {
 
     if (isSynced) return;
 
+    const currentUrl =
+      currentData?.url ||
+      currentData?.imageUrl ||
+      currentData?.src ||
+      currentData?.outputs?.imageUrl ||
+      '';
+    const isSplitChild =
+      Boolean(currentData?.generatedBySplitGrid) ||
+      typeof currentData?.sliceIndex === 'number';
+
+    if (
+      isSplitChild &&
+      currentUrl &&
+      !edgeHasSliceIndex &&
+      incomingImageUrl !== currentUrl
+    ) {
+      return;
+    }
+
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id !== nodeId) return node;
@@ -329,6 +357,25 @@ function UpstreamImageBridge({ nodeId, currentData }) {
           nodeData.receivedImageUrl === incomingImageUrl;
 
         if (nodeIsSynced) return node;
+
+        const nodeCurrentUrl =
+          nodeData.url ||
+          nodeData.imageUrl ||
+          nodeData.src ||
+          nodeData.outputs?.imageUrl ||
+          '';
+        const nodeIsSplitChild =
+          Boolean(nodeData.generatedBySplitGrid) ||
+          typeof nodeData.sliceIndex === 'number';
+
+        if (
+          nodeIsSplitChild &&
+          nodeCurrentUrl &&
+          !edgeHasSliceIndex &&
+          incomingImageUrl !== nodeCurrentUrl
+        ) {
+          return node;
+        }
 
         return {
           ...node,
@@ -342,7 +389,13 @@ function UpstreamImageBridge({ nodeId, currentData }) {
     );
   }, [
     currentData?.receivedImageUrl,
+    currentData?.imageUrl,
+    currentData?.outputs?.imageUrl,
+    currentData?.sliceIndex,
+    currentData?.src,
     currentData?.url,
+    currentData?.generatedBySplitGrid,
+    edgeHasSliceIndex,
     incomingImageUrl,
     nodeId,
     setNodes,

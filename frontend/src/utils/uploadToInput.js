@@ -36,7 +36,7 @@ export async function uploadImageToInput(fileOrDataUrl, options = {}) {
     throw new Error('projectPath is required for uploadImageToInput');
   }
 
-  let imageData = '';
+  let imageData;
   let detectedMimeType = mimeType;
   let detectedFilename = filename;
 

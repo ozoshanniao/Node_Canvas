@@ -7,6 +7,8 @@ import {
   getFirstLLMModelId,
   getLLMParametersByProvider,
   getDefaultLLMParameters,
+  getLLMModelCapabilities,
+  getActiveLLMInputHandles,
 } from '../utils/llmModels';
 import { useEffect, useRef, useState } from 'react';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
@@ -15,6 +17,7 @@ import { NodeFullscreenButton } from '../components/NodeFullscreenButton';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { getNodeImageOutput, getNodeTextOutput } from '../utils/nodeOutputs';
 import { countRender } from '../utils/perfDebug';
+import { fetchLLMSkills, getSkillDisplayName, normalizeEnabledSkills } from '../utils/llmSkills';
 
 export function LLMProcessorNode({ id, data }) {
   countRender('LLMProcessorNode');
@@ -24,6 +27,9 @@ export function LLMProcessorNode({ id, data }) {
   const [activeMenu, setActiveMenu] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [availableSkills, setAvailableSkills] = useState([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [skillsError, setSkillsError] = useState('');
 
   const provider = data.provider || 'Yunwu';
   const availableModels = getLLMModelsByProvider(provider);
@@ -37,10 +43,18 @@ export function LLMProcessorNode({ id, data }) {
   const temperature = data.temperature ?? defaultParameters.temperature ?? 0.85;
   const maxTokens = data.maxTokens ?? defaultParameters.maxTokens ?? 65535;
   const thinkingLevel = data.thinkingLevel ?? defaultParameters.thinkingLevel;
-  const hasThinkingLevel = Boolean(providerParameters.thinkingLevel?.enabled);
+  const thinking = data.thinking ?? defaultParameters.thinking ?? 'enabled';
+  const reasoningEffort = data.reasoningEffort ?? defaultParameters.reasoningEffort ?? 'high';
+  const hasThinking = Boolean(providerParameters.thinking?.enabled);
+  const hasReasoningEffort = Boolean(providerParameters.reasoningEffort?.enabled) && thinking !== 'disabled';
 
   const providerLabel = getLLMProviderLabel(provider);
   const modelLabel = getLLMModelLabel(provider, model);
+  const modelCapabilities = getLLMModelCapabilities(provider, model);
+  const supportsLocalSoftSkills = provider === 'deepseek' && Boolean(modelCapabilities.supportsLocalSoftSkills);
+  const activeInputHandles = getActiveLLMInputHandles(provider, model);
+  const projectPath = data.projectPath || (typeof window !== 'undefined' ? window.currentProjectPath : '') || '';
+  const enabledSkills = normalizeEnabledSkills(data.enabledSkills || []);
 
   const outputText = data.outputText ?? '';
   const status = data.status || 'idle';
@@ -82,6 +96,14 @@ export function LLMProcessorNode({ id, data }) {
     }
   };
 
+  const handleSkillToggle = (skillId) => {
+    const nextEnabledSkills = enabledSkills.includes(skillId)
+      ? enabledSkills.filter((id) => id !== skillId)
+      : [...enabledSkills, skillId];
+
+    updateNodeData({ enabledSkills: nextEnabledSkills });
+  };
+
   const handleRun = async (e = { stopPropagation: () => {} }) => {
     e.stopPropagation();
 
@@ -105,18 +127,26 @@ export function LLMProcessorNode({ id, data }) {
         .filter((text) => String(text ?? '').trim())
         .join('\n');
 
-      const orderedImageUrls = allEdges
-        .filter(
-          (edge) =>
-            edge.target === id &&
-            (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
-        )
-        .flatMap((edge) => {
+      const imageInputEdges = allEdges.filter(
+        (edge) =>
+          edge.target === id &&
+          (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
+      );
+      const orderedImageUrls = imageInputEdges.flatMap((edge) => {
           const sourceNode = nodeMap.get(edge.source);
           return getNodeImageOutput(sourceNode, edge.sourceHandle, edge, allNodes, allEdges)
             .map((url) => (typeof url === 'string' ? url : url?.url || url?.src || url?.imageUrl))
             .filter(Boolean);
         });
+
+      if (!modelCapabilities.supportsImages && imageInputEdges.length > 0) {
+        updateNodeData({
+          outputText: 'Current DeepSeek model does not support image input. Remove image connections or switch to a vision-capable model.',
+          status: 'error',
+          lastRunAt: new Date().toISOString(),
+        });
+        return;
+      }
 
       const imageInputs = orderedImageUrls.map((url, index) => ({
         index,
@@ -128,10 +158,13 @@ export function LLMProcessorNode({ id, data }) {
         model,
         inputText,
         imageInputs,
-        projectPath: data.projectPath || window.currentProjectPath || '',
+        projectPath,
         temperature,
         maxTokens,
+        ...(hasThinking ? { thinking } : {}),
+        ...(hasReasoningEffort ? { reasoningEffort } : {}),
         ...(thinkingLevel ? { thinkingLevel } : {}),
+        ...(supportsLocalSoftSkills ? { enabledSkills: normalizeEnabledSkills(data.enabledSkills || []) } : {}),
       };
 
       console.log('[LLMProcessor payload]', {
@@ -147,7 +180,10 @@ export function LLMProcessorNode({ id, data }) {
         })),
         temperature,
         maxTokens,
+        ...(hasThinking ? { thinking } : {}),
+        ...(hasReasoningEffort ? { reasoningEffort } : {}),
         ...(thinkingLevel ? { thinkingLevel } : {}),
+        ...(supportsLocalSoftSkills ? { enabledSkills: payload.enabledSkills } : {}),
       });
 
       if (!inputText.trim() && imageInputs.length === 0) {
@@ -226,7 +262,51 @@ export function LLMProcessorNode({ id, data }) {
     if (!data?.runRequestId || lastHandledRunRequestRef.current === data.runRequestId) return;
     lastHandledRunRequestRef.current = data.runRequestId;
     handleRun();
+    // Existing run request bridge intentionally keys off runRequestId only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.runRequestId]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!supportsLocalSoftSkills) {
+      Promise.resolve().then(() => {
+        if (!isMounted) return;
+        setAvailableSkills([]);
+        setSkillsLoading(false);
+        setSkillsError('');
+      });
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const loadSkills = async () => {
+      setSkillsLoading(true);
+      setSkillsError('');
+
+      try {
+        const skills = await fetchLLMSkills(projectPath);
+        if (!isMounted) return;
+        setAvailableSkills(skills);
+      } catch (error) {
+        if (!isMounted) return;
+        console.error('Failed to load local skills:', error);
+        setAvailableSkills([]);
+        setSkillsError('Failed to load local skills');
+      } finally {
+        if (isMounted) {
+          setSkillsLoading(false);
+        }
+      }
+    };
+
+    loadSkills();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [projectPath, supportsLocalSoftSkills]);
 
   const handleProviderSelect = (nextProvider) => {
     const defaults = getDefaultLLMParameters(nextProvider);
@@ -277,12 +357,80 @@ export function LLMProcessorNode({ id, data }) {
     <div className="relative w-full h-full min-w-[320px] min-h-[200px] group">
         {showAdvanced && (
         <div 
-            className={`absolute ${
-                hasThinkingLevel ? '-top-72' : '-top-46'
-            } left-1/2 -translate-x-1/2 bg-[#181818]/90 backdrop-blur-xl border border-white/5 rounded-2xl px-5 py-4 flex flex-col gap-4 shadow-2xl z-[60] nodrag opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-[1000ms] group-hover:delay-0`}
+            className="absolute bottom-[calc(100%+4rem)] left-1/2 w-[380px] max-w-[380px] -translate-x-1/2 bg-[#181818]/90 backdrop-blur-xl border border-white/5 rounded-2xl px-5 py-4 flex flex-col gap-4 shadow-2xl z-[60] nodrag opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-[1000ms] group-hover:delay-0"
         >
+            {(providerParameters.thinking?.enabled || providerParameters.reasoningEffort?.enabled) && (
+            <div className="grid w-full min-w-0 grid-cols-2 gap-3">
+                {providerParameters.thinking?.enabled && (
+                <div className="flex min-w-0 flex-col gap-1.5">
+                    <div className="flex min-w-0 items-center justify-between gap-2 text-[9px] text-white/30 uppercase tracking-tighter">
+                    <span className="min-w-0 truncate">{providerParameters.thinking.label}</span>
+                    <span className="shrink-0 text-white/60">
+                        {providerParameters.thinking.options.find((item) => item.id === thinking)?.label || thinking}
+                    </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1 rounded-xl bg-white/5 p-1">
+                    {providerParameters.thinking.options.map((item) => (
+                        <button
+                        key={item.id}
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            updateNodeData({
+                              thinking: item.id,
+                              ...(item.id === 'enabled' ? { reasoningEffort: reasoningEffort || 'high' } : {}),
+                            });
+                        }}
+                        className={`h-8 rounded-lg px-2 text-[11px] transition-colors ${
+                            thinking === item.id
+                            ? 'bg-white text-black'
+                            : 'text-white/45 hover:bg-white/10 hover:text-white/75'
+                        }`}
+                        >
+                        {item.label}
+                        </button>
+                    ))}
+                    </div>
+                </div>
+                )}
+
+                {providerParameters.reasoningEffort?.enabled && (
+                <div className={`flex min-w-0 flex-col gap-1.5 ${thinking === 'disabled' ? 'opacity-45' : ''}`}>
+                    <div className="flex min-w-0 items-center justify-between gap-2 text-[9px] text-white/30 uppercase tracking-tighter">
+                    <span className="min-w-0 truncate">{providerParameters.reasoningEffort.label}</span>
+                    <span className="shrink-0 text-white/60">
+                        {providerParameters.reasoningEffort.options.find((item) => item.id === reasoningEffort)?.label || reasoningEffort}
+                    </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1 rounded-xl bg-white/5 p-1">
+                    {providerParameters.reasoningEffort.options.map((item) => (
+                        <button
+                        key={item.id}
+                        type="button"
+                        disabled={thinking === 'disabled'}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            updateNodeData({ reasoningEffort: item.id });
+                        }}
+                        className={`h-8 rounded-lg px-2 text-[11px] transition-colors ${
+                            reasoningEffort === item.id && thinking !== 'disabled'
+                            ? 'bg-white text-black'
+                            : 'text-white/45 hover:bg-white/10 hover:text-white/75 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-white/45'
+                        }`}
+                        >
+                        {item.label}
+                        </button>
+                    ))}
+                    </div>
+                </div>
+                )}
+            </div>
+            )}
+
             {providerParameters.thinkingLevel?.enabled && (
-            <div className="flex flex-col gap-2 min-w-[220px]">
+            <div className="flex w-full min-w-0 flex-col gap-2">
                 <div className="flex justify-between text-[9px] text-white/30 uppercase tracking-tighter">
                 <span>{providerParameters.thinkingLevel.label}</span>
                 <span className="text-white/60">
@@ -313,7 +461,7 @@ export function LLMProcessorNode({ id, data }) {
             )}
 
             {providerParameters.temperature?.enabled && (
-            <div className="flex flex-col gap-1 min-w-[220px]">
+            <div className="flex w-full min-w-0 flex-col gap-1">
                 <div className="flex justify-between text-[9px] text-white/30 uppercase tracking-tighter">
                 <span>{providerParameters.temperature.label}</span>
                 <span className="text-white/60">{temperature}</span>
@@ -331,7 +479,7 @@ export function LLMProcessorNode({ id, data }) {
             )}
 
             {providerParameters.maxTokens?.enabled && (
-            <div className="flex flex-col gap-1 min-w-[220px]">
+            <div className="flex w-full min-w-0 flex-col gap-1">
                 <div className="flex justify-between text-[9px] text-white/30 uppercase tracking-tighter">
                 <span>{providerParameters.maxTokens.label}</span>
                 <span className="text-white/60">{maxTokens}</span>
@@ -345,6 +493,62 @@ export function LLMProcessorNode({ id, data }) {
                 onChange={(e) => updateNodeData({ maxTokens: Number(e.target.value) })}
                 className="w-full bg-[#101010] border border-white/10 rounded-lg px-3 py-2 text-[13px] text-white/70 focus:outline-none focus:border-white/25 accent-white [color-scheme:dark]"
                 />
+            </div>
+            )}
+
+            {supportsLocalSoftSkills && (
+            <div className="flex w-full min-w-0 flex-col gap-2 border-t border-white/5 pt-3">
+                <div className="flex min-w-0 items-center justify-between gap-3 text-[9px] text-white/30 uppercase tracking-tighter">
+                <span className="min-w-0 truncate">Local Soft Skills</span>
+                <span className="shrink-0 text-white/60">{enabledSkills.length} / {availableSkills.length}</span>
+                </div>
+
+                <div className="nodrag nowheel max-h-[140px] w-full min-w-0 overflow-y-auto overflow-x-hidden rounded-lg border border-white/5 bg-[#101010]/80 p-1">
+                {skillsLoading && (
+                    <div className="truncate px-2 py-2 text-[10px] text-white/35">
+                    Loading local skills...
+                    </div>
+                )}
+
+                {!skillsLoading && skillsError && (
+                    <div className="truncate px-2 py-2 text-[10px] text-white/35">
+                    Failed to load local skills
+                    </div>
+                )}
+
+                {!skillsLoading && !skillsError && availableSkills.length === 0 && (
+                    <div className="truncate px-2 py-2 text-[10px] text-white/35">
+                    No local skills found
+                    </div>
+                )}
+
+                {!skillsLoading && !skillsError && availableSkills.map((skill) => (
+                    <label
+                    key={skill.id}
+                    className="nodrag flex min-w-0 cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-white/5"
+                    onClick={(e) => e.stopPropagation()}
+                    title={skill.description || getSkillDisplayName(skill)}
+                    >
+                    <input
+                        type="checkbox"
+                        checked={enabledSkills.includes(skill.id)}
+                        onChange={() => handleSkillToggle(skill.id)}
+                        className="mt-0.5 h-3 w-3 shrink-0 cursor-pointer accent-white"
+                    />
+                    <span className="block min-w-0 flex-1 overflow-hidden">
+                        <span className="block overflow-hidden truncate text-ellipsis whitespace-nowrap text-[11px] text-white/70">
+                        {getSkillDisplayName(skill)}
+                        </span>
+                        {(skill.description || skill.source) && (
+                        <span className="block overflow-hidden truncate text-ellipsis whitespace-nowrap text-[9px] text-white/30">
+                            {skill.source ? `${skill.source}${skill.description ? ' - ' : ''}` : ''}
+                            {skill.description || ''}
+                        </span>
+                        )}
+                    </span>
+                    </label>
+                ))}
+                </div>
             </div>
             )}
         </div>
@@ -376,12 +580,10 @@ export function LLMProcessorNode({ id, data }) {
               activeMenu === 'provider' ? 'text-white' : 'hover:text-white'
             }`}
           >
-            {providerLabel} <span className="text-[9px] opacity-30 transform scale-90">&gt;</span>
+            {providerLabel} <span className="text-[9px] opacity-30 transform scale-90">|</span>
           </div>
           {renderMenu('provider', LLM_PROVIDERS, provider, handleProviderSelect)}
         </div>
-
-        <div className="w-[1px] h-3 bg-white/10" />
 
         <div className="relative nodrag">
           <div
@@ -393,7 +595,7 @@ export function LLMProcessorNode({ id, data }) {
               activeMenu === 'model' ? 'text-white' : 'hover:text-white'
             }`}
           >
-             {modelLabel} <span className="text-[9px] opacity-30 transform scale-90">&gt;</span>
+             {modelLabel}
           </div>
            {renderMenu('model', availableModels, model, handleModelSelect)}
         </div>
@@ -487,32 +689,43 @@ export function LLMProcessorNode({ id, data }) {
           {status === 'error' && 'Error'}
         </div>
 
-        <Handle
-          type="target"
-          id="text:in"
-          position={Position.Left}
-          className="!top-[38%] !w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !left-[-4px] group-hover:!border-white transition-all"
-        />
-        <div className="pointer-events-none absolute left-3 top-[38%] -translate-y-1/2 text-[9px] font-light uppercase tracking-[0.18em] text-white/25">
-          Text
+        <div className="absolute left-0 top-[38%] z-20 flex items-center">
+          <Handle
+            type="target"
+            id="text:in"
+            position={Position.Left}
+            className="!left-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] transition-colors group-hover:!border-white"
+          />
+          <span className="pointer-events-none absolute left-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
+            text
+          </span>
         </div>
 
-        <Handle
-          type="target"
-          id="image:in"
-          position={Position.Left}
-          className="!top-[62%] !w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !left-[-4px] group-hover:!border-white transition-all"
-        />
-        <div className="pointer-events-none absolute left-3 top-[62%] -translate-y-1/2 text-[9px] font-light uppercase tracking-[0.18em] text-white/25">
-          Image
-        </div>
+        {activeInputHandles.includes('image:in') && (
+          <div className="absolute left-0 top-[62%] z-20 flex items-center">
+            <Handle
+              type="target"
+              id="image:in"
+              position={Position.Left}
+              className="!left-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] transition-colors group-hover:!border-white"
+            />
+            <span className="pointer-events-none absolute left-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
+              image
+            </span>
+          </div>
+        )}
 
-        <Handle
-          type="source"
-          id="text:out"
-          position={Position.Right}
-          className="!top-1/2 !w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !right-[-4px] group-hover:!border-white transition-all"
-        />
+        <div className="absolute right-0 top-1/2 z-20 flex -translate-y-1/2 items-center">
+          <span className="pointer-events-none absolute right-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
+            text.out
+          </span>
+          <Handle
+            type="source"
+            id="text:out"
+            position={Position.Right}
+            className="!right-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] transition-colors group-hover:!border-white"
+          />
+        </div>
 
         <NodeResizeCorner minWidth={320} minHeight={200} />
 

@@ -30,6 +30,7 @@ class GoogleLLMProvider(BaseLLMProvider):
             temperature=request.temperature if request.temperature is not None else 0.85,
             max_tokens=request.maxTokens if request.maxTokens is not None else 8192,
             thinking_level=request.thinkingLevel,
+            system_prompt=request.systemPrompt,
         )
 
     async def _generate_text(
@@ -42,6 +43,7 @@ class GoogleLLMProvider(BaseLLMProvider):
         temperature: float,
         max_tokens: int,
         thinking_level: Optional[str] = None,
+        system_prompt: Optional[str] = None,
     ) -> str:
         if not self.api_key or not self.client:
             raise LLMProviderError("GOOGLE_CLOUD_API_KEY is missing")
@@ -92,6 +94,8 @@ class GoogleLLMProvider(BaseLLMProvider):
                 )
             )
 
+        if system_prompt:
+            parts.append(types.Part.from_text(text=f"System instructions:\n{system_prompt}"))
         parts.append(types.Part.from_text(text=prompt_text))
 
         contents = [

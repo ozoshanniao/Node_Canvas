@@ -9,7 +9,10 @@ export const describeImageValue = (value) => {
 
 export const sanitizeNodesForSave = (nodes = []) =>
   nodes.map((node) => {
-    const { selected, dragging, resizing, ...persistedNode } = node;
+    const persistedNode = { ...node };
+    delete persistedNode.selected;
+    delete persistedNode.dragging;
+    delete persistedNode.resizing;
     const data = { ...(persistedNode.data || {}) };
 
     delete data.file;
@@ -32,7 +35,11 @@ export const sanitizeNodesForSave = (nodes = []) =>
     if (Array.isArray(data.images)) {
       data.images = data.images.map((img) => {
         if (!img || typeof img !== 'object') return img;
-        const { dataUrl, previewUrl, previewSourceUrl, thumbnailUrl, ...restImg } = img;
+        const restImg = { ...img };
+        delete restImg.dataUrl;
+        delete restImg.previewUrl;
+        delete restImg.previewSourceUrl;
+        delete restImg.thumbnailUrl;
         return restImg;
       });
     }
@@ -52,7 +59,10 @@ export const sanitizeNodesForSave = (nodes = []) =>
 
 export const sanitizeEdgesForSave = (edges = []) =>
   edges.map((edge) => {
-    const { selected, animated, className, ...persistedEdge } = edge;
+    const persistedEdge = { ...edge };
+    delete persistedEdge.selected;
+    delete persistedEdge.animated;
+    delete persistedEdge.className;
     const data = { ...(persistedEdge.data || {}) };
     delete data.flowing;
     return { ...persistedEdge, type: 'default', data };

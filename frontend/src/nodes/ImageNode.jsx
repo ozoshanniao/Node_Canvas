@@ -12,6 +12,7 @@ import {
   getImageAspectRatioOptions,
   getImageModelConfig,
   getImageModelOptions,
+  getImageModelSwitchPatch,
   getImageProviderOptions,
   getImageResolutionOptions,
   normalizeImageGenerationSettings,
@@ -26,7 +27,7 @@ export function ImageNode({ id, data }) {
 
   const [registry, setRegistry] = useState(null); // 🌟 存储后端 specs
   const [showAdvanced, setShowAdvanced] = useState(false); // 🌟 控制副胶囊显示
-  const [currentIndex, setCurrentIndex] = useState(0); // 🌟 记录当前预览的是第几张图
+  const [currentIndex] = useState(0); // 🌟 记录当前预览的是第几张图
 
   useEffect(() => {
   const fetchSpecs = async () => {
@@ -115,42 +116,17 @@ export function ImageNode({ id, data }) {
 
   // 服务商切换联动
   const handleProviderSelect = (value) => {
-    const nextSettings = normalizeImageGenerationSettings(
-      {
-        ...data,
-        provider: value,
-        model: undefined,
-        ratio: undefined,
-        aspectRatio: undefined,
-        resolution: undefined,
-      },
-      registry
-    );
-    updateNodeData({
-      provider: nextSettings.provider,
-      model: nextSettings.model,
-      ratio: nextSettings.aspectRatio,
-      aspectRatio: nextSettings.aspectRatio,
-      resolution: nextSettings.resolution,
-    });
+    updateNodeData(getImageModelSwitchPatch({
+      ...data,
+      ratio: undefined,
+      aspectRatio: undefined,
+      resolution: undefined,
+    }, value, undefined, registry));
     setActiveMenu(null);
   };
 
   const handleModelSelect = (value) => {
-    const nextSettings = normalizeImageGenerationSettings(
-      {
-        ...data,
-        provider,
-        model: value,
-      },
-      registry
-    );
-    updateNodeData({
-      model: nextSettings.model,
-      ratio: nextSettings.aspectRatio,
-      aspectRatio: nextSettings.aspectRatio,
-      resolution: nextSettings.resolution,
-    });
+    updateNodeData(getImageModelSwitchPatch(data, provider, value, registry));
     setActiveMenu(null);
   };
 
@@ -160,11 +136,6 @@ export function ImageNode({ id, data }) {
   const getFlowingEdgeIds = (edges) =>
     edges
       .filter((edge) => edge.target === id)
-      .map((edge) => edge.id);
-
-  const getRelatedEdgeIds = (edges) =>
-    edges
-      .filter((edge) => edge.target === id || edge.source === id)
       .map((edge) => edge.id);
 
 // 2. 修改 handleRun 函数
@@ -331,6 +302,8 @@ export function ImageNode({ id, data }) {
     if (!data?.runRequestId || lastHandledRunRequestRef.current === data.runRequestId) return;
     lastHandledRunRequestRef.current = data.runRequestId;
     handleRun();
+    // Existing run request bridge intentionally keys off runRequestId only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.runRequestId]);
 
   const rawDisplayUrl = Array.isArray(data.urls) && data.urls.length > 0
@@ -378,7 +351,7 @@ export function ImageNode({ id, data }) {
             onClick={() => setShowAdvanced(!showAdvanced)}
             className={`text-xs w-5 h-5 rounded-full flex items-center justify-center cursor-pointer transition-all nodrag ${showAdvanced ? 'bg-white text-black' : 'text-white/40 hover:bg-white/5 hover:text-white'}`}
           >
-            &
+            W
           </span>
           )}
 
@@ -390,7 +363,7 @@ export function ImageNode({ id, data }) {
             onClick={() => toggleMenu('provider')}
             className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'provider' ? 'text-white' : 'hover:text-white'}`}
           >
-            {provider} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+            {provider}
           </div>
           {activeMenu === 'provider' && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[100px] text-center animate-in fade-in zoom-in-95 duration-150">
@@ -415,7 +388,7 @@ export function ImageNode({ id, data }) {
             onClick={() => toggleMenu('model')}
             className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'model' ? 'text-white' : 'hover:text-white'}`}
           >
-            {model} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+            {model}
           </div>
           {activeMenu === 'model' && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[140px] text-center animate-in fade-in zoom-in-95 duration-150">
@@ -440,7 +413,7 @@ export function ImageNode({ id, data }) {
             onClick={() => toggleMenu('ratio')}
             className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'ratio' ? 'text-white' : 'hover:text-white'}`}
           >
-            {ratio} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+            {ratio}
           </div>
           {activeMenu === 'ratio' && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[80px] max-h-[220px] overflow-y-auto text-center nowheel animate-in fade-in zoom-in-95 duration-150">
@@ -468,7 +441,7 @@ export function ImageNode({ id, data }) {
             onClick={() => toggleMenu('resolution')}
             className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'resolution' ? 'text-white' : 'hover:text-white'}`}
           >
-            {resolution} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+            {resolution}
           </div>
           {activeMenu === 'resolution' && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[80px] text-center animate-in fade-in zoom-in-95 duration-150">
@@ -490,7 +463,7 @@ export function ImageNode({ id, data }) {
             <div className="w-[1px] h-3 bg-white/10" />
             <div className="relative nodrag">
               <div onClick={() => toggleMenu('quality')} className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'quality' ? 'text-white' : 'hover:text-white'}`}>
-                <span className="opacity-40">Q:</span>{data.quality || 'auto'} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+                <span className="opacity-40">Q:</span>{data.quality || 'auto'}
               </div>
               {activeMenu === 'quality' && (
                 <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[80px] text-center animate-in fade-in zoom-in-95">
