@@ -27,8 +27,10 @@ class KlingPayloadBuilderRegressionTest(unittest.TestCase):
             provider="kling",
             videoMode="text-to-video",
             prompt="A rabbit reading a newspaper.",
+            aspectRatio="9:16",
             duration="5s",
             qualityMode="std",
+            seed=12345,
             customParams={"kling": {"shotMode": "single"}}
         )
         payload = self.run_async(self.builder.build_text2video(req, None))
@@ -39,6 +41,8 @@ class KlingPayloadBuilderRegressionTest(unittest.TestCase):
         self.assertNotIn("multi_prompt", payload)
         self.assertEqual(payload.get("mode"), "std")
         self.assertEqual(payload.get("duration"), "5")
+        self.assertEqual(payload.get("aspect_ratio"), "9:16")
+        self.assertNotIn("seed", payload)
         print("\n[PASS] Test Case 1: kling-v3 single T2V")
 
     def test_02_kling_v3_intelligence_t2v(self):
@@ -98,6 +102,8 @@ class KlingPayloadBuilderRegressionTest(unittest.TestCase):
             prompt="",
             images=["https://example.com/image.jpg"],
             endImage=None,
+            aspectRatio="1:1",
+            seed=12345,
             customParams={
                 "kling": {
                     "shotMode": "customize",
@@ -116,6 +122,8 @@ class KlingPayloadBuilderRegressionTest(unittest.TestCase):
         self.assertEqual(payload.get("shot_type"), "customize")
         self.assertEqual(len(payload.get("multi_prompt", [])), 2)
         self.assertEqual(payload.get("duration"), "5")
+        self.assertNotIn("aspect_ratio", payload)
+        self.assertNotIn("seed", payload)
         print("[PASS] Test Case 4: kling-v3 customize I2V")
 
     def test_05_camera_control_preset(self):
@@ -556,6 +564,7 @@ class KlingPayloadBuilderRegressionTest(unittest.TestCase):
             duration="5s",
             qualityMode="std",
             aspectRatio="16:9",
+            generateAudio=True,
             customParams={
                 "kling": {
                     "omniParams": {
@@ -584,6 +593,7 @@ class KlingPayloadBuilderRegressionTest(unittest.TestCase):
         self.assertEqual(payload.get("mode"), "std")
         self.assertEqual(payload.get("duration"), "5")
         self.assertEqual(payload.get("aspect_ratio"), "16:9")
+        self.assertEqual(payload.get("sound"), "on")
         print("[PASS] Test Case 1: Omni prompt only")
 
     def test_24_new_omni_reference_images(self):

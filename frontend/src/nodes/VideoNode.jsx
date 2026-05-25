@@ -44,6 +44,12 @@ const getParamDisplay = (key, value, config) => {
   return value;
 };
 
+const shouldRenderToolbarParam = (key, modelConfig, settings) => {
+  if (key !== 'aspectRatio') return true;
+  if (settings.videoMode !== 'image-to-video') return true;
+  return modelConfig?.family !== 'kling';
+};
+
 const resolveVideoUrl = (url) => {
   if (!url) return '';
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) return url;
@@ -154,10 +160,14 @@ export function VideoNode({ id, data }) {
   );
   const toolbarParamKeys = useMemo(() => {
     const quickParams = Array.isArray(modelConfig.quickParams) ? modelConfig.quickParams : [];
-    const keys = quickParams.filter((key) => TOOLBAR_PARAM_KEYS.includes(key) && modelConfig.params?.[key]);
+    const keys = quickParams.filter((key) =>
+      TOOLBAR_PARAM_KEYS.includes(key) &&
+      modelConfig.params?.[key] &&
+      shouldRenderToolbarParam(key, modelConfig, settings)
+    );
     if (modelConfig.params?.qualityMode && !keys.includes('qualityMode')) keys.push('qualityMode');
     return keys;
-  }, [modelConfig]);
+  }, [modelConfig, settings]);
 
   const updateNodeData = useCallback((patch) => {
     setLastNodeDefaults('videoGeneration', patch);

@@ -123,7 +123,6 @@ const getKlingParams = (videoModes, durationOptions) => ({
     label: 'Sound',
     default: false,
   },
-  seed: COMMON_SEED_PARAM,
 });
 
 const KLING_V3_PARAMS = {

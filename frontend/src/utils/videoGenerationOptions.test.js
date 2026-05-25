@@ -34,6 +34,17 @@ assert.equal(fallbackSettings.aspectRatio, '16:9', 'missing dynamic registry sho
 const dynamicModel = getVideoModelConfig('yunwu', 'veo3.1', dynamicRegistry);
 assert.deepEqual(dynamicModel.params.aspectRatio.options, ['1:1']);
 
+for (const providerId of ['kling', 'yunwu-kling']) {
+  for (const modelId of ['kling-v2-6', 'kling-v3', 'kling-v3-omni']) {
+    const model = getVideoModelConfig(providerId, modelId);
+    assert.equal(model.params.seed, undefined, `${providerId}/${modelId} should not expose seed`);
+    assert.ok(model.params.generateAudio, `${providerId}/${modelId} should keep generateAudio`);
+  }
+}
+
+assert.ok(getVideoModelConfig('yunwu', 'veo3.1').params.seed, 'Yunwu Veo seed should remain available');
+assert.ok(getVideoModelConfig('google', 'veo-3.1-generate-001').params.seed, 'Google Veo seed should remain available');
+
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async () => ({
   ok: true,

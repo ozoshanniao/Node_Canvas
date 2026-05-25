@@ -76,7 +76,6 @@ def kling_params(video_modes, duration_options):
             "label": "Sound",
             "default": False,
         },
-        "seed": COMMON_SEED_PARAM,
     }
 
 
