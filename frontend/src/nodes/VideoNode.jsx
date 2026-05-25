@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Handle, Position, useEdges, useReactFlow, useUpdateNodeInternals } from '@xyflow/react';
+import { Handle, Position, useEdges, useNodes, useReactFlow, useUpdateNodeInternals } from '@xyflow/react';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import CustomSelect from '../components/CustomSelect';
 import { useVideoTask } from '../hooks/useVideoTask';
 import { setLastNodeDefaults } from '../utils/nodeDefaults';
 import { getNodeImageOutput, getNodeMultiPromptOutput, getNodeOmniParamsOutput, getNodeTextOutput } from '../utils/nodeOutputs';
-import { getImageNodeSizeByAspectRatio } from '../utils/nodeSizing';
 import {
   VIDEO_GENERATION_REGISTRY,
   VIDEO_MODE_OPTIONS,
@@ -33,6 +32,39 @@ const HANDLE_LABELS = {
 
 const TOOLBAR_PARAM_KEYS = ['videoMode', 'aspectRatio', 'duration', 'resolution', 'qualityMode', 'enableUpsample'];
 const ADVANCED_PARAM_KEYS = ['generateAudio', 'seed', 'shotMode', 'cfgScale'];
+
+const VIDEO_NODE_MAX_WIDTH = 640;
+const VIDEO_NODE_MAX_HEIGHT = 568;
+const VIDEO_NODE_MIN_WIDTH = 320;
+const VIDEO_NODE_MIN_HEIGHT = 240;
+
+const isValidRatio = (ratio) => Number.isFinite(ratio) && ratio > 0;
+
+const parseAspectRatio = (ratio) => {
+  const [rawWidth, rawHeight] = String(ratio || '').split(':').map(Number);
+  if (!Number.isFinite(rawWidth) || !Number.isFinite(rawHeight) || rawWidth <= 0 || rawHeight <= 0) {
+    return null;
+  }
+  return rawWidth / rawHeight;
+};
+
+const getNodeSizeForRatio = (ratio) => {
+  const safeRatio = isValidRatio(ratio) ? ratio : 16 / 9;
+
+  if (Math.abs(safeRatio - 1) < 0.01) {
+    return { width: 480, height: 480 };
+  }
+
+  if (safeRatio >= 1) {
+    const width = VIDEO_NODE_MAX_WIDTH;
+    const height = Math.max(VIDEO_NODE_MIN_HEIGHT, Math.round(width / safeRatio));
+    return { width, height };
+  }
+
+  const height = VIDEO_NODE_MAX_HEIGHT;
+  const width = Math.max(VIDEO_NODE_MIN_WIDTH, Math.round(height * safeRatio));
+  return { width, height };
+};
 
 const getVideoModeDisplay = (value) =>
   VIDEO_MODE_OPTIONS.find((option) => option.id === value)?.shortLabel || value;
@@ -136,17 +168,22 @@ export function VideoNode({ id, data }) {
   countRender('VideoNode');
   const { getEdges, getNodes, setNodes, setEdges } = useReactFlow();
   const flowEdges = useEdges();
+  const flowNodes = useNodes();
   const updateNodeInternals = useUpdateNodeInternals();
   const [activeMenu, setActiveMenu] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [cameraControlOpen, setCameraControlOpen] = useState(false);
   const [registry, setRegistry] = useState(null);
+  const [videoMetadataRatioState, setVideoMetadataRatioState] = useState({ url: '', ratio: null });
+  const [inputImageRatioState, setInputImageRatioState] = useState({ key: '', url: '', ratio: null });
   const toolbarRef = useRef(null);
   const lastHandledRunRequestRef = useRef(data?.runRequestId);
   const lastHandleSignatureRef = useRef('');
+  const lastAutoSizeSourceRef = useRef(null);
 
   const activeRegistry = registry || VIDEO_GENERATION_REGISTRY;
   const settings = useMemo(() => normalizeVideoGenerationSettings(data, registry), [data, registry]);
+  const videoUrl = useMemo(() => resolveVideoUrl(settings.outputs?.videoUrl), [settings.outputs?.videoUrl]);
   const providerConfig = getVideoProvider(settings.provider, registry);
   const modelConfig = useMemo(
     () => getVideoModelConfig(settings.provider, settings.model, registry) || {},
@@ -240,22 +277,10 @@ export function VideoNode({ id, data }) {
       ...settings,
       aspectRatio: nextRatio,
     }, registry);
-    const { width, height } = getImageNodeSizeByAspectRatio(nextSettings.aspectRatio || '16:9');
 
     updateNodeData(nextSettings);
-    setNodes((nds) =>
-      nds.map((node) =>
-        node.id === id
-          ? {
-              ...node,
-              width,
-              height,
-            }
-          : node
-      )
-    );
     refreshHandles();
-  }, [id, refreshHandles, registry, setNodes, settings, updateNodeData]);
+  }, [refreshHandles, registry, settings, updateNodeData]);
 
   const handleParamChange = (key, value) => {
     const config = modelConfig.params?.[key];
@@ -384,6 +409,54 @@ export function VideoNode({ id, data }) {
     };
   }, [getEdges, getNodes, id, isOmniModel, modelConfig.inputCapabilities?.maxImages, settings.prompt, settings.videoMode]);
 
+  const inputImageCandidates = useMemo(() => {
+    const nodeMap = new Map(flowNodes.map((node) => [node.id, node]));
+    const collectImagesForHandles = (handleIds) =>
+      flowEdges
+        .filter((edge) => edge.target === id && handleIds.includes(edge.targetHandle ?? edge.targetHandleId))
+        .flatMap((edge) => getNodeImageOutput(nodeMap.get(edge.source), edge.sourceHandle, edge, flowNodes, flowEdges))
+        .filter(Boolean)
+        .map(resolveVideoUrl);
+
+    const firstFrameImages = collectImagesForHandles(['image:images', 'image:in']);
+    const endFrameImages = collectImagesForHandles(['image:end', 'END', 'image_tail']);
+    return [...firstFrameImages, ...endFrameImages];
+  }, [flowEdges, flowNodes, id]);
+  const inputImageCandidatesKey = JSON.stringify(inputImageCandidates);
+
+  const videoMetadataRatio = videoMetadataRatioState.url === videoUrl ? videoMetadataRatioState.ratio : null;
+  const hasLoadedInputImage =
+    inputImageRatioState.key === inputImageCandidatesKey &&
+    inputImageRatioState.url &&
+    inputImageCandidates.includes(inputImageRatioState.url);
+  const inputImageRatio = hasLoadedInputImage ? inputImageRatioState.ratio : null;
+  const inputImageUrl = isValidRatio(inputImageRatio) ? inputImageRatioState.url : inputImageCandidates[0] || '';
+
+  const computedRatioInfo = useMemo(() => {
+    if (isValidRatio(videoMetadataRatio)) {
+      return { source: 'video', ratio: videoMetadataRatio };
+    }
+    if (isValidRatio(inputImageRatio)) {
+      return { source: 'image', ratio: inputImageRatio };
+    }
+    const settingRatio = parseAspectRatio(settings.aspectRatio);
+    if (isValidRatio(settingRatio)) {
+      return { source: 'setting', ratio: settingRatio };
+    }
+    return { source: 'fallback', ratio: 16 / 9 };
+  }, [inputImageRatio, settings.aspectRatio, videoMetadataRatio]);
+
+  const computedRatio = computedRatioInfo.ratio;
+  const computedRatioSource = computedRatioInfo.source;
+  const ratioKey = Math.round(computedRatio * 1000) / 1000;
+  const sourceKey = computedRatioSource === 'video'
+    ? `video:${videoUrl}:${ratioKey}`
+    : computedRatioSource === 'image'
+      ? `image:${inputImageUrl}:${ratioKey}`
+      : computedRatioSource === 'setting'
+        ? `setting:${settings.aspectRatio}:${ratioKey}`
+        : 'fallback:16:9';
+
   const handleRun = useCallback(async (event = { stopPropagation: () => {} }) => {
     event.stopPropagation();
     setActiveMenu(null);
@@ -458,6 +531,7 @@ export function VideoNode({ id, data }) {
           ? multiPromptOutput.totalDuration
           : settings.durationSeconds,
       resolution: settings.resolution,
+      qualityMode: settings.qualityMode,
       enableUpsample: settings.enableUpsample ?? false,
       generateAudio: settings.generateAudio ?? false,
       seed: settings.seed ?? -1,
@@ -514,6 +588,66 @@ export function VideoNode({ id, data }) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let img = null;
+    const candidates = JSON.parse(inputImageCandidatesKey);
+
+    const loadImage = (index) => {
+      const url = candidates[index];
+      if (!url) return;
+
+      img = new Image();
+      img.onload = () => {
+        if (cancelled) return;
+        if (img.naturalWidth && img.naturalHeight) {
+          setInputImageRatioState({
+            key: inputImageCandidatesKey,
+            url,
+            ratio: img.naturalWidth / img.naturalHeight,
+          });
+        } else {
+          loadImage(index + 1);
+        }
+      };
+      img.onerror = () => {
+        if (!cancelled) loadImage(index + 1);
+      };
+      img.src = url;
+    };
+
+    loadImage(0);
+
+    return () => {
+      cancelled = true;
+      if (img) {
+        img.onload = null;
+        img.onerror = null;
+      }
+    };
+  }, [inputImageCandidatesKey]);
+
+  useEffect(() => {
+    if (!isValidRatio(computedRatio) || lastAutoSizeSourceRef.current === sourceKey) return;
+
+    lastAutoSizeSourceRef.current = sourceKey;
+    const { width, height } = getNodeSizeForRatio(computedRatio);
+
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === id
+          ? {
+              ...node,
+              width,
+              height,
+            }
+          : node
+      )
+    );
+
+    requestAnimationFrame(() => updateNodeInternals(id));
+  }, [computedRatio, id, setNodes, sourceKey, updateNodeInternals]);
 
   useEffect(() => {
     if (!activeMenu) return undefined;
@@ -636,7 +770,17 @@ export function VideoNode({ id, data }) {
       return (
         <video
           controls
-          src={resolveVideoUrl(settings.outputs.videoUrl)}
+          src={videoUrl}
+          onLoadedMetadata={(event) => {
+            const width = event.currentTarget.videoWidth;
+            const height = event.currentTarget.videoHeight;
+            if (width && height) {
+              setVideoMetadataRatioState({
+                url: videoUrl,
+                ratio: width / height,
+              });
+            }
+          }}
           className="absolute inset-0 h-full w-full object-contain"
         />
       );
@@ -971,7 +1115,7 @@ export function VideoNode({ id, data }) {
         />
       </div>
 
-      <NodeResizeCorner minWidth={120} minHeight={90} keepAspectRatio />
+      <NodeResizeCorner minWidth={120} minHeight={90} />
     </div>
   );
 }

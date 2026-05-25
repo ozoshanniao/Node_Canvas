@@ -9,7 +9,7 @@ import {
 
 const deepseekProvider = getLLMProvider('deepseek');
 assert.equal(deepseekProvider.id, 'deepseek');
-assert.equal(deepseekProvider.label, 'DeepSeek Official');
+assert.equal(deepseekProvider.label, 'DeepSeek');
 
 const deepseekModels = getLLMModelsByProvider('deepseek').map((model) => model.id);
 assert.deepEqual(deepseekModels, ['deepseek-v4-flash', 'deepseek-v4-pro']);
@@ -23,10 +23,13 @@ for (const modelId of deepseekModels) {
   assert.equal(capabilities.supportsTools, false);
   assert.equal(capabilities.supportsJsonMode, false);
   assert.equal(capabilities.supportsHistory, false);
+  assert.equal(capabilities.supportsLocalSoftSkills, true);
 }
 
 assert.deepEqual(getActiveLLMInputHandles('deepseek', 'deepseek-v4-flash'), ['text:in']);
 assert.deepEqual(getActiveLLMInputHandles('Google', 'gemini-3.1-flash-lite'), ['text:in', 'image:in']);
+assert.equal(getLLMModelCapabilities('Google', 'gemini-3.1-flash-lite').supportsLocalSoftSkills, false);
+assert.equal(getLLMModelCapabilities('Yunwu', 'gemini-3.1-flash-lite').supportsLocalSoftSkills, false);
 
 assert.deepEqual(getDefaultLLMParameters('deepseek'), {
   thinking: 'enabled',

@@ -44,6 +44,7 @@ const DEFAULT_FIELDS = {
     'thinking',
     'reasoningEffort',
     'thinkingLevel',
+    'enabledSkills',
     ],
 };
 

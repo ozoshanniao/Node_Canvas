@@ -45,6 +45,7 @@ export const NODE_DEFINITIONS = [
       maxTokens: 65535,
       outputText: '',
       status: 'idle',
+      enabledSkills: [],
     },
     defaultsKind: 'llmProcessor',
   },

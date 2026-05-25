@@ -24,6 +24,7 @@ from image_generation.service import ImageGenerationService
 from llm.providers.base import LLMProviderError
 from llm.schemas import LLMGenerateRequest
 from llm.service import LLMService
+from llm.skills.loader import public_soft_skills, scan_soft_skills
 from video_generation.schemas import VideoGenerateRequest
 from video_generation.service import VideoGenerationService
 from engines.specs import get_frontend_specs # 馃専 寮曞叆鑳藉姏澶ф睜瀛?
@@ -228,6 +229,13 @@ async def generate_llm(payload: LLMGenerateRequest):
         raise HTTPException(status_code=501, detail=str(e))
     except LLMProviderError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/llm/skills")
+async def list_llm_skills(projectPath: Optional[str] = None):
+    try:
+        return [skill.model_dump() for skill in public_soft_skills(scan_soft_skills(projectPath))]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

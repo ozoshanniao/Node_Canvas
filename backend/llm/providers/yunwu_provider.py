@@ -82,9 +82,14 @@ class YunwuLLMProvider(BaseLLMProvider):
         else:
             message_content = prompt_text
 
+        messages = []
+        if request.systemPrompt:
+            messages.append({"role": "system", "content": request.systemPrompt})
+        messages.append({"role": "user", "content": message_content})
+
         payload = {
             "model": request.model,
-            "messages": [{"role": "user", "content": message_content}],
+            "messages": messages,
             "temperature": request.temperature if request.temperature is not None else 0.85,
             "max_tokens": request.maxTokens if request.maxTokens is not None else 8192,
             "stream": False,
@@ -101,9 +106,9 @@ class YunwuLLMProvider(BaseLLMProvider):
                 "url": api_url,
                 "model": payload.get("model"),
                 "stream": payload.get("stream"),
-                "messageRole": payload["messages"][0].get("role"),
-                "contentKind": "list" if isinstance(payload["messages"][0].get("content"), list) else "string",
-                "content": _safe_content_for_log(payload["messages"][0].get("content")),
+                "messageRole": payload["messages"][-1].get("role"),
+                "contentKind": "list" if isinstance(payload["messages"][-1].get("content"), list) else "string",
+                "content": _safe_content_for_log(payload["messages"][-1].get("content")),
                 "temperature": payload.get("temperature"),
                 "max_tokens": payload.get("max_tokens"),
                 "images": len(prepared_images),

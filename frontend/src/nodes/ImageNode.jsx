@@ -363,7 +363,7 @@ export function ImageNode({ id, data }) {
             onClick={() => toggleMenu('provider')}
             className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'provider' ? 'text-white' : 'hover:text-white'}`}
           >
-            {provider} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+            {provider}
           </div>
           {activeMenu === 'provider' && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[100px] text-center animate-in fade-in zoom-in-95 duration-150">
@@ -388,7 +388,7 @@ export function ImageNode({ id, data }) {
             onClick={() => toggleMenu('model')}
             className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'model' ? 'text-white' : 'hover:text-white'}`}
           >
-            {model} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+            {model}
           </div>
           {activeMenu === 'model' && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[140px] text-center animate-in fade-in zoom-in-95 duration-150">
@@ -413,7 +413,7 @@ export function ImageNode({ id, data }) {
             onClick={() => toggleMenu('ratio')}
             className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'ratio' ? 'text-white' : 'hover:text-white'}`}
           >
-            {ratio} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+            {ratio}
           </div>
           {activeMenu === 'ratio' && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[80px] max-h-[220px] overflow-y-auto text-center nowheel animate-in fade-in zoom-in-95 duration-150">
@@ -441,7 +441,7 @@ export function ImageNode({ id, data }) {
             onClick={() => toggleMenu('resolution')}
             className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'resolution' ? 'text-white' : 'hover:text-white'}`}
           >
-            {resolution} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+            {resolution}
           </div>
           {activeMenu === 'resolution' && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[80px] text-center animate-in fade-in zoom-in-95 duration-150">
@@ -463,7 +463,7 @@ export function ImageNode({ id, data }) {
             <div className="w-[1px] h-3 bg-white/10" />
             <div className="relative nodrag">
               <div onClick={() => toggleMenu('quality')} className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'quality' ? 'text-white' : 'hover:text-white'}`}>
-                <span className="opacity-40">Q:</span>{data.quality || 'auto'} <span className="text-[9px] opacity-30 transform scale-90">▼</span>
+                <span className="opacity-40">Q:</span>{data.quality || 'auto'}
               </div>
               {activeMenu === 'quality' && (
                 <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[80px] text-center animate-in fade-in zoom-in-95">

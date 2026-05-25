@@ -48,14 +48,17 @@ class DeepSeekLLMProvider(BaseLLMProvider):
             )
 
         thinking_type = self._thinking_type(request)
+        messages = []
+        if request.systemPrompt:
+            messages.append({"role": "system", "content": request.systemPrompt})
+        messages.append({
+            "role": "user",
+            "content": (request.inputText or "").strip() or "Please provide a response.",
+        })
+
         payload = {
             "model": request.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": (request.inputText or "").strip() or "Please provide a response.",
-                }
-            ],
+            "messages": messages,
             "thinking": {"type": thinking_type},
             "stream": False,
         }

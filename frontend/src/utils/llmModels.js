@@ -11,6 +11,7 @@ export const LLM_PROVIDERS = [
           supportsThinking: true,
           supportsReasoningEffort: false,
           supportsStreaming: false,
+          supportsLocalSoftSkills: false,
         },
       },
       {
@@ -21,6 +22,7 @@ export const LLM_PROVIDERS = [
           supportsThinking: true,
           supportsReasoningEffort: false,
           supportsStreaming: false,
+          supportsLocalSoftSkills: false,
         },
       },
     ],
@@ -65,6 +67,7 @@ export const LLM_PROVIDERS = [
           supportsThinking: false,
           supportsReasoningEffort: false,
           supportsStreaming: false,
+          supportsLocalSoftSkills: false,
         },
       },
       {
@@ -75,6 +78,7 @@ export const LLM_PROVIDERS = [
           supportsThinking: false,
           supportsReasoningEffort: false,
           supportsStreaming: false,
+          supportsLocalSoftSkills: false,
         },
       },
       {
@@ -85,6 +89,7 @@ export const LLM_PROVIDERS = [
           supportsThinking: false,
           supportsReasoningEffort: false,
           supportsStreaming: false,
+          supportsLocalSoftSkills: false,
         },
       },
     ],
@@ -112,7 +117,7 @@ export const LLM_PROVIDERS = [
   },
   {
     id: 'deepseek',
-    label: 'DeepSeek Official',
+    label: 'DeepSeek',
     models: [
       {
         id: 'deepseek-v4-flash',
@@ -125,6 +130,7 @@ export const LLM_PROVIDERS = [
           supportsTools: false,
           supportsJsonMode: false,
           supportsHistory: false,
+          supportsLocalSoftSkills: true,
         },
       },
       {
@@ -138,6 +144,7 @@ export const LLM_PROVIDERS = [
           supportsTools: false,
           supportsJsonMode: false,
           supportsHistory: false,
+          supportsLocalSoftSkills: true,
         },
       },
     ],
@@ -208,6 +215,7 @@ export const getLLMModelCapabilities = (providerId, modelId) => ({
   supportsTools: false,
   supportsJsonMode: false,
   supportsHistory: false,
+  supportsLocalSoftSkills: false,
   ...(getLLMModelConfig(providerId, modelId)?.capabilities || {}),
 });
 

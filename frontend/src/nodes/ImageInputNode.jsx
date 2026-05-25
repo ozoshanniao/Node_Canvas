@@ -61,7 +61,11 @@ export const ImageInputNode = memo(function ImageInputNode({ id, data }) {
           : 'object-contain';
   const containerSizeClass = isFittedPreview
     ? 'min-w-0 min-h-0'
-    : 'min-w-[320px] min-h-[240px]';
+    : imageSrc
+      ? 'min-w-[160px] min-h-[120px]'
+      : 'min-w-[320px] min-h-[240px]';
+  const minResizeWidth = isFittedPreview ? 24 : imageSrc ? 160 : 320;
+  const minResizeHeight = isFittedPreview ? 24 : imageSrc ? 120 : 240;
 
   useEffect(() => {
     const describeImageValue = (value) => {
@@ -275,8 +279,8 @@ export const ImageInputNode = memo(function ImageInputNode({ id, data }) {
 
       {/* 智能等比例拉伸触控区 */}
       <NodeResizeCorner
-        minWidth={isFittedPreview ? 24 : 320}
-        minHeight={isFittedPreview ? 24 : 240}
+        minWidth={minResizeWidth}
+        minHeight={minResizeHeight}
         keepAspectRatio={!!imageSrc}
       />
 

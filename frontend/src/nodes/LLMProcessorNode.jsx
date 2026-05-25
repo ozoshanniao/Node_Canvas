@@ -464,12 +464,10 @@ export function LLMProcessorNode({ id, data }) {
               activeMenu === 'provider' ? 'text-white' : 'hover:text-white'
             }`}
           >
-            {providerLabel} <span className="text-[9px] opacity-30 transform scale-90">&gt;</span>
+            {providerLabel} <span className="text-[9px] opacity-30 transform scale-90">|</span>
           </div>
           {renderMenu('provider', LLM_PROVIDERS, provider, handleProviderSelect)}
         </div>
-
-        <div className="w-[1px] h-3 bg-white/10" />
 
         <div className="relative nodrag">
           <div
@@ -481,7 +479,7 @@ export function LLMProcessorNode({ id, data }) {
               activeMenu === 'model' ? 'text-white' : 'hover:text-white'
             }`}
           >
-             {modelLabel} <span className="text-[9px] opacity-30 transform scale-90">&gt;</span>
+             {modelLabel}
           </div>
            {renderMenu('model', availableModels, model, handleModelSelect)}
         </div>
