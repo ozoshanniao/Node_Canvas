@@ -7,6 +7,8 @@ import {
   getFirstLLMModelId,
   getLLMParametersByProvider,
   getDefaultLLMParameters,
+  getLLMModelCapabilities,
+  getActiveLLMInputHandles,
 } from '../utils/llmModels';
 import { useEffect, useRef, useState } from 'react';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
@@ -37,10 +39,17 @@ export function LLMProcessorNode({ id, data }) {
   const temperature = data.temperature ?? defaultParameters.temperature ?? 0.85;
   const maxTokens = data.maxTokens ?? defaultParameters.maxTokens ?? 65535;
   const thinkingLevel = data.thinkingLevel ?? defaultParameters.thinkingLevel;
+  const thinking = data.thinking ?? defaultParameters.thinking ?? 'enabled';
+  const reasoningEffort = data.reasoningEffort ?? defaultParameters.reasoningEffort ?? 'high';
   const hasThinkingLevel = Boolean(providerParameters.thinkingLevel?.enabled);
+  const hasThinking = Boolean(providerParameters.thinking?.enabled);
+  const hasReasoningEffort = Boolean(providerParameters.reasoningEffort?.enabled) && thinking !== 'disabled';
+  const hasReasoningControls = hasThinkingLevel || hasThinking;
 
   const providerLabel = getLLMProviderLabel(provider);
   const modelLabel = getLLMModelLabel(provider, model);
+  const modelCapabilities = getLLMModelCapabilities(provider, model);
+  const activeInputHandles = getActiveLLMInputHandles(provider, model);
 
   const outputText = data.outputText ?? '';
   const status = data.status || 'idle';
@@ -105,18 +114,26 @@ export function LLMProcessorNode({ id, data }) {
         .filter((text) => String(text ?? '').trim())
         .join('\n');
 
-      const orderedImageUrls = allEdges
-        .filter(
-          (edge) =>
-            edge.target === id &&
-            (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
-        )
-        .flatMap((edge) => {
+      const imageInputEdges = allEdges.filter(
+        (edge) =>
+          edge.target === id &&
+          (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
+      );
+      const orderedImageUrls = imageInputEdges.flatMap((edge) => {
           const sourceNode = nodeMap.get(edge.source);
           return getNodeImageOutput(sourceNode, edge.sourceHandle, edge, allNodes, allEdges)
             .map((url) => (typeof url === 'string' ? url : url?.url || url?.src || url?.imageUrl))
             .filter(Boolean);
         });
+
+      if (!modelCapabilities.supportsImages && imageInputEdges.length > 0) {
+        updateNodeData({
+          outputText: 'Current DeepSeek model does not support image input. Remove image connections or switch to a vision-capable model.',
+          status: 'error',
+          lastRunAt: new Date().toISOString(),
+        });
+        return;
+      }
 
       const imageInputs = orderedImageUrls.map((url, index) => ({
         index,
@@ -131,6 +148,8 @@ export function LLMProcessorNode({ id, data }) {
         projectPath: data.projectPath || window.currentProjectPath || '',
         temperature,
         maxTokens,
+        ...(hasThinking ? { thinking } : {}),
+        ...(hasReasoningEffort ? { reasoningEffort } : {}),
         ...(thinkingLevel ? { thinkingLevel } : {}),
       };
 
@@ -147,6 +166,8 @@ export function LLMProcessorNode({ id, data }) {
         })),
         temperature,
         maxTokens,
+        ...(hasThinking ? { thinking } : {}),
+        ...(hasReasoningEffort ? { reasoningEffort } : {}),
         ...(thinkingLevel ? { thinkingLevel } : {}),
       });
 
@@ -226,6 +247,8 @@ export function LLMProcessorNode({ id, data }) {
     if (!data?.runRequestId || lastHandledRunRequestRef.current === data.runRequestId) return;
     lastHandledRunRequestRef.current = data.runRequestId;
     handleRun();
+    // Existing run request bridge intentionally keys off runRequestId only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.runRequestId]);
 
   const handleProviderSelect = (nextProvider) => {
@@ -278,9 +301,74 @@ export function LLMProcessorNode({ id, data }) {
         {showAdvanced && (
         <div 
             className={`absolute ${
-                hasThinkingLevel ? '-top-72' : '-top-46'
+                hasReasoningControls ? '-top-72' : '-top-46'
             } left-1/2 -translate-x-1/2 bg-[#181818]/90 backdrop-blur-xl border border-white/5 rounded-2xl px-5 py-4 flex flex-col gap-4 shadow-2xl z-[60] nodrag opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-[1000ms] group-hover:delay-0`}
         >
+            {providerParameters.thinking?.enabled && (
+            <div className="flex flex-col gap-2 min-w-[220px]">
+                <div className="flex justify-between text-[9px] text-white/30 uppercase tracking-tighter">
+                <span>{providerParameters.thinking.label}</span>
+                <span className="text-white/60">
+                    {providerParameters.thinking.options.find((item) => item.id === thinking)?.label || thinking}
+                </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1">
+                {providerParameters.thinking.options.map((item) => (
+                    <button
+                    key={item.id}
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        updateNodeData({
+                          thinking: item.id,
+                          ...(item.id === 'enabled' ? { reasoningEffort: reasoningEffort || 'high' } : {}),
+                        });
+                    }}
+                    className={`rounded-lg px-2 py-1.5 text-[10px] transition-colors ${
+                        thinking === item.id
+                        ? 'bg-white text-black'
+                        : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/70'
+                    }`}
+                    >
+                    {item.label}
+                    </button>
+                ))}
+                </div>
+            </div>
+            )}
+
+            {providerParameters.reasoningEffort?.enabled && thinking !== 'disabled' && (
+            <div className="flex flex-col gap-2 min-w-[220px]">
+                <div className="flex justify-between text-[9px] text-white/30 uppercase tracking-tighter">
+                <span>{providerParameters.reasoningEffort.label}</span>
+                <span className="text-white/60">
+                    {providerParameters.reasoningEffort.options.find((item) => item.id === reasoningEffort)?.label || reasoningEffort}
+                </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1">
+                {providerParameters.reasoningEffort.options.map((item) => (
+                    <button
+                    key={item.id}
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        updateNodeData({ reasoningEffort: item.id });
+                    }}
+                    className={`rounded-lg px-2 py-1.5 text-[10px] transition-colors ${
+                        reasoningEffort === item.id
+                        ? 'bg-white text-black'
+                        : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/70'
+                    }`}
+                    >
+                    {item.label}
+                    </button>
+                ))}
+                </div>
+            </div>
+            )}
+
             {providerParameters.thinkingLevel?.enabled && (
             <div className="flex flex-col gap-2 min-w-[220px]">
                 <div className="flex justify-between text-[9px] text-white/30 uppercase tracking-tighter">
@@ -487,32 +575,43 @@ export function LLMProcessorNode({ id, data }) {
           {status === 'error' && 'Error'}
         </div>
 
-        <Handle
-          type="target"
-          id="text:in"
-          position={Position.Left}
-          className="!top-[38%] !w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !left-[-4px] group-hover:!border-white transition-all"
-        />
-        <div className="pointer-events-none absolute left-3 top-[38%] -translate-y-1/2 text-[9px] font-light uppercase tracking-[0.18em] text-white/25">
-          Text
+        <div className="absolute left-0 top-[38%] z-20 flex items-center">
+          <Handle
+            type="target"
+            id="text:in"
+            position={Position.Left}
+            className="!left-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] transition-colors group-hover:!border-white"
+          />
+          <span className="pointer-events-none absolute left-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
+            text
+          </span>
         </div>
 
-        <Handle
-          type="target"
-          id="image:in"
-          position={Position.Left}
-          className="!top-[62%] !w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !left-[-4px] group-hover:!border-white transition-all"
-        />
-        <div className="pointer-events-none absolute left-3 top-[62%] -translate-y-1/2 text-[9px] font-light uppercase tracking-[0.18em] text-white/25">
-          Image
-        </div>
+        {activeInputHandles.includes('image:in') && (
+          <div className="absolute left-0 top-[62%] z-20 flex items-center">
+            <Handle
+              type="target"
+              id="image:in"
+              position={Position.Left}
+              className="!left-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] transition-colors group-hover:!border-white"
+            />
+            <span className="pointer-events-none absolute left-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
+              image
+            </span>
+          </div>
+        )}
 
-        <Handle
-          type="source"
-          id="text:out"
-          position={Position.Right}
-          className="!top-1/2 !w-2 !h-2 !bg-[#121212] !border !border-white/40 !rounded-full !right-[-4px] group-hover:!border-white transition-all"
-        />
+        <div className="absolute right-0 top-1/2 z-20 flex -translate-y-1/2 items-center">
+          <span className="pointer-events-none absolute right-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
+            text.out
+          </span>
+          <Handle
+            type="source"
+            id="text:out"
+            position={Position.Right}
+            className="!right-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] transition-colors group-hover:!border-white"
+          />
+        </div>
 
         <NodeResizeCorner minWidth={320} minHeight={200} />
 

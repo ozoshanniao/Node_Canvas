@@ -44,6 +44,8 @@ image_generation_service = ImageGenerationService(engines)
 llm_service = LLMService(
     yunwu_api_key=os.getenv("YUNWU_API_KEY"),
     google_api_key=os.getenv("GOOGLE_CLOUD_API_KEY"),
+    deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),
+    deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL"),
 )
 
 video_generation_service = VideoGenerationService(

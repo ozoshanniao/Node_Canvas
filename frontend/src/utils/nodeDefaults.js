@@ -41,6 +41,8 @@ const DEFAULT_FIELDS = {
     'model',
     'temperature',
     'maxTokens',
+    'thinking',
+    'reasoningEffort',
     'thinkingLevel',
     ],
 };

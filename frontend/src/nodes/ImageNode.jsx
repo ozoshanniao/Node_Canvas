@@ -351,7 +351,7 @@ export function ImageNode({ id, data }) {
             onClick={() => setShowAdvanced(!showAdvanced)}
             className={`text-xs w-5 h-5 rounded-full flex items-center justify-center cursor-pointer transition-all nodrag ${showAdvanced ? 'bg-white text-black' : 'text-white/40 hover:bg-white/5 hover:text-white'}`}
           >
-            &
+            W
           </span>
           )}
 

@@ -132,7 +132,7 @@ export const splitImageToGrid = async ({
 
       context.drawImage(image, sx, sy, sw, sh, 0, 0, width, height);
 
-      let url = '';
+      let url;
       try {
         const dataUrl = canvas.toDataURL(outputType, quality);
 
@@ -153,7 +153,8 @@ export const splitImageToGrid = async ({
           error: error?.message,
         });
         throw new Error(
-          `Failed to export split image. Canvas may be tainted by a cross-origin image. ${error?.message || ''}`
+          `Failed to export split image. Canvas may be tainted by a cross-origin image. ${error?.message || ''}`,
+          { cause: error }
         );
       }
 

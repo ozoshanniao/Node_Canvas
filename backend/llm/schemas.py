@@ -17,3 +17,5 @@ class LLMGenerateRequest(BaseModel):
     temperature: Optional[float] = 0.85
     maxTokens: Optional[int] = 8192
     thinkingLevel: Optional[str] = None
+    thinking: Optional[str] = None
+    reasoningEffort: Optional[str] = None
