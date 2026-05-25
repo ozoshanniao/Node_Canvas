@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getNodeOmniParamsOutput } from './nodeOutputs.js';
+import { getNodeOmniParamsOutput } from '../nodeOutputs.js';
 
 const makeOmniNode = (data) => ({
   id: 'omni-1',

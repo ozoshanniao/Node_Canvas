@@ -58,6 +58,21 @@ const normalizeRegistry = (registry) => {
 
 const toOption = (id) => ({ id, label: id });
 
+const MODEL_METADATA_KEYS = new Set([
+  'id',
+  'label',
+  'ratios',
+  'resolutions',
+  'output_format',
+  'features',
+  'supports_reference',
+]);
+
+const isExtraParamConfig = (key, value) => {
+  if (key === 'quality' && Array.isArray(value)) return true;
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value) && 'default' in value);
+};
+
 export const getImageProviderOptions = (registry) =>
   Object.keys(normalizeRegistry(registry).providers).map(toOption);
 
@@ -88,6 +103,30 @@ export const getImageModelConfig = (providerId, modelId, registry) => {
         ...config,
       }
     : null;
+};
+
+const getImageExtraParamDefaults = (modelConfig = {}) =>
+  Object.entries(modelConfig).reduce((defaults, [key, value]) => {
+    if (MODEL_METADATA_KEYS.has(key) || !isExtraParamConfig(key, value)) return defaults;
+    if (Array.isArray(value)) {
+      defaults[key] = value[0];
+      return defaults;
+    }
+    defaults[key] = value.default;
+    return defaults;
+  }, {});
+
+const getKnownImageExtraParamKeys = (registry) => {
+  const safeRegistry = normalizeRegistry(registry);
+  const keys = new Set();
+  Object.values(safeRegistry.models || {}).forEach((modelConfig) => {
+    Object.entries(modelConfig || {}).forEach(([key, value]) => {
+      if (!MODEL_METADATA_KEYS.has(key) && isExtraParamConfig(key, value)) {
+        keys.add(key);
+      }
+    });
+  });
+  return [...keys];
 };
 
 export const getImageAspectRatioOptions = (providerId, modelId, registry) =>
@@ -136,6 +175,49 @@ export const normalizeImageGenerationSettings = (settings = {}, registry) => {
     ratio: aspectRatio,
     resolution,
   };
+};
+
+export const getImageModelSwitchPatch = (settings = {}, nextProvider, nextModel, registry) => {
+  const normalized = normalizeImageGenerationSettings(
+    {
+      ...settings,
+      provider: nextProvider,
+      model: nextModel,
+    },
+    registry
+  );
+  const modelConfig = getImageModelConfig(normalized.provider, normalized.model, registry) || {};
+  const extraDefaults = getImageExtraParamDefaults(modelConfig);
+  const patch = {
+    provider: normalized.provider,
+    model: normalized.model,
+    ratio: normalized.aspectRatio,
+    aspectRatio: normalized.aspectRatio,
+    resolution: normalized.resolution,
+  };
+
+  getKnownImageExtraParamKeys(registry).forEach((key) => {
+    if (!(key in extraDefaults)) {
+      patch[key] = undefined;
+      return;
+    }
+    const current = settings[key];
+    const config = modelConfig[key];
+    if (Array.isArray(config)) {
+      patch[key] = config.includes(current) ? current : extraDefaults[key];
+      return;
+    }
+    if (config && typeof config === 'object' && config.type === 'slider') {
+      const number = Number(current);
+      const min = config.min ?? Number.NEGATIVE_INFINITY;
+      const max = config.max ?? Number.POSITIVE_INFINITY;
+      patch[key] = Number.isFinite(number) ? Math.min(Math.max(number, min), max) : extraDefaults[key];
+      return;
+    }
+    patch[key] = current ?? extraDefaults[key];
+  });
+
+  return patch;
 };
 
 export const fetchImageGenerationRegistry = async () => {

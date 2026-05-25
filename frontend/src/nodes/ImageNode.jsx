@@ -12,6 +12,7 @@ import {
   getImageAspectRatioOptions,
   getImageModelConfig,
   getImageModelOptions,
+  getImageModelSwitchPatch,
   getImageProviderOptions,
   getImageResolutionOptions,
   normalizeImageGenerationSettings,
@@ -26,7 +27,7 @@ export function ImageNode({ id, data }) {
 
   const [registry, setRegistry] = useState(null); // 🌟 存储后端 specs
   const [showAdvanced, setShowAdvanced] = useState(false); // 🌟 控制副胶囊显示
-  const [currentIndex, setCurrentIndex] = useState(0); // 🌟 记录当前预览的是第几张图
+  const [currentIndex] = useState(0); // 🌟 记录当前预览的是第几张图
 
   useEffect(() => {
   const fetchSpecs = async () => {
@@ -115,42 +116,17 @@ export function ImageNode({ id, data }) {
 
   // 服务商切换联动
   const handleProviderSelect = (value) => {
-    const nextSettings = normalizeImageGenerationSettings(
-      {
-        ...data,
-        provider: value,
-        model: undefined,
-        ratio: undefined,
-        aspectRatio: undefined,
-        resolution: undefined,
-      },
-      registry
-    );
-    updateNodeData({
-      provider: nextSettings.provider,
-      model: nextSettings.model,
-      ratio: nextSettings.aspectRatio,
-      aspectRatio: nextSettings.aspectRatio,
-      resolution: nextSettings.resolution,
-    });
+    updateNodeData(getImageModelSwitchPatch({
+      ...data,
+      ratio: undefined,
+      aspectRatio: undefined,
+      resolution: undefined,
+    }, value, undefined, registry));
     setActiveMenu(null);
   };
 
   const handleModelSelect = (value) => {
-    const nextSettings = normalizeImageGenerationSettings(
-      {
-        ...data,
-        provider,
-        model: value,
-      },
-      registry
-    );
-    updateNodeData({
-      model: nextSettings.model,
-      ratio: nextSettings.aspectRatio,
-      aspectRatio: nextSettings.aspectRatio,
-      resolution: nextSettings.resolution,
-    });
+    updateNodeData(getImageModelSwitchPatch(data, provider, value, registry));
     setActiveMenu(null);
   };
 
@@ -160,11 +136,6 @@ export function ImageNode({ id, data }) {
   const getFlowingEdgeIds = (edges) =>
     edges
       .filter((edge) => edge.target === id)
-      .map((edge) => edge.id);
-
-  const getRelatedEdgeIds = (edges) =>
-    edges
-      .filter((edge) => edge.target === id || edge.source === id)
       .map((edge) => edge.id);
 
 // 2. 修改 handleRun 函数
@@ -331,6 +302,8 @@ export function ImageNode({ id, data }) {
     if (!data?.runRequestId || lastHandledRunRequestRef.current === data.runRequestId) return;
     lastHandledRunRequestRef.current = data.runRequestId;
     handleRun();
+    // Existing run request bridge intentionally keys off runRequestId only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.runRequestId]);
 
   const rawDisplayUrl = Array.isArray(data.urls) && data.urls.length > 0

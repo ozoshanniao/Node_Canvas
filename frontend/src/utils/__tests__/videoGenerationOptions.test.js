@@ -6,7 +6,7 @@ import {
   isVideoTaskActive,
   normalizeVideoGenerationSettings,
   resolveKlingOmniElements,
-} from './videoGenerationOptions.js';
+} from '../videoGenerationOptions.js';
 
 const dynamicRegistry = structuredClone(VIDEO_GENERATION_REGISTRY);
 dynamicRegistry.providers[0].models[0].params.aspectRatio.options = ['1:1'];

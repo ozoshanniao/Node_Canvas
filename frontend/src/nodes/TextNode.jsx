@@ -62,9 +62,6 @@ export const TextNode = memo(function TextNode({ id, data }) {
   };
 
   const getCaretCoordinates = () => {
-    if (!textareaRef.current) return { x: 0, y: 0 };
-
-    const textarea = textareaRef.current;
     const textBeforeCaret = text.slice(0, autocompletePosition.end);
     const lines = textBeforeCaret.split('\n');
     const currentLine = lines.length - 1;

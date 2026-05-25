@@ -13,6 +13,7 @@ export const NODE_DEFINITIONS = [
     inputs: [{ id: 'text:in', kind: 'text' }],
     outputs: [{ id: 'text:out', kind: 'text' }],
     defaultData: { text: '', variableName: '', autoReceiveText: false },
+    defaultSize: { width: 320, height: 200 },
   },
   {
     type: 'textConstruction',
