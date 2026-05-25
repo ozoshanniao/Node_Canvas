@@ -121,13 +121,13 @@ def public_soft_skills(skills: Iterable[SoftSkill]) -> list[SoftSkillPublic]:
 
 
 def get_enabled_skill_instructions(enabled_skill_ids: list[str] | None, project_path: str | None = None) -> str:
-    skill_ids = [skill_id for skill_id in (enabled_skill_ids or []) if skill_id]
-    if not skill_ids:
+    unique_skill_ids = sorted({skill_id for skill_id in (enabled_skill_ids or []) if skill_id})
+    if not unique_skill_ids:
         return ""
 
     skills = {skill.id: skill for skill in scan_soft_skills(project_path)}
     sections = []
-    for skill_id in skill_ids:
+    for skill_id in unique_skill_ids:
         skill = skills.get(skill_id)
         if not skill:
             raise LLMProviderError(f"Enabled local skill not found: {skill_id}")

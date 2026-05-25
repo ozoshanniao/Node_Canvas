@@ -147,14 +147,24 @@ class SoftSkillsLoaderTest(unittest.TestCase):
 
         self.assertEqual([skill.id for skill in skills], ["valid-skill"])
 
-    def test_get_enabled_instructions_uses_enabled_order(self):
+    def test_get_enabled_instructions_uses_sorted_order(self):
         write_skill(self.global_skills, "first", "# First\n\nOne.")
         write_skill(self.global_skills, "second", "# Second\n\nTwo.")
 
         instructions = loader.get_enabled_skill_instructions(["second", "first"])
 
-        self.assertLess(instructions.index('<skill id="second">'), instructions.index('<skill id="first">'))
+        self.assertLess(instructions.index('<skill id="first">'), instructions.index('<skill id="second">'))
         self.assertIn("Enabled Local Skills:", instructions)
+
+    def test_get_enabled_instructions_deduplicates_skills(self):
+        write_skill(self.global_skills, "beta", "# Beta\n\nBeta skill.")
+        write_skill(self.global_skills, "alpha", "# Alpha\n\nAlpha skill.")
+
+        instructions = loader.get_enabled_skill_instructions(["beta", "alpha", "beta"])
+
+        self.assertEqual(instructions.count('<skill id="alpha">'), 1)
+        self.assertEqual(instructions.count('<skill id="beta">'), 1)
+        self.assertLess(instructions.index('<skill id="alpha">'), instructions.index('<skill id="beta">'))
 
     def test_get_enabled_instructions_errors_for_missing_id(self):
         with self.assertRaisesRegex(LLMProviderError, "Enabled local skill not found: missing"):
