@@ -47,6 +47,10 @@ assert.deepEqual(
   normalizeEnabledSkills(['missing', 'orange-cat-style', 'prompt-refiner'], skills),
   ['orange-cat-style', 'prompt-refiner']
 );
+assert.deepEqual(
+  normalizeEnabledSkills(['prompt-refiner', 'prompt-refiner', '', 12, 'orange-cat-style']),
+  ['prompt-refiner', 'orange-cat-style']
+);
 
 assert.equal(getSkillDisplayName(skills[0]), 'Prompt Refiner');
 assert.equal(getSkillDisplayName({ id: 'fallback-name' }), 'fallback-name');

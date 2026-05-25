@@ -1,5 +1,5 @@
-import { memo, useMemo, useRef } from 'react';
-import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/react';
+import { memo, useEffect, useMemo, useRef } from 'react';
+import { Handle, Position, useEdges, useNodes, useReactFlow, useUpdateNodeInternals } from '@xyflow/react';
 import CustomSelect from '../components/CustomSelect';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { getNodeOmniParamsOutput } from '../utils/nodeOutputs';
@@ -10,6 +10,7 @@ const ROLE_OPTIONS = ['reference', 'first_frame', 'end_frame'];
 export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
   countRender('OmniComposerNode');
   const { setNodes } = useReactFlow();
+  const updateNodeInternals = useUpdateNodeInternals();
   const nodes = useNodes();
   const edges = useEdges();
   const promptRef = useRef(null);
@@ -25,6 +26,10 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
     () => getNodeOmniParamsOutput({ id, type: 'omniComposerNode', data: { ...data, elements } }, edges, nodes),
     [data, edges, elements, id, nodes]
   );
+
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, multiShot, updateNodeInternals]);
 
   const updateData = (patch) => {
     setNodes((nodes) =>
