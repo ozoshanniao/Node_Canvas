@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 import {
   VIDEO_GENERATION_REGISTRY,
+  buildVideoQuickParamLabel,
   fetchVideoGenerationRegistry,
+  getActiveVideoHandlesForMode,
+  getVideoAdvancedParamEntries,
   getVideoModelConfig,
   isVideoTaskActive,
   normalizeVideoGenerationSettings,
   resolveKlingOmniElements,
+  shouldShowVideoCustomParams,
+  shouldShowVideoNegativePrompt,
 } from '../videoGenerationOptions.js';
 
 const dynamicRegistry = structuredClone(VIDEO_GENERATION_REGISTRY);
@@ -44,6 +49,93 @@ for (const providerId of ['kling', 'yunwu-kling']) {
 
 assert.ok(getVideoModelConfig('yunwu', 'veo3.1').params.seed, 'Yunwu Veo seed should remain available');
 assert.ok(getVideoModelConfig('google', 'veo-3.1-generate-001').params.seed, 'Google Veo seed should remain available');
+
+const seedanceProvider = VIDEO_GENERATION_REGISTRY.providers.find((provider) => provider.id === 'seedance_official');
+assert.ok(seedanceProvider, 'Seedance Official provider should be present');
+assert.equal(seedanceProvider.label, 'Seedance', 'Seedance provider label should be concise');
+assert.deepEqual(
+  seedanceProvider.models.map((model) => model.id),
+  ['doubao-seedance-2-0-260128', 'doubao-seedance-2-0-fast-260128'],
+  'Seedance Official models should be present'
+);
+const seedanceModel = getVideoModelConfig('seedance_official', 'doubao-seedance-2-0-260128');
+assert.equal(
+  buildVideoQuickParamLabel({ videoMode: 'frame', aspectRatio: 'adaptive', duration: '5s', resolution: '720p' }, seedanceModel),
+  'I2V · adaptive · 5s · 720p',
+  'Seedance frame mode should display as I2V'
+);
+assert.equal(
+  buildVideoQuickParamLabel({ videoMode: 'multimodal-reference', aspectRatio: 'adaptive', duration: '5s', resolution: '720p' }, seedanceModel),
+  'Reference · adaptive · 5s · 720p',
+  'Seedance multimodal-reference mode should display as Reference'
+);
+assert.deepEqual(
+  getActiveVideoHandlesForMode('frame', seedanceModel, { provider: 'seedance_official', model: seedanceModel.id }),
+  ['text:prompt', 'image:firstFrame', 'image:lastFrame'],
+  'Seedance frame handles should include prompt and first/last frame only'
+);
+assert.deepEqual(
+  getActiveVideoHandlesForMode('multimodal-reference', seedanceModel, { provider: 'seedance_official', model: seedanceModel.id }),
+  ['text:prompt', 'image:references', 'video:references', 'audio:references'],
+  'Seedance multimodal handles should include media reference ports'
+);
+assert.deepEqual(
+  getVideoAdvancedParamEntries(seedanceModel).map(([key]) => key),
+  ['generateAudio', 'returnLastFrame', 'seed'],
+  'Seedance advanced panel should expose only Generate Audio, Return Last Frame, and Seed'
+);
+assert.equal(seedanceModel.params.watermark, undefined, 'Seedance should not expose Watermark in UI params');
+assert.equal(
+  shouldShowVideoNegativePrompt(seedanceModel, { provider: 'seedance_official', model: seedanceModel.id }),
+  false,
+  'Seedance advanced panel should hide Negative Prompt'
+);
+assert.equal(
+  shouldShowVideoCustomParams(
+    seedanceModel,
+    { provider: 'seedance_official', model: seedanceModel.id },
+    { showRawCustomParams: false }
+  ),
+  false,
+  'Seedance advanced panel should hide Custom Params when raw params are disabled'
+);
+assert.equal(
+  shouldShowVideoCustomParams(
+    seedanceModel,
+    { provider: 'seedance_official', model: seedanceModel.id },
+    { showRawCustomParams: true }
+  ),
+  true,
+  'Seedance advanced panel should show Custom Params when raw params are enabled'
+);
+
+const klingV3Model = getVideoModelConfig('kling', 'kling-v3');
+assert.deepEqual(
+  getVideoAdvancedParamEntries(klingV3Model).map(([key]) => key),
+  ['generateAudio', 'shotMode', 'cfgScale'],
+  'Kling V3 advanced params should remain unchanged'
+);
+assert.equal(shouldShowVideoNegativePrompt(klingV3Model, { provider: 'kling', model: 'kling-v3' }), true);
+assert.equal(
+  shouldShowVideoCustomParams(klingV3Model, { provider: 'kling', model: 'kling-v3' }, { showRawCustomParams: true }),
+  true
+);
+
+const googleVeoModel = getVideoModelConfig('google', 'veo-3.1-generate-001');
+assert.deepEqual(
+  getVideoAdvancedParamEntries(googleVeoModel).map(([key]) => key),
+  ['generateAudio', 'seed'],
+  'Veo advanced params should remain unchanged'
+);
+assert.equal(shouldShowVideoNegativePrompt(googleVeoModel, { provider: 'google', model: 'veo-3.1-generate-001' }), true);
+assert.equal(
+  shouldShowVideoCustomParams(
+    googleVeoModel,
+    { provider: 'google', model: 'veo-3.1-generate-001' },
+    { showRawCustomParams: true }
+  ),
+  true
+);
 
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async () => ({

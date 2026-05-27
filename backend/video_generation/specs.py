@@ -6,6 +6,10 @@ COMMON_SEED_PARAM = {
     "default": -1,
 }
 
+SEEDANCE_MODES = ["frame", "multimodal-reference"]
+SEEDANCE_RATIO_OPTIONS = ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
+SEEDANCE_DURATION_OPTIONS = [f"{value}s" for value in range(4, 16)]
+
 YUNWU_VEO_PARAMS = {
     "videoMode": {
         "type": "select",
@@ -99,6 +103,53 @@ KLING_V3_PARAMS = {
         "control": "slider",
     },
 }
+
+
+def seedance_params(resolution_options):
+    return {
+        "videoMode": {
+            "type": "select",
+            "label": "Video Mode",
+            "options": SEEDANCE_MODES,
+            "default": "frame",
+        },
+        "aspectRatio": {
+            "type": "select",
+            "label": "Ratio",
+            "options": SEEDANCE_RATIO_OPTIONS,
+            "default": "adaptive",
+        },
+        "duration": {
+            "type": "select",
+            "label": "Duration",
+            "options": SEEDANCE_DURATION_OPTIONS,
+            "default": "5s",
+        },
+        "durationSeconds": {
+            "type": "number",
+            "label": "Duration Seconds",
+            "min": 4,
+            "max": 15,
+            "default": 5,
+        },
+        "resolution": {
+            "type": "select",
+            "label": "Resolution",
+            "options": resolution_options,
+            "default": "720p",
+        },
+        "generateAudio": {
+            "type": "boolean",
+            "label": "Generate Audio",
+            "default": False,
+        },
+        "returnLastFrame": {
+            "type": "boolean",
+            "label": "Return Last Frame",
+            "default": False,
+        },
+        "seed": COMMON_SEED_PARAM,
+    }
 
 
 def kling_provider(provider_id, label):
@@ -500,6 +551,60 @@ VIDEO_GENERATION_REGISTRY = {
                     },
                     "constraints": {"durationByResolution": {"1080p": "8s"}},
                     "customParams": {},
+                },
+            ],
+        },
+        {
+            "id": "seedance_official",
+            "label": "Seedance",
+            "models": [
+                {
+                    "id": "doubao-seedance-2-0-260128",
+                    "label": "Seedance 2.0",
+                    "family": "seedance",
+                    "adapterKey": "seedance_official",
+                    "supportedModes": SEEDANCE_MODES,
+                    "inputCapabilities": {
+                        "text": True,
+                        "images": True,
+                        "videos": True,
+                        "audios": True,
+                        "firstFrame": True,
+                        "lastFrame": True,
+                        "referenceImages": True,
+                        "referenceVideos": True,
+                        "referenceAudios": True,
+                        "maxImages": 9,
+                        "maxVideos": 3,
+                        "maxAudios": 3,
+                    },
+                    "quickParams": ["videoMode", "aspectRatio", "duration", "resolution"],
+                    "params": seedance_params(["480p", "720p", "1080p"]),
+                    "customParams": {"seedance": {}},
+                },
+                {
+                    "id": "doubao-seedance-2-0-fast-260128",
+                    "label": "Seedance 2.0 Fast",
+                    "family": "seedance",
+                    "adapterKey": "seedance_official",
+                    "supportedModes": SEEDANCE_MODES,
+                    "inputCapabilities": {
+                        "text": True,
+                        "images": True,
+                        "videos": True,
+                        "audios": True,
+                        "firstFrame": True,
+                        "lastFrame": True,
+                        "referenceImages": True,
+                        "referenceVideos": True,
+                        "referenceAudios": True,
+                        "maxImages": 9,
+                        "maxVideos": 3,
+                        "maxAudios": 3,
+                    },
+                    "quickParams": ["videoMode", "aspectRatio", "duration", "resolution"],
+                    "params": seedance_params(["480p", "720p"]),
+                    "customParams": {"seedance": {}},
                 },
             ],
         },

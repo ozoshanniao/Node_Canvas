@@ -6,6 +6,7 @@ from typing import Any
 from video_generation.providers.yunwu_veo_provider import YunwuVeoProvider
 from video_generation.providers.google_veo_provider import GoogleVeoProvider
 from video_generation.providers.kling import KlingVideoProvider
+from video_generation.providers.seedance_official import SeedanceOfficialProvider
 from video_generation.schemas import VideoGenerateRequest, VideoTask
 from video_generation.specs import get_video_model_specs
 from video_generation.storage import download_video_to_project
@@ -32,6 +33,7 @@ class VideoGenerationService:
         self.providers = {
             "yunwu": YunwuVeoProvider(api_key=yunwu_api_key),
             "google": GoogleVeoProvider(),
+            "seedance_official": SeedanceOfficialProvider(),
             "kling": KlingVideoProvider(provider_type="kling"),
             "yunwu-kling": KlingVideoProvider(provider_type="yunwu-kling"),
         }
@@ -127,6 +129,7 @@ class VideoGenerationService:
             "google": "Google",
             "kling": "Kling",
             "yunwu-kling": "Yunwu-Kling",
+            "seedance_official": "Seedance",
             "yunwu": "Yunwu",
         }.get(provider_id or "", provider_id or "Provider")
 
@@ -136,7 +139,7 @@ class VideoGenerationService:
             message = str(response.get("message") or status)
             remote_url = response.get("remoteVideoUrl")
             label = self._provider_label(provider_id)
-            known_prefixes = ("Google:", "Kling:", "Yunwu-Kling:", "Yunwu:")
+            known_prefixes = ("Google:", "Kling:", "Yunwu-Kling:", "Seedance:", "Yunwu:")
             if status == "error" and not message.startswith(known_prefixes):
                 message = f"{label}: {message}"
             return status, message, remote_url

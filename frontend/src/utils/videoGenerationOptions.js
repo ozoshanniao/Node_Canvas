@@ -1,4 +1,7 @@
 const VIDEO_MODE_IDS = ['text-to-video', 'image-to-video', 'reference-video'];
+const SEEDANCE_MODE_IDS = ['frame', 'multimodal-reference'];
+const SEEDANCE_RATIO_OPTIONS = ['adaptive', '21:9', '16:9', '4:3', '1:1', '3:4', '9:16'];
+const SEEDANCE_DURATION_OPTIONS = Array.from({ length: 12 }, (_, index) => `${index + 4}s`);
 
 const COMMON_SEED_PARAM = {
   type: 'number',
@@ -145,6 +148,51 @@ const KLING_V3_PARAMS = {
     control: 'slider',
   },
 };
+
+const getSeedanceParams = (resolutionOptions) => ({
+  videoMode: {
+    type: 'select',
+    label: 'Video Mode',
+    options: SEEDANCE_MODE_IDS,
+    default: 'frame',
+  },
+  aspectRatio: {
+    type: 'select',
+    label: 'Ratio',
+    options: SEEDANCE_RATIO_OPTIONS,
+    default: 'adaptive',
+  },
+  duration: {
+    type: 'select',
+    label: 'Duration',
+    options: SEEDANCE_DURATION_OPTIONS,
+    default: '5s',
+  },
+  durationSeconds: {
+    type: 'number',
+    label: 'Duration Seconds',
+    min: 4,
+    max: 15,
+    default: 5,
+  },
+  resolution: {
+    type: 'select',
+    label: 'Resolution',
+    options: resolutionOptions,
+    default: '720p',
+  },
+  generateAudio: {
+    type: 'boolean',
+    label: 'Generate Audio',
+    default: false,
+  },
+  returnLastFrame: {
+    type: 'boolean',
+    label: 'Return Last Frame',
+    default: false,
+  },
+  seed: COMMON_SEED_PARAM,
+});
 
 const createKlingProvider = (id, label) => {
   const standardModes = ['text-to-video', 'image-to-video'];
@@ -439,6 +487,60 @@ export const VIDEO_GENERATION_REGISTRY = {
         },
       ],
     },
+    {
+      id: 'seedance_official',
+      label: 'Seedance',
+      models: [
+        {
+          id: 'doubao-seedance-2-0-260128',
+          label: 'Seedance 2.0',
+          family: 'seedance',
+          adapterKey: 'seedance_official',
+          supportedModes: SEEDANCE_MODE_IDS,
+          inputCapabilities: {
+            text: true,
+            images: true,
+            videos: true,
+            audios: true,
+            firstFrame: true,
+            lastFrame: true,
+            referenceImages: true,
+            referenceVideos: true,
+            referenceAudios: true,
+            maxImages: 9,
+            maxVideos: 3,
+            maxAudios: 3,
+          },
+          quickParams: ['videoMode', 'aspectRatio', 'duration', 'resolution'],
+          params: getSeedanceParams(['480p', '720p', '1080p']),
+          customParams: { seedance: {} },
+        },
+        {
+          id: 'doubao-seedance-2-0-fast-260128',
+          label: 'Seedance 2.0 Fast',
+          family: 'seedance',
+          adapterKey: 'seedance_official',
+          supportedModes: SEEDANCE_MODE_IDS,
+          inputCapabilities: {
+            text: true,
+            images: true,
+            videos: true,
+            audios: true,
+            firstFrame: true,
+            lastFrame: true,
+            referenceImages: true,
+            referenceVideos: true,
+            referenceAudios: true,
+            maxImages: 9,
+            maxVideos: 3,
+            maxAudios: 3,
+          },
+          quickParams: ['videoMode', 'aspectRatio', 'duration', 'resolution'],
+          params: getSeedanceParams(['480p', '720p']),
+          customParams: { seedance: {} },
+        },
+      ],
+    },
     createKlingProvider('kling', 'Kling'),
     createKlingProvider('yunwu-kling', 'Yunwu Kling'),
   ],
@@ -448,6 +550,8 @@ export const VIDEO_MODE_OPTIONS = [
   { id: 'text-to-video', label: 'Text to Video', shortLabel: 'T2V' },
   { id: 'image-to-video', label: 'Image to Video', shortLabel: 'I2V' },
   { id: 'reference-video', label: 'Reference Video', shortLabel: 'REF' },
+  { id: 'frame', label: 'I2V', shortLabel: 'I2V' },
+  { id: 'multimodal-reference', label: 'Reference', shortLabel: 'Reference' },
 ];
 
 export const DEFAULT_VIDEO_GENERATION_SETTINGS = {
@@ -464,6 +568,7 @@ export const DEFAULT_VIDEO_GENERATION_SETTINGS = {
   seed: -1,
   numberOfVideos: 1,
   generateAudio: false,
+  returnLastFrame: false,
   enhancePrompt: true,
   autoFix: false,
   cameraMotion: 'static',
@@ -668,9 +773,36 @@ export const isKlingOmniModel = (settingsOrModelConfig = {}) => {
   return modelId === 'kling-v3-omni' && (!family || family === 'kling');
 };
 
+export const isSeedanceModel = (settingsOrModelConfig = {}) => {
+  const provider = settingsOrModelConfig?.provider || settingsOrModelConfig?.adapterKey;
+  const family = settingsOrModelConfig?.family;
+  const modelId = settingsOrModelConfig?.id || settingsOrModelConfig?.model;
+  return family === 'seedance' || provider === 'seedance_official' || String(modelId || '').startsWith('doubao-seedance-2-0');
+};
+
+export const VIDEO_ADVANCED_PARAM_KEYS = ['generateAudio', 'returnLastFrame', 'seed', 'shotMode', 'cfgScale'];
+
+export const getVideoAdvancedParamEntries = (modelConfig = {}) =>
+  VIDEO_ADVANCED_PARAM_KEYS
+    .filter((key) => modelConfig.params?.[key])
+    .map((key) => [key, modelConfig.params[key]]);
+
+export const shouldShowVideoNegativePrompt = (modelConfig = {}, settings = {}) =>
+  !(isSeedanceModel(modelConfig) || isSeedanceModel(settings));
+
+export const shouldShowVideoCustomParams = (_modelConfig = {}, _settings = {}, appSettings = {}) =>
+  Boolean(appSettings?.showRawCustomParams);
+
 export const getActiveVideoHandlesForMode = (mode, modelConfig, settings = {}) => {
   if (isKlingOmniModel(modelConfig) || isKlingOmniModel(settings)) {
     return ['omniParams:in'];
+  }
+  if (isSeedanceModel(modelConfig) || isSeedanceModel(settings)) {
+    if (mode === 'frame') return ['text:prompt', 'image:firstFrame', 'image:lastFrame'];
+    if (mode === 'multimodal-reference') {
+      return ['text:prompt', 'image:references', 'video:references', 'audio:references'];
+    }
+    return ['text:prompt'];
   }
   const nextSettings = { ...settings, videoMode: mode };
   const shotMode = supportsKlingMultiShot(modelConfig) ? getKlingShotMode(nextSettings) : 'single';

@@ -100,6 +100,54 @@ export const getNodeImageOutput = (node, sourceHandle, edge, nodes = [], edges =
   return [];
 };
 
+export const getNodeVideoOutput = (node, sourceHandle, edge, nodes = [], edges = [], visited = new Set()) => {
+  if (!node) return [];
+  if (visited.has(node.id)) return [];
+
+  if (node.type === 'videoNode') {
+    const outputs = node.data?.outputs || {};
+    const candidates = [
+      outputs.videoUrl,
+      outputs.remoteVideoUrl,
+      node.data?.videoUrl,
+      node.data?.remoteVideoUrl,
+      node.data?.localVideoUrl,
+      node.data?.url,
+    ];
+    return candidates.filter(Boolean).slice(0, 1);
+  }
+
+  if (node.type === 'routeNode') {
+    const nextVisited = new Set(visited);
+    nextVisited.add(node.id);
+    const nodeMap = new Map(nodes.map((item) => [item.id, item]));
+    const videoInputEdges = edges.filter(
+      (inputEdge) => inputEdge.target === node.id && (inputEdge.targetHandle ?? inputEdge.targetHandleId) === 'video:in'
+    );
+
+    return videoInputEdges
+      .flatMap((inputEdge) =>
+        getNodeVideoOutput(nodeMap.get(inputEdge.source), inputEdge.sourceHandle, inputEdge, nodes, edges, nextVisited)
+      )
+      .filter(Boolean);
+  }
+
+  return [];
+};
+
+export const getNodeAudioOutput = (node) => {
+  if (!node) return [];
+
+  const outputs = node.data?.outputs || {};
+  const mayBeAudioNode = String(node.type || '').toLowerCase().includes('audio');
+  const candidates = [
+    outputs.audioUrl,
+    node.data?.audioUrl,
+    mayBeAudioNode ? node.data?.url : null,
+  ];
+  return candidates.filter(Boolean).slice(0, 1);
+};
+
 export const getNodeMultiPromptOutput = (node) => {
   if (!node || node.type !== 'shotListNode') {
     return {

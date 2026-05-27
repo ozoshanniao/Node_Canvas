@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { getNodeOmniParamsOutput } from '../nodeOutputs.js';
+import { getNodeAudioOutput, getNodeOmniParamsOutput, getNodeVideoOutput } from '../nodeOutputs.js';
+import { normalizeImageInputEdgeLabels } from '../edgeLabels.js';
 
 const makeOmniNode = (data) => ({
   id: 'omni-1',
@@ -21,6 +22,32 @@ const imageEdge = {
   target: 'omni-1',
   targetHandle: 'image:references',
 };
+
+{
+  const edges = normalizeImageInputEdgeLabels([
+    { id: 'v1', source: 'video-a', target: 'seedance', targetHandle: 'video:references', data: {} },
+    { id: 'v2', source: 'video-b', target: 'seedance', targetHandle: 'video:references', data: {} },
+    { id: 'a1', source: 'audio-a', target: 'seedance', targetHandle: 'audio:references', data: {} },
+  ]);
+  assert.equal(edges[0].data.kind, 'video');
+  assert.equal(edges[0].data.videoIndex, 0);
+  assert.equal(edges[0].data.inputLabel, 'video1');
+  assert.equal(edges[1].data.videoIndex, 1);
+  assert.equal(edges[1].data.inputLabel, 'video2');
+  assert.equal(edges[2].data.kind, 'audio');
+  assert.equal(edges[2].data.audioIndex, 0);
+  assert.equal(edges[2].data.inputLabel, 'audio1');
+}
+
+{
+  const videoOutput = getNodeVideoOutput({
+    id: 'video-1',
+    type: 'videoNode',
+    data: { outputs: { videoUrl: '/api/video/generated.mp4' } },
+  });
+  assert.deepEqual(videoOutput, ['/api/video/generated.mp4']);
+  assert.deepEqual(getNodeAudioOutput({ id: 'empty', type: 'imageNode', data: {} }), []);
+}
 
 {
   const output = getNodeOmniParamsOutput(
