@@ -198,6 +198,119 @@ Advanced video generation powered by Kling AI:
 
 ---
 
+## Public Asset Storage (R2 / TOS Configuration)
+
+The platform supports uploading local media assets to a publicly accessible object storage service (Cloudflare R2 or Volcengine TOS). This enables external services like the official Seedance API to read and fetch input assets. This feature acts as a temporary public transit point and is not intended for "permanent public" storage.
+
+### 1. Background & Mechanism
+When the official Seedance API cannot directly read local private files, Node-AI-Canvas will upload the assets to a public object storage bucket first, and then pass the generated public URL to Seedance.
+
+### 2. Complete Data & Configuration Flow
+```text
+Settings UI
+→ appSettings.publicAssetStorage
+→ VideoNode payload.publicAssetStorage
+→ backend VideoGenerateRequest.publicAssetStorage
+→ VideoGenerationService
+→ SeedanceOfficialProvider
+→ seedance_official/assets.py
+→ PublicAssetService.ensure_public_url(..., storage_provider=...)
+→ R2PublicAssetBackend / TOSPublicAssetBackend
+→ Publicly Accessible Asset URL
+→ Seedance Official API
+```
+
+### 3. Frontend Settings
+The Frontend Settings UI offers three public asset storage configurations:
+- **Backend .env Default**: Does not override backend configurations; uses the default `PUBLIC_ASSET_STORAGE` specified in `backend/.env`.
+- **Cloudflare R2**: Forces the current video generation task to use Cloudflare R2 for asset storage.
+- **Volcengine TOS**: Forces the current video generation task to use Volcengine TOS for asset storage.
+
+> [!IMPORTANT]
+> **Security by Design**: The frontend never saves, displays, or transmits any cloud storage credentials (such as Access Keys, Secret Keys, Tokens, etc.). All credentials (Access Key ID, Secret Access Key, Bucket, Endpoint, and Public Domain) must be configured securely on the backend in `backend/.env`.
+
+### 4. Optimized Transmission & Scope of Impact
+- **Scope of Impact**: The `publicAssetStorage` setting only affects assets that must be resolved to a public URL. It **does not affect** the following existing flows:
+  - Small images optimized using the `Base64-first` rule.
+  - Small audio files optimized using the `Base64-first` rule.
+  - Last-frame (`lastFrame`) download logic.
+  - Existing Kling or Yunwu Kling generation flows.
+
+- **Base64-first Rules**:
+  - **Images**: If a single original image is `<= 10MB` and the total size of all input images is `<= 40MB`, the system will prioritize converting them into Base64 strings embedded directly in the API payload, avoiding any cloud storage uploads.
+  - **Audio**: If the audio is in `wav`/`mp3` format and the file size is `<= 15MB`, it will be converted into a Base64 string directly inside the payload.
+  - **Video Reference**: Since video references are typically large and do not support Base64 transmission, they **will always trigger public asset storage** (R2 or TOS) to obtain a public URL.
+
+### 5. Cloud Storage Parameters & Permission Requirements
+
+#### Volcengine TOS Parameter Details
+- **`VOLCENGINE_TOS_ENDPOINT`**: Used for backend S3-compatible PUT uploads. Recommended for Beijing region: `tos-s3-cn-beijing.volces.com`.
+- **`VOLCENGINE_TOS_PUBLIC_DOMAIN`**: Used to build the public URL passed to Seedance. You can use the Bucket public domain, e.g., `https://node-canvas-seedance.tos-cn-beijing.volces.com`.
+  > [!WARNING]
+  > **Note**: Do not call the Bucket public domain a CDN domain unless a CDN or custom acceleration domain is explicitly bound in the Volcengine console.
+
+#### Permission Requirements
+- The Bucket **must be configured as "Public-Read" (Public Read)**, otherwise external services like Seedance will not be able to download the assets.
+- **"Public-Read-Write" is strictly prohibited** for security reasons to prevent unauthorized write access or resource exhaustion.
+- **Recommended Permission Model**: Public Read / Private Write.
+
+#### Lifecycle Rules Recommendations
+It is highly recommended to configure a lifecycle rule in your cloud console (TOS / R2) to automatically clean up expired assets and avoid unnecessary costs:
+- **Prefix Filter**: Limit the rule strictly to `node-canvas/seedance-input/`.
+- **Cleanup Rule**: Automatically delete files `5` days after their last modified date.
+  > [!CAUTION]
+  > Do not configure a global deletion rule on the entire Bucket to avoid accidentally deleting other persistent files.
+
+### 6. Backend Configuration Example (`backend/.env`)
+
+#### Cloudflare R2 Configuration Example
+```env
+PUBLIC_ASSET_STORAGE=r2
+PUBLIC_ASSET_PREFIX=node-canvas/seedance-input/
+PUBLIC_ASSET_RETENTION_DAYS=5
+PUBLIC_ASSET_CACHE_TTL_DAYS=4
+
+CLOUDFLARE_R2_ACCOUNT_ID=your-account-id
+CLOUDFLARE_R2_ACCESS_KEY_ID=your-access-key-id
+CLOUDFLARE_R2_SECRET_ACCESS_KEY=your-secret-access-key
+CLOUDFLARE_R2_BUCKET_NAME=node-canvas-seedance
+CLOUDFLARE_R2_PUBLIC_DOMAIN=https://your-public-domain.example.com
+CLOUDFLARE_R2_ENDPOINT=
+```
+
+#### Volcengine TOS Configuration Example
+```env
+PUBLIC_ASSET_STORAGE=tos
+PUBLIC_ASSET_PREFIX=node-canvas/seedance-input/
+PUBLIC_ASSET_RETENTION_DAYS=5
+PUBLIC_ASSET_CACHE_TTL_DAYS=4
+
+VOLCENGINE_TOS_ACCESS_KEY_ID=your-access-key-id
+VOLCENGINE_TOS_SECRET_ACCESS_KEY=your-secret-access-key
+VOLCENGINE_TOS_BUCKET_NAME=node-canvas-seedance
+VOLCENGINE_TOS_REGION=cn-beijing
+VOLCENGINE_TOS_ENDPOINT=tos-s3-cn-beijing.volces.com
+VOLCENGINE_TOS_PUBLIC_DOMAIN=https://node-canvas-seedance.tos-cn-beijing.volces.com
+```
+
+### 7. Recommended Testing Sequence & Smoke Test Guide
+
+To ensure a smooth integration launch, please follow these progressive testing steps:
+
+1. **Local Regression Tests**:
+   Run the local backend unit tests to ensure that the core existing workflows function without any regressions. No actual assets will be uploaded.
+2. **Object Storage Smoke Test**:
+   Upload a very small local `.txt` file using the storage backend. Verify that the public URL is correctly generated and returns `HTTP 200` with the correct content when queried via a browser or GET request tool.
+3. **Seedance Service Smoke Test**:
+   Once storage uploads are verified, perform a real Seedance generation test.
+   * **Recommended Parameters**:
+     * **Model**: Fast
+     * **Resolution**: 480p
+     * **Duration**: 4s
+     * **Trigger**: Attach a video reference or upload an image `> 10MB` in the `VideoNode` to force the workflow through `PublicAssetService`.
+
+---
+
 ## Testing
 
 Keep the codebase robust by running tests before committing changes.
