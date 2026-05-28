@@ -51,6 +51,14 @@ class SeedanceOfficialProvider(BaseVideoProvider):
         params = request.customParams.get("seedance") if isinstance(request.customParams, dict) else None
         return params if isinstance(params, dict) else {}
 
+    def _public_asset_storage(self, request: VideoGenerateRequest) -> str | None:
+        storage = (request.publicAssetStorage or "").strip().lower()
+        if not storage:
+            return None
+        if storage not in {"r2", "tos"}:
+            raise ValueError(f"Unsupported publicAssetStorage: {request.publicAssetStorage}")
+        return storage
+
     async def _resolve_request_assets(self, request: VideoGenerateRequest) -> VideoGenerateRequest:
         params = self._seedance_params(request)
         mode = params.get("mode") or request.videoMode
@@ -59,6 +67,7 @@ class SeedanceOfficialProvider(BaseVideoProvider):
         project_path = request.projectPath
         config = seedance_asset_config_from_env()
         image_state = {"image_base64_total_bytes": 0}
+        storage_provider = self._public_asset_storage(request)
 
         if mode == "frame":
             first_frame = params.get("firstFrame") or (request.images[0] if request.images else None)
@@ -70,6 +79,7 @@ class SeedanceOfficialProvider(BaseVideoProvider):
                     project_root=project_path,
                     base64_state=image_state,
                     config=config,
+                    storage_provider=storage_provider,
                 )
             if last_frame:
                 seedance_params["lastFrame"] = await resolve_seedance_image_asset(
@@ -78,6 +88,7 @@ class SeedanceOfficialProvider(BaseVideoProvider):
                     project_root=project_path,
                     base64_state=image_state,
                     config=config,
+                    storage_provider=storage_provider,
                 )
             return request.model_copy(update={"customParams": custom_params})
 
@@ -100,11 +111,16 @@ class SeedanceOfficialProvider(BaseVideoProvider):
                 project_root=project_path,
                 base64_state=image_state,
                 config=config,
+                storage_provider=storage_provider,
             )
             for image in images
         ]
         seedance_params["videos"] = [
-            await self.payload_builder.public_assets.ensure_public_url(video, project_path)
+            await self.payload_builder.public_assets.ensure_public_url(
+                video,
+                project_path,
+                storage_provider=storage_provider,
+            )
             for video in videos
         ]
         seedance_params["audios"] = [
@@ -113,6 +129,7 @@ class SeedanceOfficialProvider(BaseVideoProvider):
                 public_asset_service=self.payload_builder.public_assets,
                 project_root=project_path,
                 config=config,
+                storage_provider=storage_provider,
             )
             for audio in audios
         ]

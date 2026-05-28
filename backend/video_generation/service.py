@@ -60,6 +60,10 @@ class VideoGenerationService:
         if request.provider == "yunwu" and request.videoMode == "reference-video" and request.model != "veo3.1-components":
             raise ValueError("reference-video requires veo3.1-components")
 
+    def _normalize_public_asset_storage(self, value: str | None) -> str | None:
+        storage = (value or "").strip().lower()
+        return storage or None
+
     def _extract_provider_task_id(self, response: dict[str, Any]) -> str:
         data = response.get("data") if isinstance(response.get("data"), dict) else response
         for key in ("providerTaskId", "id", "task_id", "taskId", "video_id", "videoId", "name"):
@@ -211,6 +215,7 @@ class VideoGenerationService:
         now = int(time.time())
         task_id = f"video_{uuid.uuid4().hex[:12]}"
         request.projectPath = project_path
+        request.publicAssetStorage = self._normalize_public_asset_storage(request.publicAssetStorage)
         provider_response = await provider.create_task(request)
         provider_task_id = self._extract_provider_task_id(provider_response)
         provider_status = provider_response.get("status") if isinstance(provider_response, dict) else None

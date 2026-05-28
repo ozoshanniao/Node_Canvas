@@ -127,6 +127,7 @@ async def resolve_seedance_image_asset(
     project_root: str | None,
     base64_state: dict,
     config: SeedanceAssetConfig | None = None,
+    storage_provider: str | None = None,
 ) -> str:
     value = _asset_value(asset).strip()
     if not value:
@@ -136,26 +137,26 @@ async def resolve_seedance_image_asset(
 
     config = config or seedance_asset_config_from_env()
     if config.image_transfer != "base64-first":
-        return await public_asset_service.ensure_public_url(value, project_root)
+        return await public_asset_service.ensure_public_url(value, project_root, storage_provider=storage_provider)
 
     path = _local_project_file(value, project_root)
     if not path:
-        return await public_asset_service.ensure_public_url(value, project_root)
+        return await public_asset_service.ensure_public_url(value, project_root, storage_provider=storage_provider)
 
     mime_type = IMAGE_MIME_BY_EXT.get(path.suffix.lower())
     if not mime_type:
-        return await public_asset_service.ensure_public_url(value, project_root)
+        return await public_asset_service.ensure_public_url(value, project_root, storage_provider=storage_provider)
 
     try:
         size = path.stat().st_size
         current_total = int(base64_state.get("image_base64_total_bytes") or 0)
         if size > config.image_base64_max_bytes or current_total + size > config.image_base64_total_max_bytes:
-            return await public_asset_service.ensure_public_url(value, project_root)
+            return await public_asset_service.ensure_public_url(value, project_root, storage_provider=storage_provider)
         result = _data_url(path, mime_type)
         base64_state["image_base64_total_bytes"] = current_total + size
         return result
     except Exception:
-        return await public_asset_service.ensure_public_url(value, project_root)
+        return await public_asset_service.ensure_public_url(value, project_root, storage_provider=storage_provider)
 
 
 async def resolve_seedance_audio_asset(
@@ -164,6 +165,7 @@ async def resolve_seedance_audio_asset(
     public_asset_service,
     project_root: str | None,
     config: SeedanceAssetConfig | None = None,
+    storage_provider: str | None = None,
 ) -> str:
     value = _asset_value(asset).strip()
     if not value:
@@ -179,10 +181,10 @@ async def resolve_seedance_audio_asset(
     config = config or seedance_asset_config_from_env()
 
     if config.audio_transfer != "base64-first":
-        return await public_asset_service.ensure_public_url(value, project_root)
+        return await public_asset_service.ensure_public_url(value, project_root, storage_provider=storage_provider)
 
     if not path:
-        return await public_asset_service.ensure_public_url(value, project_root)
+        return await public_asset_service.ensure_public_url(value, project_root, storage_provider=storage_provider)
 
     size = path.stat().st_size
     if size > config.audio_base64_max_bytes:
@@ -191,4 +193,4 @@ async def resolve_seedance_audio_asset(
     try:
         return _data_url(path, mime_type)
     except Exception:
-        return await public_asset_service.ensure_public_url(value, project_root)
+        return await public_asset_service.ensure_public_url(value, project_root, storage_provider=storage_provider)

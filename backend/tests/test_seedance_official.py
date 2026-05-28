@@ -21,7 +21,7 @@ def run(coro):
 
 
 class PassthroughPublicAssets:
-    async def ensure_public_url(self, value, project_path=None):
+    async def ensure_public_url(self, value, project_path=None, storage_provider=None):
         return f"https://public.test/{Path(str(value)).name}"
 
 
@@ -42,8 +42,12 @@ class RecordingPublicAssets:
     def __init__(self):
         self.calls = []
 
-    async def ensure_public_url(self, value, project_path=None):
-        self.calls.append((value, project_path))
+    async def ensure_public_url(self, value, project_path=None, storage_provider=None):
+        self.calls.append({
+            "value": value,
+            "project_path": project_path,
+            "storage_provider": storage_provider,
+        })
         return f"https://r2.test/{Path(str(value)).name}"
 
 
@@ -226,7 +230,7 @@ class SeedanceAssetResolutionTest(unittest.TestCase):
         )
         return provider, client, public_assets
 
-    def _request(self, project_path, seedance, prompt="Prompt"):
+    def _request(self, project_path, seedance, prompt="Prompt", public_asset_storage=None):
         return VideoGenerateRequest(
             provider="seedance_official",
             model="doubao-seedance-2-0-260128",
@@ -234,6 +238,7 @@ class SeedanceAssetResolutionTest(unittest.TestCase):
             prompt=prompt,
             customParams={"seedance": seedance},
             projectPath=project_path,
+            publicAssetStorage=public_asset_storage,
         )
 
     def test_local_small_png_frame_uses_base64_without_r2(self):
@@ -272,6 +277,43 @@ class SeedanceAssetResolutionTest(unittest.TestCase):
         url = client.payloads[0]["content"][1]["image_url"]["url"]
         self.assertTrue(url.startswith("https://r2.test/"))
         self.assertEqual(len(public_assets.calls), 1)
+
+    def test_public_asset_storage_tos_is_passed_to_image_fallback(self):
+        provider, client, public_assets = self._provider()
+
+        with patch.object(seedance_assets, "_local_project_file", return_value=FakeLocalPath(".png", size=(10 * 1024 * 1024) + 1)):
+            run(provider.create_task(self._request(
+                "/project",
+                {"mode": "frame", "firstFrame": "input/large.png"},
+                public_asset_storage="tos",
+            )))
+
+        self.assertTrue(client.payloads[0]["content"][1]["image_url"]["url"].startswith("https://r2.test/"))
+        self.assertEqual(public_assets.calls[0]["storage_provider"], "tos")
+
+    def test_public_asset_storage_r2_is_passed_to_image_fallback(self):
+        provider, _client, public_assets = self._provider()
+
+        with patch.object(seedance_assets, "_local_project_file", return_value=FakeLocalPath(".png", size=(10 * 1024 * 1024) + 1)):
+            run(provider.create_task(self._request(
+                "/project",
+                {"mode": "frame", "firstFrame": "input/large.png"},
+                public_asset_storage="r2",
+            )))
+
+        self.assertEqual(public_assets.calls[0]["storage_provider"], "r2")
+
+    def test_public_asset_storage_empty_uses_env_default(self):
+        provider, _client, public_assets = self._provider()
+
+        with patch.object(seedance_assets, "_local_project_file", return_value=FakeLocalPath(".png", size=(10 * 1024 * 1024) + 1)):
+            run(provider.create_task(self._request(
+                "/project",
+                {"mode": "frame", "firstFrame": "input/large.png"},
+                public_asset_storage="",
+            )))
+
+        self.assertIsNone(public_assets.calls[0]["storage_provider"])
 
     def test_image_total_limit_falls_back_after_threshold(self):
         images = [f"input/{index}.png" for index in range(1, 6)]
@@ -317,6 +359,19 @@ class SeedanceAssetResolutionTest(unittest.TestCase):
         self.assertTrue(client.payloads[0]["content"][1]["image_url"]["url"].startswith("https://r2.test/"))
         self.assertEqual(len(public_assets.calls), 1)
 
+    def test_small_image_base64_ignores_public_asset_storage(self):
+        provider, client, public_assets = self._provider()
+
+        with patch.object(seedance_assets, "_local_project_file", return_value=FakeLocalPath(".png", data=b"\x89PNG\r\n\x1a\nsmall")):
+            run(provider.create_task(self._request(
+                "/project",
+                {"mode": "frame", "firstFrame": "input/first.png"},
+                public_asset_storage="tos",
+            )))
+
+        self.assertTrue(client.payloads[0]["content"][1]["image_url"]["url"].startswith("data:image/png;base64,"))
+        self.assertEqual(public_assets.calls, [])
+
     def test_local_mp3_and_wav_audio_use_base64(self):
         provider, client, _public_assets = self._provider()
         local_files = {
@@ -339,6 +394,28 @@ class SeedanceAssetResolutionTest(unittest.TestCase):
         ]
         self.assertTrue(urls[0].startswith("data:audio/mpeg;base64,"))
         self.assertTrue(urls[1].startswith("data:audio/wav;base64,"))
+
+    def test_small_audio_base64_ignores_public_asset_storage(self):
+        provider, client, public_assets = self._provider()
+        local_files = {
+            "input/ref.png": FakeLocalPath(".png", data=b"image"),
+            "input/a.mp3": FakeLocalPath(".mp3", data=b"mp3"),
+        }
+
+        with patch.object(seedance_assets, "_local_project_file", side_effect=lambda value, _project: local_files[value]):
+            run(provider.create_task(self._request(
+                "/project",
+                {
+                    "mode": "multimodal-reference",
+                    "images": ["input/ref.png"],
+                    "audios": ["input/a.mp3"],
+                },
+                public_asset_storage="tos",
+            )))
+
+        audio = [item for item in client.payloads[0]["content"] if item.get("role") == "reference_audio"][0]
+        self.assertTrue(audio["audio_url"]["url"].startswith("data:audio/mpeg;base64,"))
+        self.assertEqual(public_assets.calls, [])
 
     def test_http_audio_url_is_preserved_when_wav_or_mp3(self):
         provider, client, public_assets = self._provider()
@@ -407,6 +484,35 @@ class SeedanceAssetResolutionTest(unittest.TestCase):
         self.assertTrue(video["video_url"]["url"].startswith("https://r2.test/"))
         self.assertFalse(video["video_url"]["url"].startswith("data:"))
         self.assertEqual(len(public_assets.calls), 1)
+
+    def test_video_reference_passes_public_asset_storage(self):
+        provider, client, public_assets = self._provider()
+
+        run(provider.create_task(self._request(
+            "/project",
+            {
+                "mode": "multimodal-reference",
+                "videos": ["generation/videos/a.mp4"],
+            },
+            public_asset_storage="tos",
+        )))
+
+        video = [item for item in client.payloads[0]["content"] if item.get("role") == "reference_video"][0]
+        self.assertEqual(video["video_url"]["url"], "https://r2.test/a.mp4")
+        self.assertEqual(public_assets.calls[0]["storage_provider"], "tos")
+
+    def test_invalid_public_asset_storage_errors_before_submit(self):
+        provider, _client, _public_assets = self._provider()
+
+        with self.assertRaisesRegex(ValueError, "Unsupported publicAssetStorage"):
+            run(provider.create_task(self._request(
+                "/project",
+                {
+                    "mode": "multimodal-reference",
+                    "videos": ["generation/videos/a.mp4"],
+                },
+                public_asset_storage="s3",
+            )))
 
 
 class PublicAssetServiceTest(unittest.TestCase):
