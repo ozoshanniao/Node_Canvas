@@ -7,7 +7,7 @@
     "dev": "concurrently \"vite --port 5174\" \"cd ../backend && python main.py\"",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node src/utils/__tests__/videoGenerationOptions.test.js && node src/utils/__tests__/appSettings.test.js && node src/utils/__tests__/nodeOutputs.test.js && node src/utils/__tests__/nodeDefinitions.test.js && node src/utils/__tests__/textVariables.test.js && node src/utils/__tests__/audioWaveform.test.js && node src/utils/__tests__/imageGenerationOptions.test.js && node src/utils/__tests__/llmModels.test.js && node src/utils/__tests__/llmSkills.test.js",
+    "test": "node src/utils/__tests__/videoGenerationOptions.test.js && node src/utils/__tests__/appSettings.test.js && node src/utils/__tests__/nodeOutputs.test.js && node src/utils/__tests__/nodeDefinitions.test.js && node src/utils/__tests__/textVariables.test.js && node src/utils/__tests__/audioWaveform.test.js && node src/utils/__tests__/imageGenerationOptions.test.js && node src/utils/__tests__/llmModels.test.js && node src/utils/__tests__/llmSkills.test.js && node src/utils/__tests__/outputImages.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

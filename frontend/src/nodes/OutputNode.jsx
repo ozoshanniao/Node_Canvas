@@ -4,6 +4,7 @@ import { OutputImageModal } from '../components/OutputImageModal';
 import { AspectRatioResizeCorner } from '../components/AspectRatioResizeCorner';
 import { getNodeImageOutput } from '../utils/nodeOutputs';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
+import { normalizeImageOutputItem } from '../utils/outputImages';
 import { getImageInputNodeSizeByRatio, getImageInputNodeSizeFromImageUrl } from '../utils/imageInputSizing';
 import { countRender } from '../utils/perfDebug';
 import { uploadImageToInput } from '../utils/uploadToInput';
@@ -72,12 +73,11 @@ export const OutputNode = memo(function OutputNode({ id, data }) {
           (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
       )
       .flatMap((edge) =>
-        getNodeImageOutput(nodeMap.get(edge.source), edge.sourceHandle, edge, nodes, edges).map((url) => ({
-          url,
-          sourceNodeId: edge.source,
-        }))
+        getNodeImageOutput(nodeMap.get(edge.source), edge.sourceHandle, edge, nodes, edges).map((item) =>
+          normalizeImageOutputItem(item, edge.source)
+        )
       )
-      .filter(Boolean);
+      .filter((item) => item.url);
   }, [edges, id, nodes]);
 
   const imageItems = useMemo(() => normalizeImageItems(data.images), [data.images]);
@@ -92,6 +92,11 @@ export const OutputNode = memo(function OutputNode({ id, data }) {
           url: item.url,
           createdAt: new Date().toISOString(),
           sourceNodeId: item.sourceNodeId || '',
+          filePath: item.filePath,
+          mimeType: item.mimeType,
+          sourceType: item.sourceType,
+          filename: item.filename,
+          remoteUrl: item.remoteUrl,
         })),
     [existingImageUrlSet, upstreamImages]
   );
