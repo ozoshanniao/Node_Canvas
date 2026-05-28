@@ -590,6 +590,20 @@ export function VideoNode({ id, data }) {
       });
       return;
     }
+    if (
+      isSeedance &&
+      seedanceParams?.mode === 'multimodal-reference' &&
+      seedanceParams.audios?.length > 0 &&
+      !seedanceParams.images?.length &&
+      !seedanceParams.videos?.length
+    ) {
+      setTask({
+        status: 'error',
+        progress: 0,
+        message: 'Seedance audio references require at least one image or video reference.',
+      });
+      return;
+    }
 
     const omniElements = resolveKlingOmniElements(omniParamsOutput);
     const klingParams = settings.customParams?.kling || {};

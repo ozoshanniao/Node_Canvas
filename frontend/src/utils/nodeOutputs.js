@@ -82,6 +82,8 @@ export const getNodeImageOutput = (node, sourceHandle, edge, nodes = [], edges =
     return images.map((item) => (typeof item === 'string' ? item : item?.url)).filter(Boolean);
   }
 
+
+
   if (node.type === 'routeNode') {
     const nextVisited = new Set(visited);
     nextVisited.add(node.id);
@@ -140,9 +142,16 @@ export const getNodeAudioOutput = (node) => {
 
   const outputs = node.data?.outputs || {};
   const mayBeAudioNode = String(node.type || '').toLowerCase().includes('audio');
+  const selectedAudio =
+    node.type === 'audioInputNode' && Array.isArray(node.data?.audioFiles)
+      ? node.data.audioFiles[
+          Number.isInteger(node.data?.currentIndex) ? node.data.currentIndex : 0
+        ]?.url
+      : null;
   const candidates = [
     outputs.audioUrl,
     node.data?.audioUrl,
+    selectedAudio,
     mayBeAudioNode ? node.data?.url : null,
   ];
   return candidates.filter(Boolean).slice(0, 1);

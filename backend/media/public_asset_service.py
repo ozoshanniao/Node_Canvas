@@ -24,6 +24,10 @@ AUDIO_MIME_FALLBACKS = {
     ".m4a": "audio/mp4",
     ".aac": "audio/aac",
     ".ogg": "audio/ogg",
+    ".opus": "audio/opus",
+    ".flac": "audio/flac",
+    ".webm": "audio/webm",
+    ".mp4": "audio/mp4",
 }
 
 
@@ -54,14 +58,14 @@ def _parse_iso(value: str | None) -> dt.datetime | None:
 
 
 def _guess_mime(path: str, raw_data: bytes | None = None) -> str:
-    guessed = mimetypes.guess_type(path)[0]
-    if guessed:
-        return guessed
     suffix = Path(path).suffix.lower()
     if suffix in VIDEO_MIME_FALLBACKS:
         return VIDEO_MIME_FALLBACKS[suffix]
     if suffix in AUDIO_MIME_FALLBACKS:
         return AUDIO_MIME_FALLBACKS[suffix]
+    guessed = mimetypes.guess_type(path)[0]
+    if guessed:
+        return guessed
     return infer_mime_type(raw_data, "application/octet-stream")
 
 

@@ -47,7 +47,24 @@ const imageEdge = {
   });
   assert.deepEqual(videoOutput, ['/api/video/generated.mp4']);
   assert.deepEqual(getNodeAudioOutput({ id: 'empty', type: 'imageNode', data: {} }), []);
+  assert.deepEqual(getNodeAudioOutput({
+    id: 'audio-1',
+    type: 'audioInputNode',
+    data: { url: 'input/ref.opus' },
+  }), ['input/ref.opus']);
+  assert.deepEqual(getNodeAudioOutput({
+    id: 'audio-2',
+    type: 'audioInputNode',
+    data: {
+      currentIndex: 1,
+      audioFiles: [
+        { url: 'input/ref1.mp3' },
+        { url: 'input/ref2.flac' },
+      ],
+    },
+  }), ['input/ref2.flac']);
 }
+
 
 {
   const output = getNodeOmniParamsOutput(

@@ -14,6 +14,8 @@ def run(coro):
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "public_asset_project"
 FIXTURE_MEDIA = FIXTURE_ROOT / "input" / "seedance-r2-smoke.txt"
 FIXTURE_API_IMAGE = FIXTURE_ROOT / "generation" / "frame.png"
+FIXTURE_OPUS = FIXTURE_ROOT / "input" / "voice.opus"
+FIXTURE_FLAC = FIXTURE_ROOT / "input" / "voice.flac"
 
 
 class FakeR2Backend:
@@ -99,6 +101,18 @@ class PublicAssetServiceRegressionTest(unittest.TestCase):
         self.assertTrue(url.startswith("https://public-r2.test/"))
         self.assertEqual(len(backend.uploads), 1)
         self.assertEqual(backend.uploads[0]["mime_type"], "image/png")
+
+    def test_audio_opus_and_flac_mime_fallbacks_preserve_extension(self):
+        backend = FakeR2Backend()
+        service = PublicAssetService(backend=backend, cache_db_path=":memory:")
+
+        opus_url = run(service.ensure_public_url(str(FIXTURE_OPUS)))
+        flac_url = run(service.ensure_public_url(str(FIXTURE_FLAC)))
+
+        self.assertTrue(opus_url.endswith(".opus"))
+        self.assertTrue(flac_url.endswith(".flac"))
+        self.assertEqual(backend.uploads[0]["mime_type"], "audio/opus")
+        self.assertEqual(backend.uploads[1]["mime_type"], "audio/flac")
 
     def test_missing_file_error_is_clear(self):
         service = PublicAssetService(backend=FakeR2Backend(), cache_db_path=":memory:")

@@ -1,6 +1,6 @@
-import { mergeNodeDefaults } from '../utils/nodeDefaults';
-import { DEFAULT_IMAGE_GENERATION_SETTINGS } from '../utils/imageGenerationOptions';
-import { DEFAULT_VIDEO_GENERATION_SETTINGS } from '../utils/videoGenerationOptions';
+import { mergeNodeDefaults } from '../utils/nodeDefaults.js';
+import { DEFAULT_IMAGE_GENERATION_SETTINGS } from '../utils/imageGenerationOptions.js';
+import { DEFAULT_VIDEO_GENERATION_SETTINGS } from '../utils/videoGenerationOptions.js';
 
 export const NODE_DEFINITIONS = [
   {
@@ -63,6 +63,18 @@ export const NODE_DEFINITIONS = [
     outputs: [{ id: 'image:out', kind: 'image' }],
     defaultData: { ...DEFAULT_IMAGE_GENERATION_SETTINGS },
     defaultsKind: 'imageGeneration',
+  },
+  {
+    type: 'audioInputNode',
+    label: 'Audio Input',
+    description: 'Audio material input node',
+    category: 'Video',
+    order: 8,
+    showInConnectionMenu: true,
+    inputs: [],
+    outputs: [{ id: 'audio:out', kind: 'audio' }],
+    defaultData: {},
+    defaultSize: { width: 280, height: 160 },
   },
   {
     type: 'videoNode',

@@ -7,6 +7,17 @@ MIME_EXTENSIONS = {
     "image/jpeg": "jpg",
     "image/jpg": "jpg",
     "image/webp": "webp",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/mp4": "m4a",
+    "audio/aac": "aac",
+    "audio/ogg": "ogg",
+    "audio/opus": "opus",
+    "audio/flac": "flac",
+    "audio/webm": "webm",
+    "video/mp4": "mp4",
 }
 
 
@@ -30,6 +41,17 @@ def wrap_image_result(result):
 
 def mime_to_extension(mime_type: str | None, default: str = "png") -> str:
     return MIME_EXTENSIONS.get((mime_type or "").lower(), default)
+
+
+def extension_from_filename(filename: str | None, allowed: set[str] | None = None) -> str | None:
+    if not filename:
+        return None
+    ext = os.path.splitext(filename)[1].lower().lstrip(".")
+    if not ext:
+        return None
+    if allowed and ext not in allowed:
+        return None
+    return ext
 
 
 def save_image_bytes(image_bytes: bytes, generation_dir: str, prefix: str, mime_type: str | None = None) -> str:
@@ -65,7 +87,8 @@ def save_image_bytes_to_input(
         dict with keys: relativePath, width, height, mimeType, bytes
     """
     input_dir = ensure_input_dir(project_path)
-    ext = mime_to_extension(mime_type)
+    allowed_exts = {"png", "jpg", "jpeg", "webp", "mp3", "wav", "m4a", "aac", "ogg", "opus", "flac", "webm", "mp4"}
+    ext = extension_from_filename(original_filename, allowed_exts) or mime_to_extension(mime_type)
 
     # Generate filename with source kind prefix
     prefix = source_kind.lower()

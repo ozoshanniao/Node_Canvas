@@ -12,7 +12,7 @@ export const DOCK_CATEGORIES = [
   {
     id: 'Video',
     label: 'Video',
-    nodeTypes: ['videoNode', 'shotListNode', 'omniComposerNode'],
+    nodeTypes: ['audioInputNode', 'videoNode', 'shotListNode', 'omniComposerNode'],
   },
   {
     id: 'Tools',

@@ -22,6 +22,7 @@ import { TextConstructionNode } from './nodes/TextConstructionNode';
 import { LLMProcessorNode } from './nodes/LLMProcessorNode';
 import { ImageNode } from './nodes/ImageNode';
 import { VideoNode } from './nodes/VideoNode';
+import { AudioInputNode } from './nodes/AudioInputNode';
 import { ShotListNode } from './nodes/ShotListNode';
 import { OmniComposerNode } from './nodes/OmniComposerNode';
 import { ImageInputNode } from './nodes/ImageInputNode';
@@ -52,6 +53,7 @@ const nodeTypes = {
   textConstruction: TextConstructionNode,
   imageNode: ImageNode,
   videoNode: VideoNode,
+  audioInputNode: AudioInputNode,
   shotListNode: ShotListNode,
   omniComposerNode: OmniComposerNode,
   imageInputNode: ImageInputNode,

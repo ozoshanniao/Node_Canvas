@@ -1,5 +1,5 @@
 /**
- * Upload image to project input directory
+ * Upload media to project input directory
  *
  * Handles file objects, data URLs, and base64 strings
  * Returns relative path and metadata for storage in node.data
@@ -29,20 +29,20 @@ const fileToDataUrl = (file) =>
  * @param {string} options.mimeType - MIME type (optional, auto-detected if not provided)
  * @returns {Promise<Object>} { url, width, height, mimeType, bytes, filename }
  */
-export async function uploadImageToInput(fileOrDataUrl, options = {}) {
+export async function uploadMediaToInput(fileOrDataUrl, options = {}) {
   const { projectPath, sourceKind = 'upload', filename, mimeType } = options;
 
   if (!projectPath) {
-    throw new Error('projectPath is required for uploadImageToInput');
+    throw new Error('projectPath is required for uploadMediaToInput');
   }
 
-  let imageData;
+  let mediaData;
   let detectedMimeType = mimeType;
   let detectedFilename = filename;
 
   // Handle File or Blob
   if (fileOrDataUrl instanceof File || fileOrDataUrl instanceof Blob) {
-    imageData = await fileToDataUrl(fileOrDataUrl);
+    mediaData = await fileToDataUrl(fileOrDataUrl);
     if (!detectedMimeType && fileOrDataUrl.type) {
       detectedMimeType = fileOrDataUrl.type;
     }
@@ -51,11 +51,11 @@ export async function uploadImageToInput(fileOrDataUrl, options = {}) {
     }
   } else if (typeof fileOrDataUrl === 'string') {
     // Handle data URL or base64 string
-    imageData = fileOrDataUrl;
+    mediaData = fileOrDataUrl;
 
     // Extract MIME type from data URL if present
-    if (imageData.startsWith('data:image/') && !detectedMimeType) {
-      const match = imageData.match(/^data:(image\/[^;]+);/);
+    if (mediaData.startsWith('data:') && !detectedMimeType) {
+      const match = mediaData.match(/^data:([^;]+);/);
       if (match) {
         detectedMimeType = match[1];
       }
@@ -64,8 +64,8 @@ export async function uploadImageToInput(fileOrDataUrl, options = {}) {
     throw new Error('Invalid input: expected File, Blob, or data URL string');
   }
 
-  if (!imageData) {
-    throw new Error('Failed to read image data');
+  if (!mediaData) {
+    throw new Error('Failed to read media data');
   }
 
   // Send to backend
@@ -74,7 +74,8 @@ export async function uploadImageToInput(fileOrDataUrl, options = {}) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       projectPath,
-      imageData,
+      imageData: mediaData,
+      mediaData,
       sourceKind,
       filename: detectedFilename,
       mimeType: detectedMimeType,
@@ -101,6 +102,10 @@ export async function uploadImageToInput(fileOrDataUrl, options = {}) {
     bytes: result.data.bytes,
     filename: result.data.filename,
   };
+}
+
+export async function uploadImageToInput(fileOrDataUrl, options = {}) {
+  return uploadMediaToInput(fileOrDataUrl, options);
 }
 
 /**
