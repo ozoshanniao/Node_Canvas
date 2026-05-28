@@ -178,4 +178,191 @@ const imageEdge = {
   assert.equal(output.errors.includes('Unknown Omni reference: @element_2'), true);
 }
 
+// ==================== RouteNode Relay Tests ====================
+import { getNodeTextOutput } from '../nodeOutputs.js';
+
+// 1. RouteNode 透传 TextNode text
+{
+  const textNode = {
+    id: 'text-1',
+    type: 'textNode',
+    data: { text: 'a cat walking' },
+  };
+  const routeNode = {
+    id: 'route-1',
+    type: 'routeNode',
+    data: {},
+  };
+  const nodes = [textNode, routeNode];
+  const edges = [
+    {
+      id: 'e-1',
+      source: 'text-1',
+      sourceHandle: 'text:out',
+      target: 'route-1',
+      targetHandle: 'text:in',
+    },
+  ];
+
+  const output = getNodeTextOutput(routeNode, nodes, edges);
+  assert.equal(output, 'a cat walking');
+}
+
+// 2. RouteNode 多级透传 TextNode text
+{
+  const textNode = {
+    id: 'text-1',
+    type: 'textNode',
+    data: { text: 'a dog sleeping' },
+  };
+  const route1 = {
+    id: 'route-1',
+    type: 'routeNode',
+    data: {},
+  };
+  const route2 = {
+    id: 'route-2',
+    type: 'routeNode',
+    data: {},
+  };
+  const nodes = [textNode, route1, route2];
+  const edges = [
+    {
+      id: 'e-1',
+      source: 'text-1',
+      sourceHandle: 'text:out',
+      target: 'route-1',
+      targetHandle: 'text:in',
+    },
+    {
+      id: 'e-2',
+      source: 'route-1',
+      sourceHandle: 'text:out',
+      target: 'route-2',
+      targetHandle: 'text:in',
+    },
+  ];
+
+  const output = getNodeTextOutput(route2, nodes, edges);
+  assert.equal(output, 'a dog sleeping');
+}
+
+// 3. RouteNode 透传 ImageInputNode image (由于 ImageInputNode 在 getNodeImageOutput 中只提取 URL)
+{
+  const imageInputNode = {
+    id: 'img-input-1',
+    type: 'imageInputNode',
+    data: {
+      url: 'input/test.png',
+      filePath: 'input/test.png',
+      type: 'image',
+    },
+  };
+  const routeNode = {
+    id: 'route-1',
+    type: 'routeNode',
+    data: {},
+  };
+  const nodes = [imageInputNode, routeNode];
+  const edges = [
+    {
+      id: 'e-1',
+      source: 'img-input-1',
+      sourceHandle: 'image:out',
+      target: 'route-1',
+      targetHandle: 'image:in',
+    },
+  ];
+
+  const output = getNodeImageOutput(routeNode, 'image:out', null, nodes, edges);
+  assert.deepEqual(output, ['input/test.png']);
+}
+
+// 4. RouteNode 多级透传 ImageInputNode image URL
+{
+  const imageInputNode = {
+    id: 'img-input-1',
+    type: 'imageInputNode',
+    data: {
+      url: 'input/test.png',
+      filePath: 'input/test.png',
+      type: 'image',
+    },
+  };
+  const route1 = {
+    id: 'route-1',
+    type: 'routeNode',
+    data: {},
+  };
+  const route2 = {
+    id: 'route-2',
+    type: 'routeNode',
+    data: {},
+  };
+  const nodes = [imageInputNode, route1, route2];
+  const edges = [
+    {
+      id: 'e-1',
+      source: 'img-input-1',
+      sourceHandle: 'image:out',
+      target: 'route-1',
+      targetHandle: 'image:in',
+    },
+    {
+      id: 'e-2',
+      source: 'route-1',
+      sourceHandle: 'image:out',
+      target: 'route-2',
+      targetHandle: 'image:in',
+    },
+  ];
+
+  const output = getNodeImageOutput(route2, 'image:out', null, nodes, edges);
+  assert.deepEqual(output, ['input/test.png']);
+}
+
+// 5. RouteNode 透传 image 时不丢 filePath/url/mimeType/sourceType (以 VideoNode 最后一帧的完整对象为例)
+{
+  const lastFrameObj = {
+    type: 'image',
+    sourceType: 'generated',
+    url: 'generation/seedance_task_last_frame.png',
+    filePath: 'generation/seedance_task_last_frame.png',
+    filename: 'seedance_task_last_frame.png',
+    mimeType: 'image/png',
+  };
+  const videoNode = {
+    id: 'video-1',
+    type: 'videoNode',
+    data: {
+      outputs: {
+        lastFrame: lastFrameObj,
+      },
+    },
+  };
+  const routeNode = {
+    id: 'route-1',
+    type: 'routeNode',
+    data: {},
+  };
+  const nodes = [videoNode, routeNode];
+  const edges = [
+    {
+      id: 'e-1',
+      source: 'video-1',
+      sourceHandle: 'image:lastFrame',
+      target: 'route-1',
+      targetHandle: 'image:in',
+    },
+  ];
+
+  const output = getNodeImageOutput(routeNode, 'image:out', null, nodes, edges);
+  assert.deepEqual(output, [lastFrameObj]);
+  // 校验属性不丢失
+  assert.equal(output[0].filePath, 'generation/seedance_task_last_frame.png');
+  assert.equal(output[0].sourceType, 'generated');
+  assert.equal(output[0].mimeType, 'image/png');
+}
+
 console.log('nodeOutputs tests passed');
+
