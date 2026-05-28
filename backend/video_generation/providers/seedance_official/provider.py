@@ -1,4 +1,9 @@
 from video_generation.providers.base import BaseVideoProvider
+from video_generation.providers.seedance_official.assets import (
+    resolve_seedance_audio_asset,
+    resolve_seedance_image_asset,
+    seedance_asset_config_from_env,
+)
 from video_generation.providers.seedance_official.client import SeedanceOfficialClient
 from video_generation.providers.seedance_official.payloads import SeedancePayloadBuilder
 from video_generation.schemas import VideoGenerateRequest
@@ -41,6 +46,77 @@ class SeedanceOfficialProvider(BaseVideoProvider):
             if value:
                 return str(value)
         raise ValueError(f"Seedance create response did not include a task id: {response}")
+
+    def _seedance_params(self, request: VideoGenerateRequest) -> dict:
+        params = request.customParams.get("seedance") if isinstance(request.customParams, dict) else None
+        return params if isinstance(params, dict) else {}
+
+    async def _resolve_request_assets(self, request: VideoGenerateRequest) -> VideoGenerateRequest:
+        params = self._seedance_params(request)
+        mode = params.get("mode") or request.videoMode
+        seedance_params = {**params}
+        custom_params = {**(request.customParams or {}), "seedance": seedance_params}
+        project_path = request.projectPath
+        config = seedance_asset_config_from_env()
+        image_state = {"image_base64_total_bytes": 0}
+
+        if mode == "frame":
+            first_frame = params.get("firstFrame") or (request.images[0] if request.images else None)
+            last_frame = params.get("lastFrame") or request.endImage
+            if first_frame:
+                seedance_params["firstFrame"] = await resolve_seedance_image_asset(
+                    first_frame,
+                    public_asset_service=self.payload_builder.public_assets,
+                    project_root=project_path,
+                    base64_state=image_state,
+                    config=config,
+                )
+            if last_frame:
+                seedance_params["lastFrame"] = await resolve_seedance_image_asset(
+                    last_frame,
+                    public_asset_service=self.payload_builder.public_assets,
+                    project_root=project_path,
+                    base64_state=image_state,
+                    config=config,
+                )
+            return request.model_copy(update={"customParams": custom_params})
+
+        if mode != "multimodal-reference":
+            return request
+
+        images = [value for value in (params.get("images") or []) if value]
+        videos = [value for value in (params.get("videos") or []) if value]
+        audios = [value for value in (params.get("audios") or []) if value]
+
+        if len(audios) > 3:
+            raise ValueError("Seedance multimodal-reference supports at most 3 audios")
+        if audios and not images and not videos:
+            raise ValueError("Seedance multimodal-reference does not allow audio-only references")
+
+        seedance_params["images"] = [
+            await resolve_seedance_image_asset(
+                image,
+                public_asset_service=self.payload_builder.public_assets,
+                project_root=project_path,
+                base64_state=image_state,
+                config=config,
+            )
+            for image in images
+        ]
+        seedance_params["videos"] = [
+            await self.payload_builder.public_assets.ensure_public_url(video, project_path)
+            for video in videos
+        ]
+        seedance_params["audios"] = [
+            await resolve_seedance_audio_asset(
+                audio,
+                public_asset_service=self.payload_builder.public_assets,
+                project_root=project_path,
+                config=config,
+            )
+            for audio in audios
+        ]
+        return request.model_copy(update={"customParams": custom_params})
 
     def _extract_video_url(self, data: dict) -> str | None:
         for key in ("video_url", "videoUrl", "url", "output_url", "outputUrl"):
@@ -87,6 +163,7 @@ class SeedanceOfficialProvider(BaseVideoProvider):
         return None
 
     async def create_task(self, request: VideoGenerateRequest) -> dict:
+        request = await self._resolve_request_assets(request)
         payload = await self.payload_builder.build_payload(request, request.projectPath)
         raw = await self.client.create_task(payload)
         data = self._extract_data(raw)

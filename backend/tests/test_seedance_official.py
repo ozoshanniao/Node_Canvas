@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from media.public_asset_service import PublicAssetService
+from video_generation.providers.seedance_official import assets as seedance_assets
 from video_generation.providers.seedance_official.provider import SeedanceOfficialProvider
 from video_generation.providers.seedance_official.payloads import (
     SeedancePayloadBuilder,
@@ -37,6 +38,45 @@ class FakeR2Backend:
         return f"https://r2.test/{storage_key}"
 
 
+class RecordingPublicAssets:
+    def __init__(self):
+        self.calls = []
+
+    async def ensure_public_url(self, value, project_path=None):
+        self.calls.append((value, project_path))
+        return f"https://r2.test/{Path(str(value)).name}"
+
+
+class FakeLocalPath:
+    def __init__(self, suffix, size=None, data=b"x"):
+        self.suffix = suffix
+        self._data = data
+        self._size = len(data) if size is None else size
+
+    def stat(self):
+        class Stat:
+            pass
+
+        stat = Stat()
+        stat.st_size = self._size
+        return stat
+
+    def read_bytes(self):
+        return self._data
+
+
+class RecordingSeedanceClient:
+    def __init__(self):
+        self.payloads = []
+
+    async def create_task(self, payload):
+        self.payloads.append(payload)
+        return {"id": "seedance-task", "status": "queued"}
+
+    async def query_task(self, task_id):
+        return {"status": "running"}
+
+
 class SeedancePayloadBuilderTest(unittest.TestCase):
     def test_specs_include_seedance_provider(self):
         providers = {provider["id"]: provider for provider in get_video_model_specs()["providers"]}
@@ -62,8 +102,8 @@ class SeedancePayloadBuilderTest(unittest.TestCase):
             customParams={
                 "seedance": {
                     "mode": "frame",
-                    "firstFrame": "input/first.png",
-                    "lastFrame": "input/last.png",
+                    "firstFrame": "https://public.test/first.png",
+                    "lastFrame": "https://public.test/last.png",
                     "images": [],
                     "videos": [],
                     "audios": [],
@@ -92,9 +132,9 @@ class SeedancePayloadBuilderTest(unittest.TestCase):
             customParams={
                 "seedance": {
                     "mode": "multimodal-reference",
-                    "images": ["input/a.png"],
-                    "videos": ["generation/videos/a.mp4"],
-                    "audios": ["input/a.mp3"],
+                    "images": ["https://public.test/a.png"],
+                    "videos": ["https://public.test/a.mp4"],
+                    "audios": ["https://public.test/a.mp3"],
                 }
             },
         )
@@ -174,6 +214,199 @@ class SeedancePayloadBuilderTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "1080p"):
             run(builder.build_payload(fast_1080p, None))
+
+
+class SeedanceAssetResolutionTest(unittest.TestCase):
+    def _provider(self):
+        public_assets = RecordingPublicAssets()
+        client = RecordingSeedanceClient()
+        provider = SeedanceOfficialProvider(
+            client=client,
+            payload_builder=SeedancePayloadBuilder(public_assets),
+        )
+        return provider, client, public_assets
+
+    def _request(self, project_path, seedance, prompt="Prompt"):
+        return VideoGenerateRequest(
+            provider="seedance_official",
+            model="doubao-seedance-2-0-260128",
+            videoMode=seedance.get("mode", "multimodal-reference"),
+            prompt=prompt,
+            customParams={"seedance": seedance},
+            projectPath=project_path,
+        )
+
+    def test_local_small_png_frame_uses_base64_without_r2(self):
+        provider, client, public_assets = self._provider()
+
+        with patch.object(seedance_assets, "_local_project_file", return_value=FakeLocalPath(".png", data=b"\x89PNG\r\n\x1a\nsmall")):
+            run(provider.create_task(self._request("/project", {"mode": "frame", "firstFrame": "input/first.png"})))
+
+        url = client.payloads[0]["content"][1]["image_url"]["url"]
+        self.assertTrue(url.startswith("data:image/png;base64,"))
+        self.assertEqual(public_assets.calls, [])
+
+    def test_local_jpeg_and_webp_images_use_base64(self):
+        provider, client, _public_assets = self._provider()
+        local_files = {
+            "input/a.jpg": FakeLocalPath(".jpg", data=b"jpeg"),
+            "input/b.webp": FakeLocalPath(".webp", data=b"webp"),
+        }
+
+        with patch.object(seedance_assets, "_local_project_file", side_effect=lambda value, _project: local_files[value]):
+            run(provider.create_task(self._request("/project", {
+                "mode": "multimodal-reference",
+                "images": ["input/a.jpg", "input/b.webp"],
+            })))
+
+        urls = [item["image_url"]["url"] for item in client.payloads[0]["content"][1:]]
+        self.assertTrue(urls[0].startswith("data:image/jpeg;base64,"))
+        self.assertTrue(urls[1].startswith("data:image/webp;base64,"))
+
+    def test_image_over_single_limit_falls_back_to_r2(self):
+        provider, client, public_assets = self._provider()
+
+        with patch.object(seedance_assets, "_local_project_file", return_value=FakeLocalPath(".png", size=(10 * 1024 * 1024) + 1)):
+            run(provider.create_task(self._request("/project", {"mode": "frame", "firstFrame": "input/large.png"})))
+
+        url = client.payloads[0]["content"][1]["image_url"]["url"]
+        self.assertTrue(url.startswith("https://r2.test/"))
+        self.assertEqual(len(public_assets.calls), 1)
+
+    def test_image_total_limit_falls_back_after_threshold(self):
+        images = [f"input/{index}.png" for index in range(1, 6)]
+        local_files = {
+            value: FakeLocalPath(".png", size=size_mb * 1024 * 1024, data=b"x")
+            for value, size_mb in zip(images, [9, 9, 9, 9, 5])
+        }
+        provider, client, public_assets = self._provider()
+
+        with patch.object(seedance_assets, "_local_project_file", side_effect=lambda value, _project: local_files[value]):
+            run(provider.create_task(self._request("/project", {
+                "mode": "multimodal-reference",
+                "images": images,
+            })))
+
+        urls = [item["image_url"]["url"] for item in client.payloads[0]["content"][1:]]
+        self.assertEqual([url.startswith("data:image/png;base64,") for url in urls], [True, True, True, True, False])
+        self.assertTrue(urls[-1].startswith("https://r2.test/"))
+        self.assertEqual(len(public_assets.calls), 1)
+
+    def test_http_image_url_is_preserved(self):
+        provider, client, public_assets = self._provider()
+
+        run(provider.create_task(self._request("/project", {
+            "mode": "multimodal-reference",
+            "images": ["https://example.test/image.png"],
+        })))
+
+        self.assertEqual(client.payloads[0]["content"][1]["image_url"]["url"], "https://example.test/image.png")
+        self.assertEqual(public_assets.calls, [])
+
+    def test_image_base64_failure_falls_back_to_r2(self):
+        provider, client, public_assets = self._provider()
+
+        with patch.object(seedance_assets, "_local_project_file", return_value=FakeLocalPath(".png", data=b"image")), patch.object(
+            seedance_assets, "_data_url", side_effect=RuntimeError("encode failed")
+        ):
+            run(provider.create_task(self._request("/project", {
+                "mode": "multimodal-reference",
+                "images": ["input/a.png"],
+            })))
+
+        self.assertTrue(client.payloads[0]["content"][1]["image_url"]["url"].startswith("https://r2.test/"))
+        self.assertEqual(len(public_assets.calls), 1)
+
+    def test_local_mp3_and_wav_audio_use_base64(self):
+        provider, client, _public_assets = self._provider()
+        local_files = {
+            "input/ref.png": FakeLocalPath(".png", data=b"image"),
+            "input/a.mp3": FakeLocalPath(".mp3", data=b"mp3"),
+            "input/b.wav": FakeLocalPath(".wav", data=b"wav"),
+        }
+
+        with patch.object(seedance_assets, "_local_project_file", side_effect=lambda value, _project: local_files[value]):
+            run(provider.create_task(self._request("/project", {
+                "mode": "multimodal-reference",
+                "images": ["input/ref.png"],
+                "audios": ["input/a.mp3", "input/b.wav"],
+            })))
+
+        urls = [
+            item["audio_url"]["url"]
+            for item in client.payloads[0]["content"]
+            if item.get("role") == "reference_audio"
+        ]
+        self.assertTrue(urls[0].startswith("data:audio/mpeg;base64,"))
+        self.assertTrue(urls[1].startswith("data:audio/wav;base64,"))
+
+    def test_http_audio_url_is_preserved_when_wav_or_mp3(self):
+        provider, client, public_assets = self._provider()
+
+        run(provider.create_task(self._request("/project", {
+            "mode": "multimodal-reference",
+            "images": ["https://example.test/image.png"],
+            "audios": ["https://example.test/audio.mp3"],
+        })))
+
+        audio = [item for item in client.payloads[0]["content"] if item.get("role") == "reference_audio"][0]
+        self.assertEqual(audio["audio_url"]["url"], "https://example.test/audio.mp3")
+        self.assertEqual(public_assets.calls, [])
+
+    def test_unsupported_audio_format_errors_before_submit(self):
+        provider, _client, _public_assets = self._provider()
+        local_files = {
+            "input/ref.png": FakeLocalPath(".png", data=b"image"),
+            "input/a.flac": FakeLocalPath(".flac", data=b"flac"),
+        }
+
+        with patch.object(seedance_assets, "_local_project_file", side_effect=lambda value, _project: local_files[value]), self.assertRaisesRegex(ValueError, "wav and mp3"):
+            run(provider.create_task(self._request("/project", {
+                "mode": "multimodal-reference",
+                "images": ["input/ref.png"],
+                "audios": ["input/a.flac"],
+            })))
+
+    def test_audio_over_limit_errors_before_submit(self):
+        provider, _client, _public_assets = self._provider()
+        local_files = {
+            "input/ref.png": FakeLocalPath(".png", data=b"image"),
+            "input/a.mp3": FakeLocalPath(".mp3", size=(15 * 1024 * 1024) + 1),
+        }
+
+        with patch.object(seedance_assets, "_local_project_file", side_effect=lambda value, _project: local_files[value]), self.assertRaisesRegex(ValueError, "15MB or less"):
+            run(provider.create_task(self._request("/project", {
+                "mode": "multimodal-reference",
+                "images": ["input/ref.png"],
+                "audios": ["input/a.mp3"],
+            })))
+
+    def test_audio_count_and_audio_only_validation_remain(self):
+        provider, _client, _public_assets = self._provider()
+        with self.assertRaisesRegex(ValueError, "at most 3 audios"):
+            run(provider.create_task(self._request("/project", {
+                "mode": "multimodal-reference",
+                "images": ["https://example.test/image.png"],
+                "audios": ["a.mp3", "b.mp3", "c.mp3", "d.mp3"],
+            })))
+        with self.assertRaisesRegex(ValueError, "audio-only"):
+            run(provider.create_task(self._request("/project", {
+                "mode": "multimodal-reference",
+                "audios": ["https://example.test/audio.mp3"],
+            })))
+
+    def test_video_reference_still_uses_public_asset_url_not_base64(self):
+        provider, client, public_assets = self._provider()
+
+        run(provider.create_task(self._request("/project", {
+            "mode": "multimodal-reference",
+            "videos": ["generation/videos/a.mp4"],
+        })))
+
+        video = [item for item in client.payloads[0]["content"] if item.get("role") == "reference_video"][0]
+        self.assertTrue(video["video_url"]["url"].startswith("https://r2.test/"))
+        self.assertFalse(video["video_url"]["url"].startswith("data:"))
+        self.assertEqual(len(public_assets.calls), 1)
 
 
 class PublicAssetServiceTest(unittest.TestCase):

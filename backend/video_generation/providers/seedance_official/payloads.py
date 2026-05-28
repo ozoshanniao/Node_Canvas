@@ -52,11 +52,10 @@ class SeedancePayloadBuilder:
         return resolution
 
     async def _public_urls(self, values: list[str], project_path: str | None) -> list[str]:
-        urls = []
-        for value in values:
-            if value:
-                urls.append(await self.public_assets.ensure_public_url(value, project_path))
-        return urls
+        return [str(value) for value in values if value]
+
+    async def _payload_asset_url(self, value: str, project_path: str | None) -> str:
+        return str(value)
 
     def _base_payload(self, request: VideoGenerateRequest, content: list[dict]) -> dict:
         ratio = request.aspectRatio if request.aspectRatio in self.VALID_RATIOS else "adaptive"
@@ -85,14 +84,14 @@ class SeedancePayloadBuilder:
             last_frame = params.get("lastFrame") or request.endImage
             if not first_frame:
                 raise ValueError("Seedance frame mode requires firstFrame")
-            first_url = await self.public_assets.ensure_public_url(first_frame, project_path)
+            first_url = await self._payload_asset_url(first_frame, project_path)
             content.append({
                 "type": "image_url",
                 "image_url": {"url": first_url},
                 "role": "first_frame",
             })
             if last_frame:
-                last_url = await self.public_assets.ensure_public_url(last_frame, project_path)
+                last_url = await self._payload_asset_url(last_frame, project_path)
                 content.append({
                     "type": "image_url",
                     "image_url": {"url": last_url},
