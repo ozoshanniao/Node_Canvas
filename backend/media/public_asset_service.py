@@ -266,31 +266,32 @@ class TOSPublicAssetBackend:
         if missing:
             raise ValueError(f"Public TOS asset storage is not configured: {', '.join(missing)}")
 
-    def _signing_key(self, date_stamp: str) -> bytes:
+    def _signing_key(self, date_stamp: str, service_name: str) -> bytes:
         key = ("AWS4" + self.secret_access_key).encode("utf-8")
-        for value in (date_stamp, self.region, "tos", "aws4_request"):
+        for value in (date_stamp, self.region, service_name, "aws4_request"):
             key = hmac.new(key, value.encode("utf-8"), hashlib.sha256).digest()
         return key
 
-    def _auth_headers(self, method: str, url_path: str, payload_hash: str, content_type: str, now: dt.datetime) -> dict:
+    def _auth_headers(self, method: str, host: str, url_path: str, payload_hash: str, content_type: str, now: dt.datetime) -> dict:
         amz_date = now.strftime("%Y%m%dT%H%M%SZ")
         date_stamp = now.strftime("%Y%m%d")
+        service_name = "s3" if "s3" in host else "tos"
         canonical_headers = (
             f"content-type:{content_type}\n"
-            f"host:{self.endpoint_host}\n"
+            f"host:{host}\n"
             f"x-amz-content-sha256:{payload_hash}\n"
             f"x-amz-date:{amz_date}\n"
         )
         signed_headers = "content-type;host;x-amz-content-sha256;x-amz-date"
         canonical_request = "\n".join([method, url_path, "", canonical_headers, signed_headers, payload_hash])
-        credential_scope = f"{date_stamp}/{self.region}/tos/aws4_request"
+        credential_scope = f"{date_stamp}/{self.region}/{service_name}/aws4_request"
         string_to_sign = "\n".join([
             "AWS4-HMAC-SHA256",
             amz_date,
             credential_scope,
             hashlib.sha256(canonical_request.encode("utf-8")).hexdigest(),
         ])
-        signature = hmac.new(self._signing_key(date_stamp), string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+        signature = hmac.new(self._signing_key(date_stamp, service_name), string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
         return {
             "Authorization": (
                 f"AWS4-HMAC-SHA256 Credential={self.access_key_id}/{credential_scope}, "
@@ -309,11 +310,12 @@ class TOSPublicAssetBackend:
     async def upload(self, storage_key: str, raw_data: bytes, mime_type: str) -> str:
         self._require_config()
         safe_key = "/".join(quote(part) for part in storage_key.split("/"))
-        path = f"/{self.bucket}/{safe_key}"
-        url = f"{self.endpoint}{path}"
+        host = f"{self.bucket}.{self.endpoint_host}"
+        path = f"/{safe_key}"
+        url = f"https://{host}{path}"
         now = _utc_now()
         payload_hash = hashlib.sha256(raw_data).hexdigest()
-        headers = self._auth_headers("PUT", path, payload_hash, mime_type, now)
+        headers = self._auth_headers("PUT", host, path, payload_hash, mime_type, now)
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.put(url, content=raw_data, headers=headers)
             response.raise_for_status()
