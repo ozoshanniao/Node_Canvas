@@ -11,10 +11,17 @@ def normalize_provider_prompt_references(prompt: str) -> str:
     def replace_at(match):
         media_type = match.group(1)
         index = int(match.group(2))
-        label = {"image": "图片", "video": "视频", "audio": "音频"}[media_type]
-        return f"{label}{index}"
+        labels = {
+            "image": "图片",
+            "图片": "图片",
+            "video": "视频",
+            "视频": "视频",
+            "audio": "音频",
+            "音频": "音频",
+        }
+        return f"{labels[media_type]}{index}"
 
-    value = re.sub(r"@(image|video|audio)_?(\d+)", replace_at, str(prompt or ""))
+    value = re.sub(r"@(image|图片|video|视频|audio|音频)_?(\d+)", replace_at, str(prompt or ""))
     return re.sub(r"<<<(image|video|audio)_(\d+)>>>", replace_at, value)
 
 

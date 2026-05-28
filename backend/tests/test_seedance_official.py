@@ -174,6 +174,16 @@ class SeedancePayloadBuilderTest(unittest.TestCase):
         self.assertEqual(normalize_provider_prompt_references("@image_1 @image1"), "图片1 图片1")
         self.assertEqual(normalize_provider_prompt_references("@video_1 <<<audio_1>>>"), "视频1 音频1")
 
+    def test_prompt_reference_normalizer_supports_chinese_placeholders(self):
+        self.assertEqual(
+            normalize_provider_prompt_references("让 @图片1 中的人物看向 @视频2，并参考 @音频3 的节奏"),
+            "让 图片1 中的人物看向 视频2，并参考 音频3 的节奏",
+        )
+        self.assertEqual(
+            normalize_provider_prompt_references("Use @image_1 and @video2 with @audio_3"),
+            "Use 图片1 and 视频2 with 音频3",
+        )
+
     def test_validation_rules(self):
         builder = SeedancePayloadBuilder(PassthroughPublicAssets())
 
