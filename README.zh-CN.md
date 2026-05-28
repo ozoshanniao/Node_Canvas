@@ -198,6 +198,120 @@ Rewrite rough user input into a clean, concise prompt while preserving the user 
 
 ---
 
+## 公网素材存储 (Public Asset Storage)
+
+本项目支持将本地素材上传到公网可访问的对象存储（Cloudflare R2 或火山引擎 Volcengine TOS），以便 Seedance 官方接口等外部服务能够拉取并下载输入素材。此功能仅作为临时素材的公网中转访问，并非“永久公开”存储。
+
+### 1. 功能背景与原理
+当 Seedance 官方接口等外部服务无法直接读取本地私有路径的文件时，Node-AI-Canvas 会先将素材上传至公网可访问的对象存储，再将生成的公网临时 URL（public URL）传递给 Seedance 服务完成生成。
+
+### 2. 完整配置与数据链路
+```text
+Settings UI (前端设置面板)
+→ appSettings.publicAssetStorage (应用配置)
+→ VideoNode payload.publicAssetStorage (节点载荷)
+→ backend VideoGenerateRequest.publicAssetStorage (后端请求体)
+→ VideoGenerationService (视频生成服务调度)
+→ SeedanceOfficialProvider (Seedance官方服务商适配器)
+→ seedance_official/assets.py (素材处理模块)
+→ PublicAssetService.ensure_public_url(..., storage_provider=...) (公共素材服务)
+→ R2PublicAssetBackend / TOSPublicAssetBackend (具体对象存储后端)
+→ 产生公网可访问的素材 URL (Public URL)
+→ 传递给 Seedance 官方接口进行生成
+```
+
+### 3. 前端设置选项
+前端 Settings UI 提供了三种公网素材存储选项：
+- **Backend .env Default (后端默认)**：不覆盖后端配置，直接使用 `backend/.env` 中配置的 `PUBLIC_ASSET_STORAGE` 变量值。
+- **Cloudflare R2**：强制此生成任务使用 Cloudflare R2 进行素材存储与公网化。
+- **Volcengine TOS**：强制此生成任务使用火山引擎 TOS（Volcengine TOS）进行素材存储与公网化。
+
+> [!IMPORTANT]
+> **安全性设计**：前端不会保存、显示或传递任何云存储密钥（如 AK/SK、Token 等）。所有的 Access Key ID、Secret Access Key、Bucket、Endpoint 以及 Public Domain 等敏感凭证均**只能**安全地配置在后端 `backend/.env` 文件中。
+
+### 4. 传输优化与影响范围
+- **影响范围**：`publicAssetStorage` 配置仅影响需要通过公网 URL 传递的素材上传，**不影响**以下已有链路：
+  - 小图片优先转 Base64 传输 (`Base64-first`)。
+  - 小音频优先转 Base64 传输 (`Base64-first`)。
+  - 尾帧下载 (`lastFrame`) 逻辑。
+  - 快手可灵 (Kling) 或云端 (Yunwu) 的现有生成链路。
+
+- **Base64-first 传输优化规则**：
+  - **图片素材**：若单张原始图片大小 `<= 10MB` 且总图片大小 `<= 40MB`，系统会优先将其转换为 Base64 编码直接嵌入 Payload 中传输，避免上传云存储。
+  - **音频素材**：若音频格式为 `wav`/`mp3` 且文件大小 `<= 15MB`，系统会优先将其转换为 Base64 编码直接嵌入 Payload 中传输。
+  - **视频参考素材 (Video Reference)**：由于视频文件较大，不支持 Base64 编码，因此**仍会触发公网素材存储**（上传至 R2 或 TOS）以获取公网 URL。
+
+### 5. 云存储参数与权限要求
+
+#### Volcengine TOS 参数说明
+- **`VOLCENGINE_TOS_ENDPOINT`**：用于后端 S3-compatible 协议的 `PUT` 上传。北京地域推荐使用：`tos-s3-cn-beijing.volces.com`。
+- **`VOLCENGINE_TOS_PUBLIC_DOMAIN`**：用于生成传递给 Seedance 下载素材的公网 URL。可以使用 Bucket public domain（存储桶公网域名），例如：`https://node-canvas-seedance.tos-cn-beijing.volces.com`。
+  > [!WARNING]
+  > **注意**：请勿把 Bucket public domain 误称为 CDN。只有当您在火山引擎控制台为该存储桶显式绑定了 CDN 或自定义加速域名时，才可以将其称为 CDN。
+
+#### 权限控制要求
+- 存储桶（Bucket）**必须允许“公共读” (Public Read)**，否则外部 Seedance 服务将无法拉取并下载素材。
+- **严禁开启“公共读写” (Public Read Write)**，以防他人非法上传或篡改，造成越权与资源耗尽风险。
+- **推荐权限模型**：公共读、私有写。
+
+#### 生命周期规则建议
+强烈建议在您的对象存储（TOS / R2）控制台为临时素材配置生命周期规则，以自动清理过期素材，避免产生不必要的存储费用：
+- **前缀限制**：仅针对 `node-canvas/seedance-input/` 目录设置规则。
+- **清理规则**：最后修改时间 `5` 天后自动删除。
+  > [!CAUTION]
+  > 请勿对整个 Bucket 直接配置全局删除规则，以防误删其他用途的持久化文件。
+
+### 6. 后端环境配置示例 (`backend/.env`)
+
+#### Cloudflare R2 配置示例
+```env
+PUBLIC_ASSET_STORAGE=r2
+PUBLIC_ASSET_PREFIX=node-canvas/seedance-input/
+PUBLIC_ASSET_RETENTION_DAYS=5
+PUBLIC_ASSET_CACHE_TTL_DAYS=4
+
+CLOUDFLARE_R2_ACCOUNT_ID=your-account-id
+CLOUDFLARE_R2_ACCESS_KEY_ID=your-access-key-id
+CLOUDFLARE_R2_SECRET_ACCESS_KEY=your-secret-access-key
+CLOUDFLARE_R2_BUCKET_NAME=node-canvas-seedance
+CLOUDFLARE_R2_PUBLIC_DOMAIN=https://your-public-domain.example.com
+CLOUDFLARE_R2_ENDPOINT=
+```
+
+#### Volcengine TOS 配置示例
+```env
+PUBLIC_ASSET_STORAGE=tos
+PUBLIC_ASSET_PREFIX=node-canvas/seedance-input/
+PUBLIC_ASSET_RETENTION_DAYS=5
+PUBLIC_ASSET_CACHE_TTL_DAYS=4
+
+VOLCENGINE_TOS_ACCESS_KEY_ID=your-access-key-id
+VOLCENGINE_TOS_SECRET_ACCESS_KEY=your-secret-access-key
+VOLCENGINE_TOS_BUCKET_NAME=node-canvas-seedance
+VOLCENGINE_TOS_REGION=cn-beijing
+VOLCENGINE_TOS_ENDPOINT=tos-s3-cn-beijing.volces.com
+VOLCENGINE_TOS_PUBLIC_DOMAIN=https://node-canvas-seedance.tos-cn-beijing.volces.com
+```
+
+### 7. 推荐测试顺序与 Smoke Test 指南
+
+为了保证集成的平稳上线，建议按照以下步骤进行分阶段测试：
+
+1. **本地回归测试**：
+   运行本地单元测试，确认原有核心业务链路不受影响，此时不需要进行真实素材上传。
+2. **对象存储 Smoke Test**：
+   使用一个很小的本地 `.txt` 文本文件通过上传逻辑，确认能够在 R2 / TOS 中成功生成公网 URL，并使用浏览器或 GET 工具直接访问该 URL，确认能成功返回 `HTTP 200` 且内容正确。
+3. **Seedance 真实服务 Smoke Test**：
+   在确认存储通道通畅后，再运行真实的 Seedance 生成任务。
+   * **推荐测试参数**：
+     * **模型 (Model)**: Fast
+     * **分辨率 (Resolution)**: 480p
+     * **视频时长 (Duration)**: 4s
+     * **触发方式**：在 VideoNode 中提供视频参考素材（Video Reference）或上传体积 `> 10MB` 的图片素材，以此强制系统通过 `PublicAssetService` 通路将素材公网化并传递给 Seedance。
+
+---
+
+
 ## 测试 (Testing)
 
 在推送或合并代码之前，建议在本地执行相关测试以确保系统稳定性。

@@ -3,7 +3,7 @@ import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/reac
 import { FullscreenTextModal } from '../components/FullscreenTextModal';
 import { NodeFullscreenButton } from '../components/NodeFullscreenButton';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
-import { getTextConstructionOutput, getAllAvailableVariables, getMissingVariables, parseAtTokenAtCursor } from '../utils/textVariables';
+import { getTextConstructionOutput, getConnectedTextVariables, getMissingVariables, parseAtTokenAtCursor } from '../utils/textVariables';
 import { countRender, PERF_DEBUG } from '../utils/perfDebug';
 
 export const TextConstructionNode = memo(function TextConstructionNode({ id, data }) {
@@ -27,7 +27,7 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
   const variableKeys = Object.keys(variables);
   const previewPanelOpen = Boolean(data.previewPanelOpen);
 
-  const availableVariables = useMemo(() => getAllAvailableVariables(nodes), [nodes]);
+  const availableVariables = useMemo(() => getConnectedTextVariables(nodes, edges, id), [edges, id, nodes]);
   const missingVariables = useMemo(() => getMissingVariables(template, variables), [template, variables]);
 
   const filteredCandidates = useMemo(() => {

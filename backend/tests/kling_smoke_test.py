@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# 这是一个 Kling 相关的 Payload 构造及接口回归/冒烟测试脚本 (Regression / Smoke Test)
+# 默认不要自动运行此脚本，且不纳入自动 unittest 执行。
+# 如需手动运行，请在 backend 目录下执行：
+# python -m unittest tests.kling_smoke_test
 import unittest
 import asyncio
 from unittest.mock import AsyncMock

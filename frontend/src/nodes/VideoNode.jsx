@@ -4,22 +4,33 @@ import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import CustomSelect from '../components/CustomSelect';
 import { useVideoTask } from '../hooks/useVideoTask';
 import { setLastNodeDefaults } from '../utils/nodeDefaults';
-import { getNodeImageOutput, getNodeMultiPromptOutput, getNodeOmniParamsOutput, getNodeTextOutput } from '../utils/nodeOutputs';
+import {
+  getNodeAudioOutput,
+  getNodeImageOutput,
+  getNodeMultiPromptOutput,
+  getNodeOmniParamsOutput,
+  getNodeTextOutput,
+  getNodeVideoOutput,
+} from '../utils/nodeOutputs';
 import {
   VIDEO_GENERATION_REGISTRY,
   VIDEO_MODE_OPTIONS,
   fetchVideoGenerationRegistry,
   getActiveVideoHandlesForMode,
   getKlingShotMode,
+  getVideoAdvancedParamEntries,
   getVideoModelConfig,
   getVideoProvider,
   isVideoTaskActive,
   isKlingOmniModel,
+  isSeedanceModel,
   normalizeVideoGenerationSettings,
   resolveKlingOmniElements,
+  shouldShowVideoNegativePrompt,
   supportsKlingCameraControl,
   supportsKlingMultiShot,
 } from '../utils/videoGenerationOptions';
+import { shouldShowRawCustomParams, useAppSettings } from '../utils/appSettings';
 import { countRender } from '../utils/perfDebug';
 
 const HANDLE_LABELS = {
@@ -28,11 +39,19 @@ const HANDLE_LABELS = {
   'omniParams:in': 'omni',
   'image:images': 'images',
   'image:end': 'END',
+  'image:firstFrame': 'first',
+  'image:lastFrame': 'last',
+  'image:references': 'images',
+  'video:references': 'videos',
+  'audio:references': 'audios',
+};
+
+const OUTPUT_HANDLE_LABELS = {
+  'video:out': 'video:out',
+  'image:lastFrame': 'last',
 };
 
 const TOOLBAR_PARAM_KEYS = ['videoMode', 'aspectRatio', 'duration', 'resolution', 'qualityMode', 'enableUpsample'];
-const ADVANCED_PARAM_KEYS = ['generateAudio', 'seed', 'shotMode', 'cfgScale'];
-
 const VIDEO_NODE_MAX_WIDTH = 640;
 const VIDEO_NODE_MAX_HEIGHT = 568;
 const VIDEO_NODE_MIN_WIDTH = 320;
@@ -176,6 +195,7 @@ export function VideoNode({ id, data }) {
   const [registry, setRegistry] = useState(null);
   const [videoMetadataRatioState, setVideoMetadataRatioState] = useState({ url: '', ratio: null });
   const [inputImageRatioState, setInputImageRatioState] = useState({ key: '', url: '', ratio: null });
+  const [appSettings] = useAppSettings();
   const toolbarRef = useRef(null);
   const lastHandledRunRequestRef = useRef(data?.runRequestId);
   const lastHandleSignatureRef = useRef('');
@@ -190,7 +210,9 @@ export function VideoNode({ id, data }) {
     [registry, settings.provider, settings.model]
   );
   const isOmniModel = isKlingOmniModel(modelConfig) || isKlingOmniModel(settings);
+  const isSeedance = isSeedanceModel(modelConfig) || isSeedanceModel(settings);
   const activeInputHandles = getActiveVideoHandlesForMode(settings.videoMode, modelConfig, settings);
+  const activeOutputHandles = isSeedance ? ['video:out', 'image:lastFrame'] : ['video:out'];
   const supportsCameraControl = supportsKlingCameraControl(modelConfig);
   const hasEndImageEdge = flowEdges.some(
     (edge) => edge.target === id && (edge.targetHandle ?? edge.targetHandleId) === 'image:end'
@@ -381,15 +403,77 @@ export function VideoNode({ id, data }) {
       ? getNodeMultiPromptOutput(nodeMap.get(multiPromptEdge.source))
       : null;
 
-    const collectImagesForHandle = (handleId) =>
+    const sortByEdgeIndex = (items, key) =>
+      items.sort((a, b) => {
+        const aIndex = typeof a.edge.data?.[key] === 'number' ? a.edge.data[key] : a.order;
+        const bIndex = typeof b.edge.data?.[key] === 'number' ? b.edge.data[key] : b.order;
+        return aIndex - bIndex;
+      });
+
+    const collectFromHandle = (handleId, outputFn, indexKey = null) => {
+      const matchingEdges = allEdges
+        .filter((edge) => edge.target === id && (edge.targetHandle ?? edge.targetHandleId) === handleId)
+        .map((edge, order) => ({ edge, order }));
+      const orderedEdges = indexKey ? sortByEdgeIndex(matchingEdges, indexKey) : matchingEdges;
+      return orderedEdges
+        .flatMap(({ edge }) => outputFn(nodeMap.get(edge.source), edge.sourceHandle, edge, allNodes, allEdges))
+        .filter(Boolean);
+    };
+
+    const collectImagesForHandle = (handleId, indexKey = null) =>
+      collectFromHandle(handleId, getNodeImageOutput, indexKey);
+
+    const collectVideosForHandle = (handleId, indexKey = null) =>
+      collectFromHandle(handleId, getNodeVideoOutput, indexKey);
+
+    const collectAudiosForHandle = (handleId, indexKey = null) =>
+      collectFromHandle(handleId, getNodeAudioOutput, indexKey);
+
+    if (isSeedance) {
+      if (settings.videoMode === 'frame') {
+        const firstFrame = collectImagesForHandle('image:firstFrame')[0] || null;
+        const lastFrame = collectImagesForHandle('image:lastFrame')[0] || null;
+        return {
+          prompt,
+          images: firstFrame ? [firstFrame] : [],
+          endImage: lastFrame,
+          multiPromptOutput,
+          omniParamsOutput: null,
+          seedanceParams: {
+            mode: 'frame',
+            firstFrame,
+            ...(lastFrame ? { lastFrame } : {}),
+            images: [],
+            videos: [],
+            audios: [],
+          },
+        };
+      }
+
+      return {
+        prompt,
+        images: [],
+        endImage: null,
+        multiPromptOutput,
+        omniParamsOutput: null,
+        seedanceParams: {
+          mode: 'multimodal-reference',
+          images: collectImagesForHandle('image:references', 'imageIndex'),
+          videos: collectVideosForHandle('video:references', 'videoIndex'),
+          audios: collectAudiosForHandle('audio:references', 'audioIndex'),
+        },
+      };
+    }
+
+    const collectLegacyImagesForHandle = (handleId) =>
       allEdges
         .filter((edge) => edge.target === id && (edge.targetHandle ?? edge.targetHandleId) === handleId)
         .flatMap((edge) => getNodeImageOutput(nodeMap.get(edge.source), edge.sourceHandle, edge, allNodes, allEdges))
         .filter(Boolean);
 
     const maxImages = Number(modelConfig.inputCapabilities?.maxImages) || Number.POSITIVE_INFINITY;
-    const imageInputs = collectImagesForHandle('image:images');
-    const endImages = collectImagesForHandle('image:end');
+    const imageInputs = collectLegacyImagesForHandle('image:images');
+    const endImages = collectLegacyImagesForHandle('image:end');
 
     let images = [];
     let endImage = null;
@@ -407,7 +491,7 @@ export function VideoNode({ id, data }) {
       multiPromptOutput,
       omniParamsOutput: null,
     };
-  }, [getEdges, getNodes, id, isOmniModel, modelConfig.inputCapabilities?.maxImages, settings.prompt, settings.videoMode]);
+  }, [getEdges, getNodes, id, isOmniModel, isSeedance, modelConfig.inputCapabilities?.maxImages, settings.prompt, settings.videoMode]);
 
   const inputImageCandidates = useMemo(() => {
     const nodeMap = new Map(flowNodes.map((node) => [node.id, node]));
@@ -418,8 +502,8 @@ export function VideoNode({ id, data }) {
         .filter(Boolean)
         .map(resolveVideoUrl);
 
-    const firstFrameImages = collectImagesForHandles(['image:images', 'image:in']);
-    const endFrameImages = collectImagesForHandles(['image:end', 'END', 'image_tail']);
+    const firstFrameImages = collectImagesForHandles(['image:images', 'image:in', 'image:firstFrame']);
+    const endFrameImages = collectImagesForHandles(['image:end', 'END', 'image_tail', 'image:lastFrame']);
     return [...firstFrameImages, ...endFrameImages];
   }, [flowEdges, flowNodes, id]);
   const inputImageCandidatesKey = JSON.stringify(inputImageCandidates);
@@ -462,7 +546,7 @@ export function VideoNode({ id, data }) {
     setActiveMenu(null);
     setShowAdvanced(false);
 
-    const { prompt, images, endImage, multiPromptOutput, omniParamsOutput } = collectVideoInputs();
+    const { prompt, images, endImage, multiPromptOutput, omniParamsOutput, seedanceParams } = collectVideoInputs();
     const runShotMode = supportsKlingMultiShot(modelConfig) ? getKlingShotMode(settings) : 'single';
     if (isOmniModel && !omniParamsOutput) {
       setTask({
@@ -496,11 +580,33 @@ export function VideoNode({ id, data }) {
       });
       return;
     }
-    if (!isOmniModel && runShotMode !== 'customize' && !prompt) {
+    if (!isOmniModel && !isSeedance && runShotMode !== 'customize' && !prompt) {
       setTask({
         status: 'error',
         progress: 0,
         message: 'Prompt is required.',
+      });
+      return;
+    }
+    if (isSeedance && settings.videoMode === 'frame' && !seedanceParams?.firstFrame) {
+      setTask({
+        status: 'error',
+        progress: 0,
+        message: 'Seedance frame mode requires a first frame image.',
+      });
+      return;
+    }
+    if (
+      isSeedance &&
+      seedanceParams?.mode === 'multimodal-reference' &&
+      seedanceParams.audios?.length > 0 &&
+      !seedanceParams.images?.length &&
+      !seedanceParams.videos?.length
+    ) {
+      setTask({
+        status: 'error',
+        progress: 0,
+        message: 'Seedance audio references require at least one image or video reference.',
       });
       return;
     }
@@ -534,6 +640,8 @@ export function VideoNode({ id, data }) {
       qualityMode: settings.qualityMode,
       enableUpsample: settings.enableUpsample ?? false,
       generateAudio: settings.generateAudio ?? false,
+      returnLastFrame: settings.returnLastFrame ?? false,
+      publicAssetStorage: appSettings.publicAssetStorage || undefined,
       seed: settings.seed ?? -1,
       numberOfVideos: settings.numberOfVideos ?? 1,
       images: isOmniModel ? [] : images,
@@ -548,6 +656,11 @@ export function VideoNode({ id, data }) {
               },
             },
           }
+        : isSeedance
+          ? {
+              ...(settings.customParams || {}),
+              seedance: seedanceParams,
+            }
         : {
             ...(settings.customParams || {}),
             kling: {
@@ -569,6 +682,8 @@ export function VideoNode({ id, data }) {
   }, [
     collectVideoInputs,
     isOmniModel,
+    isSeedance,
+    appSettings.publicAssetStorage,
     modelConfig,
     setTask,
     settings,
@@ -835,12 +950,11 @@ export function VideoNode({ id, data }) {
 
   const modelOptions = providerConfig?.models || [];
   const advancedParams = useMemo(
-    () =>
-      ADVANCED_PARAM_KEYS
-        .filter((key) => modelConfig.params?.[key])
-        .map((key) => [key, modelConfig.params[key]]),
-    [modelConfig.params]
+    () => getVideoAdvancedParamEntries(modelConfig),
+    [modelConfig]
   );
+  const showNegativePromptInput = shouldShowVideoNegativePrompt(modelConfig, settings);
+  const showCustomParamsInput = shouldShowRawCustomParams(appSettings);
   const customParamsValue =
     typeof settings.customParamsText === 'string'
       ? settings.customParamsText
@@ -859,7 +973,7 @@ export function VideoNode({ id, data }) {
     <div className="canvas-node-card canvas-video-node-card group relative flex h-full w-full min-h-[180px] min-w-[260px] select-none flex-col overflow-visible rounded-[24px] border border-white/5 bg-[#181818] text-white transition-colors duration-100 hover:border-white/20">
       {showAdvanced && (
         <div
-          className="nodrag nowheel absolute -top-81 left-1/2 z-[60] flex max-h-[260px] w-[420px] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#181818]/95 pl-4 pt-4 pb-4 pr-1.5 opacity-0 shadow-2xl backdrop-blur-xl transition-opacity duration-300 delay-[1000ms] group-hover:opacity-100 group-hover:delay-0"
+          className="nodrag nowheel absolute bottom-[calc(100%+4.25rem)] left-1/2 z-[60] flex max-h-[260px] w-[420px] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#181818]/95 pl-4 pt-4 pb-4 pr-1.5 opacity-0 shadow-2xl backdrop-blur-xl transition-opacity duration-300 delay-[1000ms] group-hover:opacity-100 group-hover:delay-0"
           onMouseDown={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
           onWheel={(event) => event.stopPropagation()}
@@ -875,7 +989,7 @@ export function VideoNode({ id, data }) {
             </button>
           </div>
 
-          <div className="nowheel flex-1 overflow-y-auto pr-2 mr-0.5">
+          <div className="nowheel min-h-0 overflow-y-auto pr-2 mr-0.5">
             <div className="grid grid-cols-2 gap-2.5">
               {advancedParams.map(([key, config]) => (
                 <label key={key} className="nodrag nowheel grid gap-1.5">
@@ -952,29 +1066,33 @@ export function VideoNode({ id, data }) {
               </div>
             )}
 
-            <label className="nodrag nowheel mt-2.5 grid gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">Negative Prompt</span>
-              <div className="nodrag nowheel overflow-hidden rounded-xl border border-white/10 bg-black/25 transition-colors hover:border-white/20">
-                <textarea
-                  value={settings.negativePrompt || ''}
-                  onChange={(event) => updateNodeData({ negativePrompt: event.target.value })}
-                  className="nodrag nowheel block h-20 w-full resize-none bg-transparent px-3 py-2 text-xs text-white/75 outline-none overflow-y-auto overflow-x-hidden"
-                  placeholder="Optional negative prompt..."
-                />
-              </div>
-            </label>
+            {showNegativePromptInput && (
+              <label className="nodrag nowheel mt-2.5 grid gap-1.5">
+                <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">Negative Prompt</span>
+                <div className="nodrag nowheel overflow-hidden rounded-xl border border-white/10 bg-black/25 transition-colors hover:border-white/20">
+                  <textarea
+                    value={settings.negativePrompt || ''}
+                    onChange={(event) => updateNodeData({ negativePrompt: event.target.value })}
+                    className="nodrag nowheel block h-20 w-full resize-none bg-transparent px-3 py-2 text-xs text-white/75 outline-none overflow-y-auto overflow-x-hidden"
+                    placeholder="Optional negative prompt..."
+                  />
+                </div>
+              </label>
+            )}
 
-            <label className="nodrag nowheel mt-2.5 grid gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">Custom Params</span>
-              <div className="nodrag nowheel overflow-hidden rounded-xl border border-white/10 bg-black/25 transition-colors hover:border-white/20">
-                <textarea
-                  value={customParamsValue}
-                  onChange={handleCustomParamsChange}
-                  spellCheck={false}
-                  className="nodrag nowheel block h-20 w-full resize-none bg-transparent px-3 py-2 font-mono text-[11px] text-white/70 outline-none overflow-y-auto overflow-x-hidden"
-                />
-              </div>
-            </label>
+            {showCustomParamsInput && (
+              <label className="nodrag nowheel mt-2.5 grid gap-1.5">
+                <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">Custom Params</span>
+                <div className="nodrag nowheel overflow-hidden rounded-xl border border-white/10 bg-black/25 transition-colors hover:border-white/20">
+                  <textarea
+                    value={customParamsValue}
+                    onChange={handleCustomParamsChange}
+                    spellCheck={false}
+                    className="nodrag nowheel block h-20 w-full resize-none bg-transparent px-3 py-2 font-mono text-[11px] text-white/70 outline-none overflow-y-auto overflow-x-hidden"
+                  />
+                </div>
+              </label>
+            )}
           </div>
         </div>
       )}
@@ -1103,17 +1221,23 @@ export function VideoNode({ id, data }) {
         </div>
       ))}
 
-      <div className="absolute right-0 top-1/2 z-20 flex -translate-y-1/2 items-center">
-        <span className="pointer-events-none absolute right-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
-          video:out
-        </span>
-        <Handle
-          type="source"
-          id="video:out"
-          position={Position.Right}
-          className="!right-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] shadow-[0_0_8px_rgba(255,255,255,0.2)] transition-colors group-hover:!border-white"
-        />
-      </div>
+      {activeOutputHandles.map((handleId, index) => (
+        <div
+          key={handleId}
+          className="absolute right-0 z-20 flex items-center"
+          style={{ top: `${50 + (index - (activeOutputHandles.length - 1) / 2) * 18}%` }}
+        >
+          <span className="pointer-events-none absolute right-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
+            {OUTPUT_HANDLE_LABELS[handleId] || handleId}
+          </span>
+          <Handle
+            type="source"
+            id={handleId}
+            position={Position.Right}
+            className="!right-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] shadow-[0_0_8px_rgba(255,255,255,0.2)] transition-colors group-hover:!border-white"
+          />
+        </div>
+      ))}
 
       <NodeResizeCorner minWidth={120} minHeight={90} />
     </div>

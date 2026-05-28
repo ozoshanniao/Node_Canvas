@@ -6,10 +6,12 @@ from typing import Any
 from video_generation.providers.yunwu_veo_provider import YunwuVeoProvider
 from video_generation.providers.google_veo_provider import GoogleVeoProvider
 from video_generation.providers.kling import KlingVideoProvider
+from video_generation.providers.seedance_official import SeedanceOfficialProvider
 from video_generation.schemas import VideoGenerateRequest, VideoTask
 from video_generation.specs import get_video_model_specs
 from video_generation.storage import download_video_to_project
 from video_generation.tasks import get_task, upsert_task
+from image_generation.storage import download_image_to_generation, safe_generation_filename_stem
 
 
 YUNWU_STATUS_MAP = {
@@ -32,6 +34,7 @@ class VideoGenerationService:
         self.providers = {
             "yunwu": YunwuVeoProvider(api_key=yunwu_api_key),
             "google": GoogleVeoProvider(),
+            "seedance_official": SeedanceOfficialProvider(),
             "kling": KlingVideoProvider(provider_type="kling"),
             "yunwu-kling": KlingVideoProvider(provider_type="yunwu-kling"),
         }
@@ -56,6 +59,10 @@ class VideoGenerationService:
             raise ValueError(f"Unsupported video mode for model: {request.videoMode}")
         if request.provider == "yunwu" and request.videoMode == "reference-video" and request.model != "veo3.1-components":
             raise ValueError("reference-video requires veo3.1-components")
+
+    def _normalize_public_asset_storage(self, value: str | None) -> str | None:
+        storage = (value or "").strip().lower()
+        return storage or None
 
     def _extract_provider_task_id(self, response: dict[str, Any]) -> str:
         data = response.get("data") if isinstance(response.get("data"), dict) else response
@@ -127,6 +134,7 @@ class VideoGenerationService:
             "google": "Google",
             "kling": "Kling",
             "yunwu-kling": "Yunwu-Kling",
+            "seedance_official": "Seedance",
             "yunwu": "Yunwu",
         }.get(provider_id or "", provider_id or "Provider")
 
@@ -136,7 +144,7 @@ class VideoGenerationService:
             message = str(response.get("message") or status)
             remote_url = response.get("remoteVideoUrl")
             label = self._provider_label(provider_id)
-            known_prefixes = ("Google:", "Kling:", "Yunwu-Kling:", "Yunwu:")
+            known_prefixes = ("Google:", "Kling:", "Yunwu-Kling:", "Seedance:", "Yunwu:")
             if status == "error" and not message.startswith(known_prefixes):
                 message = f"{label}: {message}"
             return status, message, remote_url
@@ -153,6 +161,38 @@ class VideoGenerationService:
             status = "running"
             message = "Waiting for video URL"
         return status, message, remote_url
+
+    def _extract_last_frame_remote_url(self, response: dict[str, Any], provider_id: str | None = None) -> str | None:
+        if provider_id != "seedance_official" or not isinstance(response, dict):
+            return None
+        value = response.get("lastFrameRemoteUrl")
+        if value:
+            return str(value)
+        raw = response.get("raw")
+        raw_data = self._extract_query_data(raw) if isinstance(raw, dict) else {}
+        for source in (raw_data, raw if isinstance(raw, dict) else {}):
+            content = source.get("content") if isinstance(source, dict) else None
+            if isinstance(content, dict) and content.get("last_frame_url"):
+                return str(content["last_frame_url"])
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("last_frame_url"):
+                        return str(item["last_frame_url"])
+        return None
+
+    async def _download_seedance_last_frame(
+        self,
+        project_path: str,
+        provider_task_id: str,
+        remote_url: str,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        try:
+            filename_stem = f"{safe_generation_filename_stem(provider_task_id)}_last_frame"
+            return await download_image_to_generation(project_path, remote_url, filename_stem), None
+        except Exception as exc:
+            warning = f"Seedance last frame download failed: {exc}"
+            print(f"[VideoGeneration:Seedance lastFrame] {warning}")
+            return None, warning
 
     def _progress_for_status(self, status: str) -> int:
         if status == "queued":
@@ -175,6 +215,7 @@ class VideoGenerationService:
         now = int(time.time())
         task_id = f"video_{uuid.uuid4().hex[:12]}"
         request.projectPath = project_path
+        request.publicAssetStorage = self._normalize_public_asset_storage(request.publicAssetStorage)
         provider_response = await provider.create_task(request)
         provider_task_id = self._extract_provider_task_id(provider_response)
         provider_status = provider_response.get("status") if isinstance(provider_response, dict) else None
@@ -273,6 +314,24 @@ class VideoGenerationService:
                     patch["progress"] = 0
                     patch["error"] = str(exc)
                     patch["message"] = f"Video completed, but download failed: {exc}"
+
+            last_frame_remote_url = self._extract_last_frame_remote_url(response, task.provider)
+            if status == "success" and task.provider == "seedance_official" and last_frame_remote_url:
+                last_frame, warning = await self._download_seedance_last_frame(
+                    project_path,
+                    task.providerTaskId,
+                    last_frame_remote_url,
+                )
+                patch["outputs"] = {
+                    **patch["outputs"],
+                    "lastFrame": last_frame,
+                    **({"lastFrameWarning": warning} if warning else {}),
+                }
+            elif status == "success" and task.provider == "seedance_official":
+                patch["outputs"] = {
+                    **patch["outputs"],
+                    "lastFrame": None,
+                }
 
             updated = task.model_copy(update=patch)
             await upsert_task(project_path, updated)

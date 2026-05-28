@@ -1,0 +1,1 @@
+Seedance R2 smoke test fixture.

@@ -4,6 +4,7 @@ import json
 import base64
 import uuid
 import asyncio
+import mimetypes
 import tkinter as tk
 import base64
 from tkinter import filedialog
@@ -321,11 +322,38 @@ async def get_image(filename: str, projectPath: Optional[str] = None):
     raise HTTPException(status_code=404)
 
 
-# 新增：保存图片到 input 目录
+INPUT_MIME_FALLBACKS = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".ogg": "audio/ogg",
+    ".opus": "audio/opus",
+    ".flac": "audio/flac",
+    ".webm": "audio/webm",
+    ".mp4": "audio/mp4",
+}
+
+
+def guess_input_content_type(filename: str) -> str:
+    suffix = Path(filename).suffix.lower()
+    if suffix in INPUT_MIME_FALLBACKS:
+        return INPUT_MIME_FALLBACKS[suffix]
+    guessed = mimetypes.guess_type(filename)[0]
+    if guessed:
+        return guessed
+    return "application/octet-stream"
+
+
+# 新增：保存图片/音频到 input 目录
 @app.post("/api/input/save")
 async def save_input_image(payload: dict):
     """
-    Save image to project input directory.
+    Save image or audio to project input directory.
 
     Accepts:
     - projectPath: str (required)
@@ -345,7 +373,7 @@ async def save_input_image(payload: dict):
     if not project_path:
         raise HTTPException(status_code=400, detail="projectPath is required")
 
-    image_data = payload.get("imageData", "")
+    image_data = payload.get("mediaData") or payload.get("imageData", "")
     if not image_data:
         raise HTTPException(status_code=400, detail="imageData is required")
 
@@ -355,7 +383,7 @@ async def save_input_image(payload: dict):
 
     # Decode base64 or data URL
     try:
-        if image_data.startswith("data:image/"):
+        if image_data.startswith("data:"):
             # Extract mime type from data URL if not provided
             if not mime_type:
                 header = image_data.split(",")[0]
@@ -368,6 +396,8 @@ async def save_input_image(payload: dict):
 
         if not mime_type:
             mime_type = infer_mime_type(image_bytes)
+        if original_filename and (not mime_type or mime_type == "application/octet-stream"):
+            mime_type = guess_input_content_type(original_filename)
 
         result = save_image_bytes_to_input(
             image_bytes=image_bytes,
@@ -380,13 +410,13 @@ async def save_input_image(payload: dict):
         return {"status": "success", "data": result}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save image: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save input media: {str(e)}")
 
 
-# 新增：读取 input 目录图片
+# 新增：读取 input 目录媒体
 @app.get("/api/input/{filename}")
 async def get_input_image(filename: str, projectPath: Optional[str] = None):
-    """Read image from project input directory."""
+    """Read media from project input directory."""
     base_path = projectPath or CURRENT_PROJECT_PATH
     if not base_path:
         raise HTTPException(status_code=400, detail="Project path not identified")
@@ -395,22 +425,15 @@ async def get_input_image(filename: str, projectPath: Optional[str] = None):
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
-    img_path = os.path.join(base_path, "input", filename)
+    input_path = os.path.join(base_path, "input", filename)
 
-    if os.path.exists(img_path):
-        lower_name = filename.lower()
-        if lower_name.endswith((".jpg", ".jpeg")):
-            content_type = "image/jpeg"
-        elif lower_name.endswith(".webp"):
-            content_type = "image/webp"
-        else:
-            content_type = "image/png"
-        response = FileResponse(img_path, media_type=content_type)
+    if os.path.exists(input_path):
+        response = FileResponse(input_path, media_type=guess_input_content_type(filename))
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
         return response
 
-    raise HTTPException(status_code=404, detail="Image not found")
+    raise HTTPException(status_code=404, detail="Input media not found")
 
 
 @app.post("/run-workflow")

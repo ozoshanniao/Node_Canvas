@@ -16,12 +16,14 @@ import ImageEdge from './components/ImageEdge';
 import { TopProjectBar } from './components/TopProjectBar';
 import { ConnectionNodeMenu } from './components/ConnectionNodeMenu';
 import { NodeDock } from './components/NodeDock';
+import CustomSelect from './components/CustomSelect';
 
 import { TextNode } from './nodes/TextNode';
 import { TextConstructionNode } from './nodes/TextConstructionNode';
 import { LLMProcessorNode } from './nodes/LLMProcessorNode';
 import { ImageNode } from './nodes/ImageNode';
 import { VideoNode } from './nodes/VideoNode';
+import { AudioInputNode } from './nodes/AudioInputNode';
 import { ShotListNode } from './nodes/ShotListNode';
 import { OmniComposerNode } from './nodes/OmniComposerNode';
 import { ImageInputNode } from './nodes/ImageInputNode';
@@ -44,6 +46,7 @@ import { RUNNABLE_NODE_TYPES } from './utils/nodeCategories';
 import { DISABLE_MINIMAP, ONLY_RENDER_VISIBLE_ELEMENTS } from './utils/perfDebug';
 import { normalizeImageInputEdgeLabels } from './utils/edgeLabels';
 import { uploadImageToInput } from './utils/uploadToInput';
+import { useAppSettings } from './utils/appSettings';
 //import { ButtonEdge } from './edges/ButtonEdge';
 
 const nodeTypes = {
@@ -51,6 +54,7 @@ const nodeTypes = {
   textConstruction: TextConstructionNode,
   imageNode: ImageNode,
   videoNode: VideoNode,
+  audioInputNode: AudioInputNode,
   shotListNode: ShotListNode,
   omniComposerNode: OmniComposerNode,
   imageInputNode: ImageInputNode,
@@ -263,6 +267,9 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [isMiniMapCollapsed, setIsMiniMapCollapsed] = useState(false);
   const [isDraggingNode, setIsDraggingNode] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('developer');
+  const [appSettings, updateAppSetting] = useAppSettings();
   const isSavingRef = useRef(false);
   const latestCanvasRef = useRef({ nodes: [], edges: [] });
   const latestProjectRef = useRef({ projectPath, projectFilePath, projectName });
@@ -825,6 +832,108 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         lastSavedAt={lastSavedAt}
         onSave={() => saveProject('manual')}
       />
+
+      <div
+        className="nodrag nopan absolute right-6 top-6 z-[80]"
+        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        onWheel={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={() => setSettingsOpen((value) => !value)}
+          className={`flex h-10 w-10 items-center justify-center rounded-full border text-white/60 shadow-[0_18px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl transition-all hover:border-white/20 hover:bg-[#181818]/90 hover:text-white/85 ${
+            settingsOpen ? 'border-white/25 bg-[#181818]/90 text-white' : 'border-white/10 bg-[#121212]/75'
+          }`}
+          aria-label="Settings"
+          title="Settings"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.05.05a2.1 2.1 0 1 1-2.97 2.97l-.05-.05a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.1 1.66V21.4a2.1 2.1 0 1 1-4.2 0v-.07a1.8 1.8 0 0 0-1.1-1.66 1.8 1.8 0 0 0-1.98.36l-.05.05a2.1 2.1 0 1 1-2.97-2.97l.05-.05A1.8 1.8 0 0 0 3.8 15a1.8 1.8 0 0 0-1.66-1.1H2.1a2.1 2.1 0 1 1 0-4.2h.07a1.8 1.8 0 0 0 1.66-1.1 1.8 1.8 0 0 0-.36-1.98l-.05-.05A2.1 2.1 0 1 1 6.4 3.6l.05.05a1.8 1.8 0 0 0 1.98.36 1.8 1.8 0 0 0 1.1-1.66V2.1a2.1 2.1 0 1 1 4.2 0v.07a1.8 1.8 0 0 0 1.1 1.66 1.8 1.8 0 0 0 1.98-.36l.05-.05a2.1 2.1 0 1 1 2.97 2.97l-.05.05a1.8 1.8 0 0 0-.36 1.98 1.8 1.8 0 0 0 1.66 1.1h.07a2.1 2.1 0 1 1 0 4.2h-.07A1.8 1.8 0 0 0 19.4 15Z" />
+          </svg>
+        </button>
+
+        {settingsOpen && (
+          <div className="absolute right-0 mt-3 w-[360px] min-h-[330px] overflow-hidden rounded-[22px] border border-white/10 bg-[#141414]/90 shadow-[0_28px_70px_rgba(0,0,0,0.58)] backdrop-blur-2xl">
+            <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
+              <div className="text-sm font-light tracking-[0.08em] text-white/80">Settings</div>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(false)}
+                className="rounded-full px-2 py-1 text-xs text-white/35 transition-colors hover:bg-white/5 hover:text-white/70"
+              >
+                Esc
+              </button>
+            </div>
+
+            <div className="flex gap-1 border-b border-white/5 px-3 py-2">
+              {[
+                { id: 'general', label: 'General' },
+                { id: 'developer', label: 'Developer' },
+              ].map((tab) => (
+                <button
+                  type="button"
+                  key={tab.id}
+                  onClick={() => setSettingsTab(tab.id)}
+                  className={`rounded-full px-3 py-1.5 text-xs transition-colors ${
+                    settingsTab === tab.id
+                      ? 'bg-white/10 text-white/85'
+                      : 'text-white/35 hover:bg-white/5 hover:text-white/65'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="p-4">
+              {settingsTab === 'developer' ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-sm font-light text-white/80">Show Raw Custom Params</div>
+                      <div className="mt-1 text-xs leading-5 text-white/35">
+                        Show provider-specific raw JSON parameters in video nodes for debugging.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateAppSetting('showRawCustomParams', !appSettings.showRawCustomParams)}
+                      className={`mt-0.5 h-7 w-12 shrink-0 rounded-full border p-0.5 transition-colors ${
+                        appSettings.showRawCustomParams ? 'border-white/55 bg-white/85' : 'border-white/10 bg-black/30'
+                      }`}
+                      aria-pressed={appSettings.showRawCustomParams}
+                    >
+                      <span
+                        className={`block h-5 w-5 rounded-full transition-transform ${
+                          appSettings.showRawCustomParams ? 'translate-x-5 bg-black' : 'translate-x-0 bg-white/35'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-sm font-light text-white/80">Public Asset Storage</div>
+                  <CustomSelect
+                    value={appSettings.publicAssetStorage || ''}
+                    onChange={(value) => updateAppSetting('publicAssetStorage', value)}
+                    options={[
+                      { value: '', label: 'Backend .env Default' },
+                      { value: 'r2', label: 'Cloudflare R2' },
+                      { value: 'tos', label: 'Volcengine TOS' },
+                    ]}
+                    className="relative mt-3 w-full nodrag"
+                    buttonClassName="flex w-full items-center justify-between rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 text-xs text-white/75 outline-none transition-colors hover:border-white/20 focus:border-white/35"
+                    menuClassName="nowheel nodrag animate-in fade-in zoom-in-95 absolute left-0 right-0 z-[100] mt-1.5 rounded-xl border border-white/10 bg-[#141414]/95 shadow-2xl backdrop-blur-xl duration-150 overflow-hidden"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       <ReactFlow 
         nodes={nodes} 

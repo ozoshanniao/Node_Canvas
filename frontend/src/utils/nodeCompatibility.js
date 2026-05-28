@@ -1,4 +1,4 @@
-import { NODE_DEFINITIONS, getNodeDefinition } from '../nodes/nodeDefinitions';
+import { NODE_DEFINITIONS, getNodeDefinition } from '../nodes/nodeDefinitions.js';
 
 export const getHandleKind = (handleId = '') => {
   if (!handleId || typeof handleId !== 'string') return '';

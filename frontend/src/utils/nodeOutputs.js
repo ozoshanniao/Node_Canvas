@@ -82,6 +82,12 @@ export const getNodeImageOutput = (node, sourceHandle, edge, nodes = [], edges =
     return images.map((item) => (typeof item === 'string' ? item : item?.url)).filter(Boolean);
   }
 
+  if (node.type === 'videoNode') {
+    if (sourceHandle !== 'image:lastFrame') return [];
+    const lastFrame = node.data?.outputs?.lastFrame;
+    return lastFrame ? [lastFrame] : [];
+  }
+
   if (node.type === 'routeNode') {
     const nextVisited = new Set(visited);
     nextVisited.add(node.id);
@@ -98,6 +104,61 @@ export const getNodeImageOutput = (node, sourceHandle, edge, nodes = [], edges =
   }
 
   return [];
+};
+
+export const getNodeVideoOutput = (node, sourceHandle, edge, nodes = [], edges = [], visited = new Set()) => {
+  if (!node) return [];
+  if (visited.has(node.id)) return [];
+
+  if (node.type === 'videoNode') {
+    const outputs = node.data?.outputs || {};
+    const candidates = [
+      outputs.videoUrl,
+      outputs.remoteVideoUrl,
+      node.data?.videoUrl,
+      node.data?.remoteVideoUrl,
+      node.data?.localVideoUrl,
+      node.data?.url,
+    ];
+    return candidates.filter(Boolean).slice(0, 1);
+  }
+
+  if (node.type === 'routeNode') {
+    const nextVisited = new Set(visited);
+    nextVisited.add(node.id);
+    const nodeMap = new Map(nodes.map((item) => [item.id, item]));
+    const videoInputEdges = edges.filter(
+      (inputEdge) => inputEdge.target === node.id && (inputEdge.targetHandle ?? inputEdge.targetHandleId) === 'video:in'
+    );
+
+    return videoInputEdges
+      .flatMap((inputEdge) =>
+        getNodeVideoOutput(nodeMap.get(inputEdge.source), inputEdge.sourceHandle, inputEdge, nodes, edges, nextVisited)
+      )
+      .filter(Boolean);
+  }
+
+  return [];
+};
+
+export const getNodeAudioOutput = (node) => {
+  if (!node) return [];
+
+  const outputs = node.data?.outputs || {};
+  const mayBeAudioNode = String(node.type || '').toLowerCase().includes('audio');
+  const selectedAudio =
+    node.type === 'audioInputNode' && Array.isArray(node.data?.audioFiles)
+      ? node.data.audioFiles[
+          Number.isInteger(node.data?.currentIndex) ? node.data.currentIndex : 0
+        ]?.url
+      : null;
+  const candidates = [
+    outputs.audioUrl,
+    node.data?.audioUrl,
+    selectedAudio,
+    mayBeAudioNode ? node.data?.url : null,
+  ];
+  return candidates.filter(Boolean).slice(0, 1);
 };
 
 export const getNodeMultiPromptOutput = (node) => {

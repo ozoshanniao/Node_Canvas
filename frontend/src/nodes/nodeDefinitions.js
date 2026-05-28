@@ -1,6 +1,6 @@
-import { mergeNodeDefaults } from '../utils/nodeDefaults';
-import { DEFAULT_IMAGE_GENERATION_SETTINGS } from '../utils/imageGenerationOptions';
-import { DEFAULT_VIDEO_GENERATION_SETTINGS } from '../utils/videoGenerationOptions';
+import { mergeNodeDefaults } from '../utils/nodeDefaults.js';
+import { DEFAULT_IMAGE_GENERATION_SETTINGS } from '../utils/imageGenerationOptions.js';
+import { DEFAULT_VIDEO_GENERATION_SETTINGS } from '../utils/videoGenerationOptions.js';
 
 export const NODE_DEFINITIONS = [
   {
@@ -65,6 +65,18 @@ export const NODE_DEFINITIONS = [
     defaultsKind: 'imageGeneration',
   },
   {
+    type: 'audioInputNode',
+    label: 'Audio Input',
+    description: 'Audio material input node',
+    category: 'Video',
+    order: 8,
+    showInConnectionMenu: true,
+    inputs: [],
+    outputs: [{ id: 'audio:out', kind: 'audio' }],
+    defaultData: {},
+    defaultSize: { width: 280, height: 160 },
+  },
+  {
     type: 'videoNode',
     label: 'Video Generator',
     description: 'Specs-driven video generation shell',
@@ -77,8 +89,16 @@ export const NODE_DEFINITIONS = [
       { id: 'omniParams:in', kind: 'omniParams' },
       { id: 'image:images', kind: 'image' },
       { id: 'image:end', kind: 'image' },
+      { id: 'image:firstFrame', kind: 'image', label: 'First Frame' },
+      { id: 'image:lastFrame', kind: 'image', label: 'Last Frame' },
+      { id: 'image:references', kind: 'image', label: 'Images' },
+      { id: 'video:references', kind: 'video', label: 'Videos' },
+      { id: 'audio:references', kind: 'audio', label: 'Audio' },
     ],
-    outputs: [{ id: 'video:out', kind: 'video' }],
+    outputs: [
+      { id: 'video:out', kind: 'video' },
+      { id: 'image:lastFrame', kind: 'image', label: 'Last Frame' },
+    ],
     defaultData: { ...DEFAULT_VIDEO_GENERATION_SETTINGS },
     defaultsKind: 'videoGeneration',
     defaultSize: { width: 520, height: 293 },

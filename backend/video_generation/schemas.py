@@ -19,6 +19,8 @@ class VideoGenerateRequest(BaseModel):
     qualityMode: str | None = None
     enableUpsample: bool | None = None
     generateAudio: bool | None = None
+    returnLastFrame: bool | None = None
+    publicAssetStorage: str | None = None
     seed: int | None = None
     numberOfVideos: int | None = None
     images: list[str] = Field(default_factory=list)
