@@ -95,7 +95,10 @@ export const NODE_DEFINITIONS = [
       { id: 'video:references', kind: 'video', label: 'Videos' },
       { id: 'audio:references', kind: 'audio', label: 'Audio' },
     ],
-    outputs: [{ id: 'video:out', kind: 'video' }],
+    outputs: [
+      { id: 'video:out', kind: 'video' },
+      { id: 'image:lastFrame', kind: 'image', label: 'Last Frame' },
+    ],
     defaultData: { ...DEFAULT_VIDEO_GENERATION_SETTINGS },
     defaultsKind: 'videoGeneration',
     defaultSize: { width: 520, height: 293 },

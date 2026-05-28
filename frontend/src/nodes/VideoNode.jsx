@@ -46,6 +46,11 @@ const HANDLE_LABELS = {
   'audio:references': 'audios',
 };
 
+const OUTPUT_HANDLE_LABELS = {
+  'video:out': 'video:out',
+  'image:lastFrame': 'last',
+};
+
 const TOOLBAR_PARAM_KEYS = ['videoMode', 'aspectRatio', 'duration', 'resolution', 'qualityMode', 'enableUpsample'];
 const VIDEO_NODE_MAX_WIDTH = 640;
 const VIDEO_NODE_MAX_HEIGHT = 568;
@@ -207,6 +212,7 @@ export function VideoNode({ id, data }) {
   const isOmniModel = isKlingOmniModel(modelConfig) || isKlingOmniModel(settings);
   const isSeedance = isSeedanceModel(modelConfig) || isSeedanceModel(settings);
   const activeInputHandles = getActiveVideoHandlesForMode(settings.videoMode, modelConfig, settings);
+  const activeOutputHandles = isSeedance ? ['video:out', 'image:lastFrame'] : ['video:out'];
   const supportsCameraControl = supportsKlingCameraControl(modelConfig);
   const hasEndImageEdge = flowEdges.some(
     (edge) => edge.target === id && (edge.targetHandle ?? edge.targetHandleId) === 'image:end'
@@ -1213,17 +1219,23 @@ export function VideoNode({ id, data }) {
         </div>
       ))}
 
-      <div className="absolute right-0 top-1/2 z-20 flex -translate-y-1/2 items-center">
-        <span className="pointer-events-none absolute right-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
-          video:out
-        </span>
-        <Handle
-          type="source"
-          id="video:out"
-          position={Position.Right}
-          className="!right-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] shadow-[0_0_8px_rgba(255,255,255,0.2)] transition-colors group-hover:!border-white"
-        />
-      </div>
+      {activeOutputHandles.map((handleId, index) => (
+        <div
+          key={handleId}
+          className="absolute right-0 z-20 flex items-center"
+          style={{ top: `${50 + (index - (activeOutputHandles.length - 1) / 2) * 18}%` }}
+        >
+          <span className="pointer-events-none absolute right-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
+            {OUTPUT_HANDLE_LABELS[handleId] || handleId}
+          </span>
+          <Handle
+            type="source"
+            id={handleId}
+            position={Position.Right}
+            className="!right-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] shadow-[0_0_8px_rgba(255,255,255,0.2)] transition-colors group-hover:!border-white"
+          />
+        </div>
+      ))}
 
       <NodeResizeCorner minWidth={120} minHeight={90} />
     </div>

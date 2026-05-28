@@ -48,6 +48,12 @@ class SeedanceOfficialProvider(BaseVideoProvider):
             if value:
                 return str(value)
         content = data.get("content")
+        if isinstance(content, dict):
+            video_url = content.get("video_url")
+            if isinstance(video_url, dict) and video_url.get("url"):
+                return str(video_url["url"])
+            if isinstance(video_url, str):
+                return video_url
         if isinstance(content, list):
             for item in content:
                 if not isinstance(item, dict):
@@ -64,6 +70,20 @@ class SeedanceOfficialProvider(BaseVideoProvider):
                 return self._extract_video_url(first)
             if isinstance(first, str):
                 return first
+        return None
+
+    def _extract_last_frame_url(self, data: dict, raw: dict) -> str | None:
+        for source in (data, raw):
+            content = source.get("content") if isinstance(source, dict) else None
+            if isinstance(content, dict) and content.get("last_frame_url"):
+                return str(content["last_frame_url"])
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("last_frame_url"):
+                        return str(item["last_frame_url"])
+            value = source.get("last_frame_url") if isinstance(source, dict) else None
+            if value:
+                return str(value)
         return None
 
     async def create_task(self, request: VideoGenerateRequest) -> dict:
@@ -91,6 +111,7 @@ class SeedanceOfficialProvider(BaseVideoProvider):
         return {
             "status": status,
             "remoteVideoUrl": remote_url,
+            "lastFrameRemoteUrl": self._extract_last_frame_url(data, raw) if status == "success" else None,
             "message": f"Seedance: {message}" if status == "error" and not str(message).startswith("Seedance:") else message,
             "raw": raw,
         }

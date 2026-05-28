@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getNodeAudioOutput, getNodeOmniParamsOutput, getNodeVideoOutput } from '../nodeOutputs.js';
+import { getNodeAudioOutput, getNodeImageOutput, getNodeOmniParamsOutput, getNodeVideoOutput } from '../nodeOutputs.js';
 import { normalizeImageInputEdgeLabels } from '../edgeLabels.js';
 
 const makeOmniNode = (data) => ({
@@ -65,6 +65,32 @@ const imageEdge = {
   }), ['input/ref2.flac']);
 }
 
+{
+  const lastFrame = {
+    type: 'image',
+    sourceType: 'generated',
+    url: 'generation/seedance_task_last_frame.png',
+    filePath: 'generation/seedance_task_last_frame.png',
+    remoteUrl: 'https://seedance.test/last.png',
+    filename: 'seedance_task_last_frame.png',
+    mimeType: 'image/png',
+  };
+  assert.deepEqual(getNodeImageOutput({
+    id: 'video-1',
+    type: 'videoNode',
+    data: { outputs: { lastFrame } },
+  }, 'image:lastFrame'), [lastFrame]);
+  assert.deepEqual(getNodeImageOutput({
+    id: 'video-1',
+    type: 'videoNode',
+    data: { outputs: { lastFrame: null } },
+  }, 'image:lastFrame'), []);
+  assert.deepEqual(getNodeImageOutput({
+    id: 'video-1',
+    type: 'videoNode',
+    data: { outputs: { lastFrame } },
+  }, 'video:out'), []);
+}
 
 {
   const output = getNodeOmniParamsOutput(

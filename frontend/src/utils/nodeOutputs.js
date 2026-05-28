@@ -82,7 +82,11 @@ export const getNodeImageOutput = (node, sourceHandle, edge, nodes = [], edges =
     return images.map((item) => (typeof item === 'string' ? item : item?.url)).filter(Boolean);
   }
 
-
+  if (node.type === 'videoNode') {
+    if (sourceHandle !== 'image:lastFrame') return [];
+    const lastFrame = node.data?.outputs?.lastFrame;
+    return lastFrame ? [lastFrame] : [];
+  }
 
   if (node.type === 'routeNode') {
     const nextVisited = new Set(visited);

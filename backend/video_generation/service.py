@@ -11,6 +11,7 @@ from video_generation.schemas import VideoGenerateRequest, VideoTask
 from video_generation.specs import get_video_model_specs
 from video_generation.storage import download_video_to_project
 from video_generation.tasks import get_task, upsert_task
+from image_generation.storage import download_image_to_generation, safe_generation_filename_stem
 
 
 YUNWU_STATUS_MAP = {
@@ -157,6 +158,38 @@ class VideoGenerationService:
             message = "Waiting for video URL"
         return status, message, remote_url
 
+    def _extract_last_frame_remote_url(self, response: dict[str, Any], provider_id: str | None = None) -> str | None:
+        if provider_id != "seedance_official" or not isinstance(response, dict):
+            return None
+        value = response.get("lastFrameRemoteUrl")
+        if value:
+            return str(value)
+        raw = response.get("raw")
+        raw_data = self._extract_query_data(raw) if isinstance(raw, dict) else {}
+        for source in (raw_data, raw if isinstance(raw, dict) else {}):
+            content = source.get("content") if isinstance(source, dict) else None
+            if isinstance(content, dict) and content.get("last_frame_url"):
+                return str(content["last_frame_url"])
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("last_frame_url"):
+                        return str(item["last_frame_url"])
+        return None
+
+    async def _download_seedance_last_frame(
+        self,
+        project_path: str,
+        provider_task_id: str,
+        remote_url: str,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        try:
+            filename_stem = f"{safe_generation_filename_stem(provider_task_id)}_last_frame"
+            return await download_image_to_generation(project_path, remote_url, filename_stem), None
+        except Exception as exc:
+            warning = f"Seedance last frame download failed: {exc}"
+            print(f"[VideoGeneration:Seedance lastFrame] {warning}")
+            return None, warning
+
     def _progress_for_status(self, status: str) -> int:
         if status == "queued":
             return 5
@@ -276,6 +309,24 @@ class VideoGenerationService:
                     patch["progress"] = 0
                     patch["error"] = str(exc)
                     patch["message"] = f"Video completed, but download failed: {exc}"
+
+            last_frame_remote_url = self._extract_last_frame_remote_url(response, task.provider)
+            if status == "success" and task.provider == "seedance_official" and last_frame_remote_url:
+                last_frame, warning = await self._download_seedance_last_frame(
+                    project_path,
+                    task.providerTaskId,
+                    last_frame_remote_url,
+                )
+                patch["outputs"] = {
+                    **patch["outputs"],
+                    "lastFrame": last_frame,
+                    **({"lastFrameWarning": warning} if warning else {}),
+                }
+            elif status == "success" and task.provider == "seedance_official":
+                patch["outputs"] = {
+                    **patch["outputs"],
+                    "lastFrame": None,
+                }
 
             updated = task.model_copy(update=patch)
             await upsert_task(project_path, updated)
