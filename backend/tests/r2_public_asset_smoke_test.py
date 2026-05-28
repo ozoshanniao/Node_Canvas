@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+# 这是一个真实的 API / R2 冒烟测试脚本 (Smoke Test)
+# 默认不要自动运行此脚本，它不应该被包含在 python -m unittest 的自动测试中。
+# 如需手动运行，请确保配置了 .env 环境，然后在 backend 目录下运行：
+# python -m tests.r2_public_asset_smoke_test [--real-r2]
 import argparse
 import asyncio
 from pathlib import Path
@@ -24,7 +29,7 @@ class MockR2Backend:
 async def run_smoke(real_r2: bool) -> None:
     load_dotenv()
 
-    media_path = Path(__file__).resolve().parent / "tests" / "fixtures" / "public_asset_project" / "input" / "seedance-r2-smoke.txt"
+    media_path = Path(__file__).resolve().parent / "fixtures" / "public_asset_project" / "input" / "seedance-r2-smoke.txt"
     backend = None if real_r2 else MockR2Backend()
     service = PublicAssetService(backend=backend, cache_db_path=":memory:")
     public_url = await service.ensure_public_url(str(media_path))
