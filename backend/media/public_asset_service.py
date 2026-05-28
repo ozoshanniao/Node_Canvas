@@ -233,14 +233,119 @@ class R2PublicAssetBackend:
         return f"{self.public_domain}/{safe_key}"
 
 
+class TOSPublicAssetBackend:
+    def __init__(self):
+        self.access_key_id = os.getenv("VOLCENGINE_TOS_ACCESS_KEY_ID", "")
+        self.secret_access_key = os.getenv("VOLCENGINE_TOS_SECRET_ACCESS_KEY", "")
+        self.bucket = os.getenv("VOLCENGINE_TOS_BUCKET_NAME", "")
+        self.region = os.getenv("VOLCENGINE_TOS_REGION", "cn-beijing")
+        self.endpoint_host = self._normalize_endpoint(os.getenv("VOLCENGINE_TOS_ENDPOINT", "tos-cn-beijing.volces.com"))
+        self.endpoint = f"https://{self.endpoint_host}" if self.endpoint_host else ""
+        self.public_domain = os.getenv("VOLCENGINE_TOS_PUBLIC_DOMAIN", "").rstrip("/")
+
+    @staticmethod
+    def _normalize_endpoint(endpoint: str) -> str:
+        value = (endpoint or "").strip().rstrip("/")
+        if not value:
+            return ""
+        parsed = urlparse(value if "://" in value else f"https://{value}")
+        return (parsed.netloc or parsed.path).strip("/")
+
+    def _require_config(self) -> None:
+        missing = [
+            name
+            for name, value in {
+                "VOLCENGINE_TOS_ACCESS_KEY_ID": self.access_key_id,
+                "VOLCENGINE_TOS_SECRET_ACCESS_KEY": self.secret_access_key,
+                "VOLCENGINE_TOS_BUCKET_NAME": self.bucket,
+                "VOLCENGINE_TOS_REGION": self.region,
+                "VOLCENGINE_TOS_ENDPOINT": self.endpoint_host,
+            }.items()
+            if not value
+        ]
+        if missing:
+            raise ValueError(f"Public TOS asset storage is not configured: {', '.join(missing)}")
+
+    def _signing_key(self, date_stamp: str) -> bytes:
+        key = ("AWS4" + self.secret_access_key).encode("utf-8")
+        for value in (date_stamp, self.region, "tos", "aws4_request"):
+            key = hmac.new(key, value.encode("utf-8"), hashlib.sha256).digest()
+        return key
+
+    def _auth_headers(self, method: str, url_path: str, payload_hash: str, content_type: str, now: dt.datetime) -> dict:
+        amz_date = now.strftime("%Y%m%dT%H%M%SZ")
+        date_stamp = now.strftime("%Y%m%d")
+        canonical_headers = (
+            f"content-type:{content_type}\n"
+            f"host:{self.endpoint_host}\n"
+            f"x-amz-content-sha256:{payload_hash}\n"
+            f"x-amz-date:{amz_date}\n"
+        )
+        signed_headers = "content-type;host;x-amz-content-sha256;x-amz-date"
+        canonical_request = "\n".join([method, url_path, "", canonical_headers, signed_headers, payload_hash])
+        credential_scope = f"{date_stamp}/{self.region}/tos/aws4_request"
+        string_to_sign = "\n".join([
+            "AWS4-HMAC-SHA256",
+            amz_date,
+            credential_scope,
+            hashlib.sha256(canonical_request.encode("utf-8")).hexdigest(),
+        ])
+        signature = hmac.new(self._signing_key(date_stamp), string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+        return {
+            "Authorization": (
+                f"AWS4-HMAC-SHA256 Credential={self.access_key_id}/{credential_scope}, "
+                f"SignedHeaders={signed_headers}, Signature={signature}"
+            ),
+            "Content-Type": content_type,
+            "x-amz-content-sha256": payload_hash,
+            "x-amz-date": amz_date,
+        }
+
+    def public_url_for(self, safe_key: str) -> str:
+        if self.public_domain:
+            return f"{self.public_domain}/{safe_key}"
+        return f"https://{self.bucket}.{self.endpoint_host}/{safe_key}"
+
+    async def upload(self, storage_key: str, raw_data: bytes, mime_type: str) -> str:
+        self._require_config()
+        safe_key = "/".join(quote(part) for part in storage_key.split("/"))
+        path = f"/{self.bucket}/{safe_key}"
+        url = f"{self.endpoint}{path}"
+        now = _utc_now()
+        payload_hash = hashlib.sha256(raw_data).hexdigest()
+        headers = self._auth_headers("PUT", path, payload_hash, mime_type, now)
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.put(url, content=raw_data, headers=headers)
+            response.raise_for_status()
+        return self.public_url_for(safe_key)
+
+
 class PublicAssetService:
     def __init__(self, backend: R2PublicAssetBackend | None = None, cache_db_path: str | None = None):
-        self.backend = backend or R2PublicAssetBackend()
+        self._backends = {}
+        if backend is not None:
+            self._backends["r2"] = backend
         self.storage = os.getenv("PUBLIC_ASSET_STORAGE", "r2").lower()
         self.prefix = os.getenv("PUBLIC_ASSET_PREFIX", "node-canvas/seedance-input/").strip("/")
         self.cache_ttl_days = int(os.getenv("PUBLIC_ASSET_CACHE_TTL_DAYS", "4"))
         self.cache_db_path = cache_db_path or str(Path(__file__).resolve().parents[1] / ".cache" / "public_assets" / "cache.db")
         self._memory_conn = None
+
+    def _resolve_storage_provider(self, storage_provider: str | None = None) -> str:
+        provider = (storage_provider or self.storage or "r2").strip().lower()
+        if provider not in {"r2", "tos"}:
+            raise ValueError(f"Unsupported public asset storage provider: {provider}")
+        return provider
+
+    def _backend_for(self, storage_provider: str):
+        if storage_provider not in self._backends:
+            if storage_provider == "r2":
+                self._backends[storage_provider] = R2PublicAssetBackend()
+            elif storage_provider == "tos":
+                self._backends[storage_provider] = TOSPublicAssetBackend()
+            else:
+                raise ValueError(f"Unsupported public asset storage provider: {storage_provider}")
+        return self._backends[storage_provider]
 
     def _connect(self):
         if self.cache_db_path == ":memory:":
@@ -301,25 +406,29 @@ class PublicAssetService:
             if self.cache_db_path != ":memory:":
                 conn.close()
 
-    async def ensure_public_url(self, input_path_or_url: str, project_path: str | None = None) -> str:
+    async def ensure_public_url(
+        self,
+        input_path_or_url: str,
+        project_path: str | None = None,
+        storage_provider: str | None = None,
+    ) -> str:
         value = str(input_path_or_url or "").strip()
         parsed = urlparse(value)
         if parsed.scheme in {"http", "https"} and (parsed.hostname or "").lower() not in {"127.0.0.1", "localhost", "0.0.0.0", "::1"}:
             return value
         if value.startswith("asset://"):
             return value
-        if self.storage != "r2":
-            raise ValueError(f"Unsupported PUBLIC_ASSET_STORAGE: {self.storage}")
+        provider = self._resolve_storage_provider(storage_provider)
 
         media = await prepare_provider_media_input(value, project_path)
         digest = hashlib.sha256(media.raw_data).hexdigest()
         ext = _extension_for(media.filename, media.mime_type)
-        cache_key = f"{digest}:{len(media.raw_data)}:{ext}"
+        cache_key = f"{provider}:{digest}:{len(media.raw_data)}:{ext}"
         cached_url = self._cache_get(cache_key)
         if cached_url:
             return cached_url
 
         storage_key = f"{self.prefix}/{_utc_now().strftime('%Y-%m-%d')}/{digest}.{ext}".strip("/")
-        public_url = await self.backend.upload(storage_key, media.raw_data, media.mime_type)
+        public_url = await self._backend_for(provider).upload(storage_key, media.raw_data, media.mime_type)
         self._cache_put(cache_key, public_url, storage_key, media.mime_type)
         return public_url
