@@ -2,11 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 
 export const APP_SETTINGS_STORAGE_KEYS = {
   showRawCustomParams: 'nodeCanvas.settings.showRawCustomParams',
+  publicAssetStorage: 'nodeCanvas.settings.publicAssetStorage',
 };
 
 export const DEFAULT_APP_SETTINGS = {
   showRawCustomParams: false,
+  publicAssetStorage: '',
 };
+
+const PUBLIC_ASSET_STORAGE_VALUES = new Set(['', 'r2', 'tos']);
 
 const readBooleanSetting = (storageKey, fallback) => {
   try {
@@ -21,10 +25,33 @@ const readBooleanSetting = (storageKey, fallback) => {
   }
 };
 
+const readStringSetting = (storageKey, fallback, allowedValues = null) => {
+  try {
+    const rawValue = globalThis.localStorage?.getItem(storageKey);
+    if (rawValue === null || rawValue === undefined) return fallback;
+    let value = rawValue;
+    try {
+      const parsed = JSON.parse(rawValue);
+      if (typeof parsed === 'string') value = parsed;
+    } catch {
+      value = rawValue;
+    }
+    if (typeof value !== 'string') return fallback;
+    return !allowedValues || allowedValues.has(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 export const getAppSettings = () => ({
   showRawCustomParams: readBooleanSetting(
     APP_SETTINGS_STORAGE_KEYS.showRawCustomParams,
     DEFAULT_APP_SETTINGS.showRawCustomParams
+  ),
+  publicAssetStorage: readStringSetting(
+    APP_SETTINGS_STORAGE_KEYS.publicAssetStorage,
+    DEFAULT_APP_SETTINGS.publicAssetStorage,
+    PUBLIC_ASSET_STORAGE_VALUES
   ),
 });
 
@@ -36,7 +63,12 @@ export const setAppSetting = (key, value) => {
     return getAppSettings();
   }
 
-  const nextValue = key === 'showRawCustomParams' ? Boolean(value) : value;
+  let nextValue = value;
+  if (key === 'showRawCustomParams') {
+    nextValue = Boolean(value);
+  } else if (key === 'publicAssetStorage') {
+    nextValue = PUBLIC_ASSET_STORAGE_VALUES.has(value) ? value : DEFAULT_APP_SETTINGS.publicAssetStorage;
+  }
   try {
     globalThis.localStorage?.setItem(APP_SETTINGS_STORAGE_KEYS[key], JSON.stringify(nextValue));
   } catch {

@@ -29,9 +29,10 @@ globalThis.localStorage = createLocalStorageMock();
 assert.deepEqual(
   getAppSettings(),
   DEFAULT_APP_SETTINGS,
-  'default settings should keep showRawCustomParams disabled'
+  'default settings should keep showRawCustomParams disabled and publicAssetStorage on env default'
 );
 assert.equal(shouldShowRawCustomParams(getAppSettings()), false);
+assert.equal(getAppSettings().publicAssetStorage, '');
 
 globalThis.localStorage = createLocalStorageMock({
   [APP_SETTINGS_STORAGE_KEYS.showRawCustomParams]: 'true',
@@ -55,6 +56,32 @@ for (const rawValue of ['', '{bad json}', '"yes"', 'null']) {
 }
 
 globalThis.localStorage = createLocalStorageMock();
+setAppSetting('publicAssetStorage', 'r2');
+assert.equal(
+  getAppSettings().publicAssetStorage,
+  'r2',
+  'publicAssetStorage should persist r2'
+);
+
+setAppSetting('publicAssetStorage', 'tos');
+assert.equal(
+  getAppSettings().publicAssetStorage,
+  'tos',
+  'publicAssetStorage should persist tos'
+);
+
+for (const rawValue of ['"s3"', 'true', 'null', 'invalid']) {
+  globalThis.localStorage = createLocalStorageMock({
+    [APP_SETTINGS_STORAGE_KEYS.publicAssetStorage]: rawValue,
+  });
+  assert.equal(
+    getAppSettings().publicAssetStorage,
+    '',
+    `invalid publicAssetStorage value ${rawValue} should fall back to env default`
+  );
+}
+
+globalThis.localStorage = createLocalStorageMock();
 const existingCustomParams = { seedance: { mode: 'frame', firstFrame: '/api/image/a.png' } };
 const snapshot = JSON.stringify(existingCustomParams);
 setAppSetting('showRawCustomParams', false);
@@ -67,6 +94,11 @@ assert.equal(
 
 setAppSetting('showRawCustomParams', true);
 assert.equal(shouldShowRawCustomParams(getAppSettings()), true);
+assert.equal(
+  getAppSettings().publicAssetStorage,
+  '',
+  'showRawCustomParams updates should not change publicAssetStorage'
+);
 
 if (originalLocalStorage === undefined) {
   delete globalThis.localStorage;

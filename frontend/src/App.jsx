@@ -16,6 +16,7 @@ import ImageEdge from './components/ImageEdge';
 import { TopProjectBar } from './components/TopProjectBar';
 import { ConnectionNodeMenu } from './components/ConnectionNodeMenu';
 import { NodeDock } from './components/NodeDock';
+import CustomSelect from './components/CustomSelect';
 
 import { TextNode } from './nodes/TextNode';
 import { TextConstructionNode } from './nodes/TextConstructionNode';
@@ -854,7 +855,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         </button>
 
         {settingsOpen && (
-          <div className="absolute right-0 mt-3 w-[360px] overflow-hidden rounded-[22px] border border-white/10 bg-[#141414]/90 shadow-[0_28px_70px_rgba(0,0,0,0.58)] backdrop-blur-2xl">
+          <div className="absolute right-0 mt-3 w-[360px] min-h-[330px] overflow-hidden rounded-[22px] border border-white/10 bg-[#141414]/90 shadow-[0_28px_70px_rgba(0,0,0,0.58)] backdrop-blur-2xl">
             <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
               <div className="text-sm font-light tracking-[0.08em] text-white/80">Settings</div>
               <button
@@ -913,8 +914,20 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
                   </div>
                 </div>
               ) : (
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-5 text-sm font-light text-white/35">
-                  General settings will appear here.
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-sm font-light text-white/80">Public Asset Storage</div>
+                  <CustomSelect
+                    value={appSettings.publicAssetStorage || ''}
+                    onChange={(value) => updateAppSetting('publicAssetStorage', value)}
+                    options={[
+                      { value: '', label: 'Backend .env Default' },
+                      { value: 'r2', label: 'Cloudflare R2' },
+                      { value: 'tos', label: 'Volcengine TOS' },
+                    ]}
+                    className="relative mt-3 w-full nodrag"
+                    buttonClassName="flex w-full items-center justify-between rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 text-xs text-white/75 outline-none transition-colors hover:border-white/20 focus:border-white/35"
+                    menuClassName="nowheel nodrag animate-in fade-in zoom-in-95 absolute left-0 right-0 z-[100] mt-1.5 rounded-xl border border-white/10 bg-[#141414]/95 shadow-2xl backdrop-blur-xl duration-150 overflow-hidden"
+                  />
                 </div>
               )}
             </div>
