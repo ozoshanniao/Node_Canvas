@@ -38,6 +38,39 @@ export const getAllAvailableVariables = (nodes = []) => {
   return variables;
 };
 
+const MEDIA_TOKEN_TYPES = ['image', 'video', 'audio'];
+
+export const getNextMediaTokenIndex = (text = '', mediaType = '') => {
+  const type = String(mediaType || '').toLowerCase();
+  if (!MEDIA_TOKEN_TYPES.includes(type)) return 1;
+
+  let maxIndex = 0;
+  const pattern = new RegExp(`@${type}_?(\\d+)`, 'gi');
+  String(text ?? '').replace(pattern, (_match, index) => {
+    const value = Number(index);
+    if (Number.isInteger(value) && value > maxIndex) {
+      maxIndex = value;
+    }
+    return _match;
+  });
+  return maxIndex + 1;
+};
+
+export const getStaticMediaSuggestions = (text = '', query = '') => {
+  const normalizedQuery = String(query ?? '').toLowerCase();
+  return MEDIA_TOKEN_TYPES
+    .filter((type) => type.startsWith(normalizedQuery))
+    .map((type) => {
+      const name = `${type}_${getNextMediaTokenIndex(text, type)}`;
+      return {
+        name,
+        key: `@${name}`,
+        preview: '',
+        type,
+      };
+    });
+};
+
 // Get missing variables from template
 export const getMissingVariables = (template = '', variables = {}) => {
   const missing = new Set();
@@ -107,6 +140,21 @@ export const collectTextVariablesFromInputs = (currentNodeId, nodes = [], edges 
     });
 
   return variables;
+};
+
+export const getConnectedTextVariables = (nodes = [], edges = [], currentNodeId = '') => {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  return edges
+    .filter((edge) => edge.target === currentNodeId && (edge.targetHandle ?? edge.targetHandleId) === 'text:in')
+    .map((edge) => nodeMap.get(edge.source))
+    .filter((node) => node?.type === 'textNode')
+    .map((node) => getTextNodeOutput(node))
+    .filter((output) => output.variableName)
+    .map((output) => ({
+      name: output.variableName,
+      key: output.variableKey,
+      preview: output.text.slice(0, 50) + (output.text.length > 50 ? '...' : ''),
+    }));
 };
 
 export const getTextConstructionOutput = (node, nodes = [], edges = []) => {

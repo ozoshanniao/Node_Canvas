@@ -4,7 +4,7 @@ import { FullscreenTextModal } from '../components/FullscreenTextModal';
 import { NodeFullscreenButton } from '../components/NodeFullscreenButton';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { getNodeTextOutput } from '../utils/nodeOutputs';
-import { getVariableKey, normalizeVariableName, getAllAvailableVariables, parseAtTokenAtCursor } from '../utils/textVariables';
+import { getVariableKey, normalizeVariableName, getStaticMediaSuggestions, parseAtTokenAtCursor } from '../utils/textVariables';
 import { countRender } from '../utils/perfDebug';
 
 export const TextNode = memo(function TextNode({ id, data }) {
@@ -18,20 +18,15 @@ export const TextNode = memo(function TextNode({ id, data }) {
   const [autocompletePosition, setAutocompletePosition] = useState({ start: 0, end: 0 });
   const [selectedIndex, setSelectedIndex] = useState(0);
   const textareaRef = useRef(null);
-  const nodes = useNodes();
 
   const text = data.text ?? data.content ?? data.value ?? data.prompt ?? '';
   const autoReceiveText = Boolean(data.autoReceiveText);
   const variableName = normalizeVariableName(data.variableName);
   const variableKey = getVariableKey(variableName);
 
-  const availableVariables = useMemo(() => getAllAvailableVariables(nodes), [nodes]);
-
   const filteredCandidates = useMemo(() => {
-    if (!autocompleteQuery) return availableVariables;
-    const query = autocompleteQuery.toLowerCase();
-    return availableVariables.filter((v) => v.name.toLowerCase().includes(query));
-  }, [availableVariables, autocompleteQuery]);
+    return getStaticMediaSuggestions(text, autocompleteQuery);
+  }, [autocompleteQuery, text]);
 
   const updateNodeData = (nextData) => {
     setNodes((nds) =>
