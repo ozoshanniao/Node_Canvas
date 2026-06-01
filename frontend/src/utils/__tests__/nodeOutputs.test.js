@@ -181,6 +181,17 @@ const imageEdge = {
 // ==================== RouteNode Relay Tests ====================
 import { getNodeTextOutput } from '../nodeOutputs.js';
 
+{
+  const rawText = '<var="shot1">A shot description</var>\nPlain text';
+  const textNode = {
+    id: 'text-inline',
+    type: 'textNode',
+    data: { text: rawText },
+  };
+
+  assert.equal(getNodeTextOutput(textNode), rawText);
+}
+
 // 1. RouteNode 透传 TextNode text
 {
   const textNode = {
@@ -365,4 +376,3 @@ import { getNodeTextOutput } from '../nodeOutputs.js';
 }
 
 console.log('nodeOutputs tests passed');
-
