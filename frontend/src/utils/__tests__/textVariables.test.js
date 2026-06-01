@@ -99,6 +99,9 @@ assert.deepEqual(variables, { intro: 'Hello' });
 assert.equal(resolveTextTemplate('@intro @scene', variables), 'Hello @scene');
 assert.deepEqual(getMissingVariables('@intro @scene @missing', variables), ['scene', 'missing']);
 
+assert.equal(resolveTextTemplate('@look-1', { 'look-1': 'Closeup' }), 'Closeup');
+assert.deepEqual(getMissingVariables('@look-1 @missing-var', { 'look-1': 'Closeup' }), ['missing-var']);
+
 {
   const inlineNodes = [
     {

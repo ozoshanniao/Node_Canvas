@@ -165,6 +165,8 @@ export function TokenTextEditor({
   menuClassName = '',
   getSuggestionLabel = (suggestion) => `@${suggestion.name}`,
   getSuggestionValue = (suggestion) => suggestion.name,
+  filterSuggestion = (suggestion, query) =>
+    String(getSuggestionValue(suggestion) ?? '').toLowerCase().startsWith(query),
 }) {
   const [autocompleteVisible, setAutocompleteVisible] = useState(false);
   const [autocompleteQuery, setAutocompleteQuery] = useState('');
@@ -179,10 +181,8 @@ export function TokenTextEditor({
   const filteredCandidates = useMemo(() => {
     if (!autocompleteQuery) return suggestions;
     const query = autocompleteQuery.toLowerCase();
-    return suggestions.filter((suggestion) =>
-      String(getSuggestionValue(suggestion) ?? '').toLowerCase().startsWith(query)
-    );
-  }, [autocompleteQuery, getSuggestionValue, suggestions]);
+    return suggestions.filter((suggestion) => filterSuggestion(suggestion, query));
+  }, [autocompleteQuery, filterSuggestion, suggestions]);
 
   const emitChange = useCallback((nextText) => {
     lastEditorTextRef.current = nextText;

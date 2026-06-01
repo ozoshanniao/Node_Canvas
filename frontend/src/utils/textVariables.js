@@ -138,7 +138,7 @@ export const getStaticMediaSuggestions = (text = '', query = '') => {
 // Get missing variables from template
 export const getMissingVariables = (template = '', variables = {}) => {
   const missing = new Set();
-  String(template ?? '').replace(/@([A-Za-z0-9_\u4e00-\u9fa5]+)/g, (match, variableName) => {
+  String(template ?? '').replace(/@([A-Za-z0-9_\u4e00-\u9fa5-]+)/g, (match, variableName) => {
     if (!Object.prototype.hasOwnProperty.call(variables, variableName)) {
       missing.add(variableName);
     }
@@ -169,8 +169,8 @@ export const parseAtTokenAtCursor = (text = '', cursorPos = 0) => {
   // Extract the token from @ to cursor
   const token = text.slice(atPos, cursorPos);
 
-  // Validate token format: @[A-Za-z0-9_\u4e00-\u9fa5]*
-  if (!/^@[A-Za-z0-9_\u4e00-\u9fa5]*$/.test(token)) return null;
+  // Validate token format: @[A-Za-z0-9_\u4e00-\u9fa5-]*
+  if (!/^@[A-Za-z0-9_\u4e00-\u9fa5-]*$/.test(token)) return null;
 
   return {
     token,
@@ -182,7 +182,7 @@ export const parseAtTokenAtCursor = (text = '', cursorPos = 0) => {
 
 // Replaces @variables with connected Text node values. Unknown variables are intentionally preserved.
 export const resolveTextTemplate = (template = '', variables = {}) =>
-  String(template ?? '').replace(/@([A-Za-z0-9_\u4e00-\u9fa5]+)/g, (match, variableName) => {
+  String(template ?? '').replace(/@([A-Za-z0-9_\u4e00-\u9fa5-]+)/g, (match, variableName) => {
     return Object.prototype.hasOwnProperty.call(variables, variableName) ? variables[variableName] : match;
   });
 

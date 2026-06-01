@@ -1,20 +1,16 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import { FullscreenTextModal } from '../components/FullscreenTextModal';
 import { NodeFullscreenButton } from '../components/NodeFullscreenButton';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
-import { getTextConstructionOutput, getConnectedTextVariables, getMissingVariables, parseAtTokenAtCursor } from '../utils/textVariables';
+import { TokenTextEditor } from '../components/TokenTextEditor';
+import { getTextConstructionOutput, getConnectedTextVariables, getMissingVariables } from '../utils/textVariables';
 import { countRender, PERF_DEBUG } from '../utils/perfDebug';
 
 export const TextConstructionNode = memo(function TextConstructionNode({ id, data }) {
   countRender('TextConstructionNode');
   const { setNodes } = useReactFlow();
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
-  const [autocompleteVisible, setAutocompleteVisible] = useState(false);
-  const [autocompleteQuery, setAutocompleteQuery] = useState('');
-  const [autocompletePosition, setAutocompletePosition] = useState({ start: 0, end: 0 });
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const textareaRef = useRef(null);
   const nodes = useNodes();
   const edges = useEdges();
   const template = data.template ?? data.text ?? '';
@@ -29,12 +25,6 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
 
   const availableVariables = useMemo(() => getConnectedTextVariables(nodes, edges, id), [edges, id, nodes]);
   const missingVariables = useMemo(() => getMissingVariables(template, variables), [template, variables]);
-
-  const filteredCandidates = useMemo(() => {
-    if (!autocompleteQuery) return availableVariables;
-    const query = autocompleteQuery.toLowerCase();
-    return availableVariables.filter((v) => v.name.toLowerCase().includes(query));
-  }, [availableVariables, autocompleteQuery]);
 
   useEffect(() => {
     if (!PERF_DEBUG) return;
@@ -62,79 +52,6 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
         return node;
       })
     );
-  };
-
-  const handleTextareaChange = (e) => {
-    const nextTemplate = e.target.value;
-    updateTemplate(nextTemplate);
-
-    const cursorPos = e.target.selectionStart;
-    const parsed = parseAtTokenAtCursor(nextTemplate, cursorPos);
-
-    if (parsed) {
-      setAutocompleteQuery(parsed.query);
-      setAutocompletePosition({ start: parsed.start, end: parsed.end });
-      setAutocompleteVisible(true);
-      setSelectedIndex(0);
-    } else {
-      setAutocompleteVisible(false);
-    }
-  };
-
-  const getCaretCoordinates = () => {
-    if (!textareaRef.current) return { x: 0, y: 0 };
-
-    const textarea = textareaRef.current;
-    const textBeforeCaret = template.slice(0, autocompletePosition.end);
-    const lines = textBeforeCaret.split('\n');
-    const currentLine = lines.length - 1;
-    const lineHeight = 24; // Approximate line height from leading-relaxed text-sm
-    const charWidth = 8; // Approximate character width
-    const lastLineLength = lines[lines.length - 1].length;
-
-    return {
-      x: Math.min(lastLineLength * charWidth, 180),
-      y: currentLine * lineHeight + lineHeight,
-    };
-  };
-
-  const caretCoords = autocompleteVisible ? getCaretCoordinates() : { x: 0, y: 0 };
-
-  const handleKeyDown = (e) => {
-    if (!autocompleteVisible || filteredCandidates.length === 0) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedIndex((prev) => (prev + 1) % filteredCandidates.length);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedIndex((prev) => (prev - 1 + filteredCandidates.length) % filteredCandidates.length);
-    } else if (e.key === 'Enter' || e.key === 'Tab') {
-      e.preventDefault();
-      insertVariable(filteredCandidates[selectedIndex].name);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      setAutocompleteVisible(false);
-    }
-  };
-
-  const insertVariable = (variableName) => {
-    if (!textareaRef.current) return;
-
-    const before = template.slice(0, autocompletePosition.start);
-    const after = template.slice(autocompletePosition.end);
-    const nextTemplate = `${before}@${variableName}${after}`;
-    const nextCursorPos = autocompletePosition.start + variableName.length + 1;
-
-    updateTemplate(nextTemplate);
-    setAutocompleteVisible(false);
-
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-        textareaRef.current.setSelectionRange(nextCursorPos, nextCursorPos);
-      }
-    }, 0);
   };
 
   const togglePreviewPanel = () => {
@@ -197,51 +114,34 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
         </div>
       </div>
 
-      <div className="flex-1 relative">
-        <textarea
-          ref={textareaRef}
-          value={template}
-          onChange={handleTextareaChange}
-          onKeyDown={handleKeyDown}
-          placeholder="Use @A, @prompt, @scene_1..."
-          className="nodrag nowheel w-full h-full bg-transparent text-white/90 placeholder-white/20 resize-none focus:outline-none text-sm font-light tracking-wide leading-relaxed pr-4 pb-4"
-        />
+      <TokenTextEditor
+        value={template}
+        onChange={updateTemplate}
+        suggestions={availableVariables}
+        tokenType="text-var"
+        placeholder="Use @A, @prompt, @scene_1..."
+        className="flex-1"
+        filterSuggestion={(suggestion, query) => suggestion.name.toLowerCase().includes(query)}
+      />
 
-        {autocompleteVisible && filteredCandidates.length > 0 && (
-          <div
-            className="nodrag nopan absolute bg-[#1a1a1a] border border-white/15 rounded-lg shadow-2xl z-50 overflow-hidden"
-            style={{
-              left: `${caretCoords.x}px`,
-              top: `${caretCoords.y}px`,
-              minWidth: '180px',
-              maxWidth: '240px',
-              maxHeight: '200px',
-            }}
-          >
-            <div className="overflow-y-auto max-h-[200px]">
-              {filteredCandidates.slice(0, 6).map((candidate, index) => (
-                <button
-                  key={candidate.key}
-                  type="button"
-                  onClick={() => insertVariable(candidate.name)}
-                  className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors flex items-center gap-2 ${
-                    index === selectedIndex
-                      ? 'bg-white/15 text-white'
-                      : 'text-white/70 hover:bg-white/10 hover:text-white'
-                  }`}
-                >
-                  <span className="font-medium">@{candidate.name}</span>
-                  {candidate.preview && (
-                    <span className="text-[9px] text-white/25 truncate flex-1">
-                      {candidate.preview.slice(0, 25)}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
+      {availableVariables.length > 0 && (
+        <div className="mt-2 flex shrink-0 items-center gap-1 overflow-hidden border-t border-white/5 pt-2 text-[10px] text-white/30">
+          <span className="shrink-0 text-white/20">Available:</span>
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+            {availableVariables.slice(0, 4).map((variable) => (
+              <span
+                key={variable.key}
+                className="shrink-0 rounded-md bg-white/5 px-1.5 py-0.5 text-white/45"
+              >
+                {variable.key}
+              </span>
+            ))}
+            {availableVariables.length > 4 && (
+              <span className="shrink-0 text-white/25">+{availableVariables.length - 4}</span>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="mt-2 border-t border-white/5 pt-2 text-[10px] text-white/30 font-light leading-relaxed flex items-center gap-3">
         <span className="text-white/20">Input:</span>
