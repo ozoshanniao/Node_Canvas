@@ -6,6 +6,15 @@ export const isMediaTokenName = (value = '') => /^(image|video|audio)_\d+$/.test
 
 export const mediaTokenToText = (tokenName = '') => `@${tokenName}`;
 
+export const isTextVarTokenName = (value = '') => /^[A-Za-z_][A-Za-z0-9_-]*$/.test(String(value));
+
+export const textVarTokenToText = (tokenName = '') => `@${tokenName}`;
+
+export const tokenNameToText = (tokenName = '', tokenType = 'media') => {
+  if (tokenType === 'text-var') return textVarTokenToText(tokenName);
+  return mediaTokenToText(tokenName);
+};
+
 export const plainTextToEditorParts = (text = '') => [
   {
     type: 'text',

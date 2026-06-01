@@ -2,9 +2,28 @@ import assert from 'node:assert/strict';
 import {
   deleteEditorPartAt,
   insertAutocompleteMediaTokenText,
+  isTextVarTokenName,
+  mediaTokenToText,
   plainTextToEditorParts,
   serializeEditorParts,
+  textVarTokenToText,
+  tokenNameToText,
 } from '../textEditorTokens.js';
+
+assert.equal(mediaTokenToText('image_1'), '@image_1', 'media token text should use @ prefix');
+
+assert.equal(textVarTokenToText('shot1'), '@shot1', 'text-var token text should use @ prefix');
+
+['shot1', 'shot_1', 'camera_closeup', 'look-1'].forEach((name) => {
+  assert.equal(isTextVarTokenName(name), true, `${name} should be a valid text-var token name`);
+});
+
+['1shot', 'shot 1', '镜头1'].forEach((name) => {
+  assert.equal(isTextVarTokenName(name), false, `${name} should be an invalid text-var token name`);
+});
+
+assert.equal(tokenNameToText('image_1', 'media'), '@image_1', 'media token name should serialize correctly');
+assert.equal(tokenNameToText('shot1', 'text-var'), '@shot1', 'text-var token name should serialize correctly');
 
 assert.equal(
   serializeEditorParts([{ type: 'token', name: 'image_1' }]),
