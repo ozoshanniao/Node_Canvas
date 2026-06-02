@@ -192,6 +192,19 @@ import { getNodeTextOutput } from '../nodeOutputs.js';
   assert.equal(getNodeTextOutput(textNode), rawText);
 }
 
+{
+  const textNode = {
+    id: 'text-media-token',
+    type: 'textNode',
+    data: {
+      text: '@image_1 prompt',
+      textTokens: [{ id: 'media-1', type: 'media', value: 'image_1', start: 0, end: 8 }],
+    },
+  };
+
+  assert.equal(getNodeTextOutput(textNode), '@image_1 prompt');
+}
+
 // 1. RouteNode 透传 TextNode text
 {
   const textNode = {

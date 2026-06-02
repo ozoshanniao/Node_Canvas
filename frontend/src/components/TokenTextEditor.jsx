@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom';
 import { parseAtTokenAtCursor } from '../utils/textVariables';
 import {
   ZERO_WIDTH_CARET,
-  isMediaTokenName,
-  isTextVarTokenName,
+  editorPartsFromTextAndTokens,
+  isValidTokenNameForType,
+  normalizeEditorTokens,
+  normalizeTokenValue,
   tokenNameToText,
 } from '../utils/textEditorTokens';
 
@@ -16,24 +18,28 @@ const isTokenElement = (node) =>
   node.hasAttribute('data-token-type') &&
   node.hasAttribute('data-token-value');
 
-const isValidTokenName = (tokenName, tokenType) => {
-  if (tokenType === 'text-var') return isTextVarTokenName(tokenName);
-  return isMediaTokenName(tokenName);
+let tokenIdCounter = 0;
+
+const createTokenId = (tokenType, tokenName) => {
+  tokenIdCounter += 1;
+  return `${tokenType}:${tokenName}:${Date.now().toString(36)}:${tokenIdCounter}`;
 };
 
-const createTokenElement = (tokenName, tokenType) => {
+const createTokenElement = (tokenName, tokenType, tokenId) => {
   const token = document.createElement('span');
   token.contentEditable = 'false';
   token.dataset.tokenType = tokenType;
   token.dataset.tokenValue = tokenName;
+  token.dataset.tokenId = tokenId || createTokenId(tokenType, tokenName);
   token.className = tokenClassName;
   token.textContent = tokenNameToText(tokenName, tokenType);
   return token;
 };
 
-const serializeEditorNode = (root) => {
-  if (!root) return '';
+const serializeEditorState = (root) => {
+  if (!root) return { text: '', tokens: [] };
   let output = '';
+  const tokens = [];
   const visit = (node, options = {}) => {
     if (node.nodeType === Node.TEXT_NODE) {
       output += node.nodeValue.replaceAll(ZERO_WIDTH_CARET, '');
@@ -44,7 +50,18 @@ const serializeEditorNode = (root) => {
       return;
     }
     if (isTokenElement(node)) {
-      output += tokenNameToText(node.dataset.tokenValue || '', node.dataset.tokenType || 'media');
+      const type = node.dataset.tokenType || 'media';
+      const value = normalizeTokenValue(node.dataset.tokenValue || '');
+      const tokenText = tokenNameToText(value, type);
+      const start = output.length;
+      output += tokenText;
+      tokens.push({
+        id: node.dataset.tokenId || `${type}:${value}:${start}:${start + tokenText.length}`,
+        type,
+        value,
+        start,
+        end: start + tokenText.length,
+      });
       return;
     }
     const isBlock = !options.isRoot && ['DIV', 'P'].includes(node.nodeName);
@@ -55,19 +72,43 @@ const serializeEditorNode = (root) => {
     }
   };
   root.childNodes.forEach((child) => visit(child, { isRoot: false }));
-  if (output.endsWith('\n')) return output.slice(0, -1);
-  return output;
+  if (output.endsWith('\n')) {
+    output = output.slice(0, -1);
+  }
+  return {
+    text: output,
+    tokens: normalizeEditorTokens(output, tokens),
+  };
+};
+
+const serializeEditorNode = (root) => serializeEditorState(root).text;
+
+const setEditorContent = (root, text, tokens) => {
+  if (!root) return;
+  const parts = editorPartsFromTextAndTokens(text, tokens);
+  const nodes = [];
+
+  parts.forEach((part) => {
+    if (part.type === 'token') {
+      nodes.push(createTokenElement(part.value, part.tokenType || 'media', part.id));
+      nodes.push(document.createTextNode(ZERO_WIDTH_CARET));
+    } else {
+      nodes.push(document.createTextNode(part.text || ''));
+    }
+  });
+
+  root.replaceChildren(...nodes);
 };
 
 const setEditorPlainText = (root, text) => {
   if (!root) return;
-  root.replaceChildren(document.createTextNode(String(text ?? '')));
+  setEditorContent(root, text, []);
 };
 
 const plainLengthForNode = (node) => {
   if (node.nodeType === Node.TEXT_NODE) return node.nodeValue.replaceAll(ZERO_WIDTH_CARET, '').length;
   if (isTokenElement(node)) {
-    return tokenNameToText(node.dataset.tokenValue || '', node.dataset.tokenType || 'media').length;
+    return tokenNameToText(normalizeTokenValue(node.dataset.tokenValue || ''), node.dataset.tokenType || 'media').length;
   }
   return Array.from(node.childNodes).reduce((total, child) => total + plainLengthForNode(child), 0);
 };
@@ -157,6 +198,8 @@ const isRangeInside = (root, range) =>
 export function TokenTextEditor({
   value = '',
   onChange,
+  tokens,
+  onTokensChange,
   suggestions = [],
   tokenType = 'media',
   placeholder = '',
@@ -177,6 +220,8 @@ export function TokenTextEditor({
   const queryRangeRef = useRef(null);
   const isComposingRef = useRef(false);
   const lastEditorTextRef = useRef('');
+  const tracksTokenMetadata = Array.isArray(tokens) || typeof onTokensChange === 'function';
+  const normalizedTokens = useMemo(() => normalizeEditorTokens(value, tokens), [tokens, value]);
 
   const filteredCandidates = useMemo(() => {
     if (!autocompleteQuery) return suggestions;
@@ -184,10 +229,11 @@ export function TokenTextEditor({
     return suggestions.filter((suggestion) => filterSuggestion(suggestion, query));
   }, [autocompleteQuery, filterSuggestion, suggestions]);
 
-  const emitChange = useCallback((nextText) => {
+  const emitChange = useCallback((nextText, nextTokens = []) => {
     lastEditorTextRef.current = nextText;
     onChange?.(nextText);
-  }, [onChange]);
+    onTokensChange?.(nextTokens);
+  }, [onChange, onTokensChange]);
 
   const updateAutocompleteFromSelection = useCallback((nextText) => {
     const editor = editorRef.current;
@@ -225,9 +271,9 @@ export function TokenTextEditor({
   const syncTextFromEditor = useCallback(() => {
     const editor = editorRef.current;
     if (!editor) return;
-    const nextText = serializeEditorNode(editor);
-    emitChange(nextText);
-    updateAutocompleteFromSelection(nextText);
+    const nextState = serializeEditorState(editor);
+    emitChange(nextState.text, nextState.tokens);
+    updateAutocompleteFromSelection(nextState.text);
   }, [emitChange, updateAutocompleteFromSelection]);
 
   const removeTokenNode = (token) => {
@@ -306,7 +352,7 @@ export function TokenTextEditor({
 
   const insertToken = (tokenName) => {
     const editor = editorRef.current;
-    if (!editor || !isValidTokenName(tokenName, tokenType)) return;
+    if (!editor || !isValidTokenNameForType(tokenName, tokenType)) return;
 
     editor.focus();
     const selection = window.getSelection();
@@ -330,8 +376,8 @@ export function TokenTextEditor({
     selection.addRange(range);
     queryRangeRef.current = null;
 
-    const nextText = serializeEditorNode(editor);
-    emitChange(nextText);
+    const nextState = serializeEditorState(editor);
+    emitChange(nextState.text, nextState.tokens);
     setAutocompleteVisible(false);
   };
 
@@ -394,19 +440,30 @@ export function TokenTextEditor({
     const editor = editorRef.current;
     if (!editor || isComposingRef.current) return;
     const nextValue = String(value ?? '');
-    const currentText = serializeEditorNode(editor);
-    if (currentText !== nextValue && lastEditorTextRef.current !== nextValue) {
-      setEditorPlainText(editor, nextValue);
+    const nextTokenSignature = tracksTokenMetadata ? JSON.stringify(normalizedTokens) : '';
+    const currentState = serializeEditorState(editor);
+    const currentTokenSignature = tracksTokenMetadata ? JSON.stringify(currentState.tokens) : '';
+    if (currentState.text !== nextValue || (tracksTokenMetadata && currentTokenSignature !== nextTokenSignature)) {
+      setEditorContent(editor, nextValue, normalizedTokens);
       lastEditorTextRef.current = nextValue;
       setAutocompleteVisible(false);
     }
-  }, [value]);
+  }, [normalizedTokens, tracksTokenMetadata, value]);
+
+  useEffect(() => {
+    if (!tracksTokenMetadata || !Array.isArray(tokens)) return;
+    const tokenSignature = JSON.stringify(tokens);
+    const normalizedSignature = JSON.stringify(normalizedTokens);
+    if (tokenSignature !== normalizedSignature) {
+      onTokensChange?.(normalizedTokens);
+    }
+  }, [normalizedTokens, onTokensChange, tokens, tracksTokenMetadata]);
 
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
     if (!editor.hasChildNodes()) {
-      setEditorPlainText(editor, value);
+      setEditorContent(editor, value, normalizedTokens);
       lastEditorTextRef.current = String(value ?? '');
     }
   }, []);

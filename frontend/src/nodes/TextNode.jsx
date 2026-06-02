@@ -16,6 +16,7 @@ export const TextNode = memo(function TextNode({ id, data }) {
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
 
   const text = data.text ?? data.content ?? data.value ?? data.prompt ?? '';
+  const textTokens = Array.isArray(data.textTokens) ? data.textTokens : undefined;
   const autoReceiveText = Boolean(data.autoReceiveText);
   const variableName = normalizeVariableName(data.variableName);
   const variableKey = getVariableKey(variableName);
@@ -42,6 +43,10 @@ export const TextNode = memo(function TextNode({ id, data }) {
     });
     setDraftVariableName(normalized);
     setIsEditingVariable(false);
+  };
+
+  const updateTextTokens = (nextTokens) => {
+    updateNodeData({ textTokens: nextTokens });
   };
 
   const cancelVariableNameEdit = () => {
@@ -116,6 +121,8 @@ export const TextNode = memo(function TextNode({ id, data }) {
       <TokenTextEditor
         value={text}
         onChange={(nextText) => updateNodeData({ text: nextText })}
+        tokens={textTokens}
+        onTokensChange={updateTextTokens}
         suggestions={mediaSuggestions}
         tokenType="media"
         placeholder="Type your prompt here..."
@@ -151,7 +158,7 @@ export const TextNode = memo(function TextNode({ id, data }) {
         title="Text"
         subtitle={variableKey || undefined}
         value={text}
-        onChange={(nextText) => updateNodeData({ text: nextText })}
+        onChange={(nextText) => updateNodeData({ text: nextText, textTokens: [] })}
         onClose={() => setIsFullscreenOpen(false)}
         mode="single"
         placeholder="Type your prompt here..."
@@ -187,6 +194,7 @@ function AutoReceiveTextBridge({ id, currentText, setNodes }) {
           data: {
             ...node.data,
             text: incomingText,
+            textTokens: [],
           },
         };
       })

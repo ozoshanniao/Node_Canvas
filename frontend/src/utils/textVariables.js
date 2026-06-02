@@ -103,6 +103,7 @@ export const getAllAvailableVariables = (nodes = []) => {
 };
 
 const MEDIA_TOKEN_TYPES = ['image', 'video', 'audio'];
+const TEMPLATE_VARIABLE_PATTERN = /@([A-Za-z_][A-Za-z0-9_-]*|[\u4e00-\u9fa5][A-Za-z0-9_\u4e00-\u9fa5-]*)/g;
 
 export const getNextMediaTokenIndex = (text = '', mediaType = '') => {
   const type = String(mediaType || '').toLowerCase();
@@ -138,7 +139,7 @@ export const getStaticMediaSuggestions = (text = '', query = '') => {
 // Get missing variables from template
 export const getMissingVariables = (template = '', variables = {}) => {
   const missing = new Set();
-  String(template ?? '').replace(/@([A-Za-z0-9_\u4e00-\u9fa5-]+)/g, (match, variableName) => {
+  String(template ?? '').replace(TEMPLATE_VARIABLE_PATTERN, (match, variableName) => {
     if (!Object.prototype.hasOwnProperty.call(variables, variableName)) {
       missing.add(variableName);
     }
@@ -182,7 +183,7 @@ export const parseAtTokenAtCursor = (text = '', cursorPos = 0) => {
 
 // Replaces @variables with connected Text node values. Unknown variables are intentionally preserved.
 export const resolveTextTemplate = (template = '', variables = {}) =>
-  String(template ?? '').replace(/@([A-Za-z0-9_\u4e00-\u9fa5-]+)/g, (match, variableName) => {
+  String(template ?? '').replace(TEMPLATE_VARIABLE_PATTERN, (match, variableName) => {
     return Object.prototype.hasOwnProperty.call(variables, variableName) ? variables[variableName] : match;
   });
 

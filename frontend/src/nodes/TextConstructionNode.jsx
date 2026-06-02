@@ -14,6 +14,7 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
   const nodes = useNodes();
   const edges = useEdges();
   const template = data.template ?? data.text ?? '';
+  const templateTokens = Array.isArray(data.templateTokens) ? data.templateTokens : undefined;
   // useMemo: 只有 template / nodes / edges 变化时才重新解析，避免每次 render 都同步执行
   const { resolvedText, variables } = useMemo(
     () => getTextConstructionOutput({ id, data: { ...data, template } }, nodes, edges),
@@ -46,6 +47,23 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
             data: {
               ...node.data,
               template: nextTemplate,
+            },
+          };
+        }
+        return node;
+      })
+    );
+  };
+
+  const updateTemplateTokens = (nextTokens) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === id) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              templateTokens: nextTokens,
             },
           };
         }
@@ -117,6 +135,8 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
       <TokenTextEditor
         value={template}
         onChange={updateTemplate}
+        tokens={templateTokens}
+        onTokensChange={updateTemplateTokens}
         suggestions={availableVariables}
         tokenType="text-var"
         placeholder="Use @A, @prompt, @scene_1..."

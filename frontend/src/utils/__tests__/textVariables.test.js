@@ -5,6 +5,7 @@ import {
   getConnectedTextVariables,
   getMissingVariables,
   getStaticMediaSuggestions,
+  getTextConstructionOutput,
   parseInlineVars,
   resolveTextTemplate,
 } from '../textVariables.js';
@@ -102,6 +103,30 @@ assert.deepEqual(getMissingVariables('@intro @scene @missing', variables), ['sce
 assert.equal(resolveTextTemplate('@look-1', { 'look-1': 'Closeup' }), 'Closeup');
 assert.deepEqual(getMissingVariables('@look-1 @missing-var', { 'look-1': 'Closeup' }), ['missing-var']);
 
+assert.deepEqual(getMissingVariables('Use @character @sence @bag', {
+  character: 'Hero',
+  sence: 'Street',
+  bag: 'Leather bag',
+}), []);
+
+assert.equal(
+  resolveTextTemplate('请为模特@character的姿势', { character: '年轻女性' }),
+  '请为模特年轻女性的姿势'
+);
+assert.deepEqual(
+  getMissingVariables('请为模特@character的姿势', { character: '年轻女性' }),
+  []
+);
+
+assert.equal(
+  resolveTextTemplate('拍摄地点：@sence\n模特饰品：@bag\n请为模特@character的姿势', {
+    character: '年轻女性',
+    sence: '摄影棚',
+    bag: '手提包',
+  }),
+  '拍摄地点：摄影棚\n模特饰品：手提包\n请为模特年轻女性的姿势'
+);
+
 {
   const inlineNodes = [
     {
@@ -128,6 +153,67 @@ assert.deepEqual(getMissingVariables('@look-1 @missing-var', { 'look-1': 'Closeu
     ['@shot1', '@shot2', '@intro']
   );
   assert.equal(resolveTextTemplate('Use @shot1 then @shot2', inlineVariables), 'Use A shot description then Another shot description');
+}
+
+{
+  const constructionNodes = [
+    {
+      id: 'text-a',
+      type: 'textNode',
+      data: {
+        text: '<var="character">Hero</var>\n<var="sence">Street</var>\n<var="bag">Leather bag</var>',
+      },
+    },
+    {
+      id: 'construction',
+      type: 'textConstruction',
+      data: {
+        template: 'Use @character in @sence with @bag',
+        templateTokens: [
+          { id: 't1', type: 'text-var', value: 'character', start: 4, end: 14 },
+          { id: 't2', type: 'text-var', value: 'sence', start: 18, end: 24 },
+          { id: 't3', type: 'text-var', value: 'bag', start: 30, end: 34 },
+        ],
+      },
+    },
+  ];
+  const constructionEdges = [
+    { id: 'edge-a', source: 'text-a', target: 'construction', targetHandle: 'text:in' },
+  ];
+  const output = getTextConstructionOutput(constructionNodes[1], constructionNodes, constructionEdges);
+  assert.equal(output.template, 'Use @character in @sence with @bag');
+  assert.equal(output.resolvedText, 'Use Hero in Street with Leather bag');
+  assert.deepEqual(getMissingVariables(output.template, output.variables), []);
+}
+
+{
+  const constructionNodes = [
+    {
+      id: 'text-a',
+      type: 'textNode',
+      data: {
+        text: '<var="character">年轻女性</var>\n<var="sence">摄影棚</var>\n<var="bag">手提包</var>',
+      },
+    },
+    {
+      id: 'construction',
+      type: 'textConstruction',
+      data: {
+        template: '拍摄地点：@sence\n模特饰品：@bag\n请为模特@character的高级时装摄影',
+        templateTokens: [
+          { id: 't1', type: 'text-var', value: 'sence', start: 5, end: 11 },
+          { id: 't2', type: 'text-var', value: 'bag', start: 17, end: 21 },
+          { id: 't3', type: 'text-var', value: 'character', start: 26, end: 36 },
+        ],
+      },
+    },
+  ];
+  const constructionEdges = [
+    { id: 'edge-a', source: 'text-a', target: 'construction', targetHandle: 'text:in' },
+  ];
+  const output = getTextConstructionOutput(constructionNodes[1], constructionNodes, constructionEdges);
+  assert.equal(output.resolvedText, '拍摄地点：摄影棚\n模特饰品：手提包\n请为模特年轻女性的高级时装摄影');
+  assert.deepEqual(getMissingVariables(output.template, output.variables), []);
 }
 
 {
