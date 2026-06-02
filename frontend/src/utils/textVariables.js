@@ -20,6 +20,70 @@ export const getTextNodeOutput = (node) => {
   };
 };
 
+const INLINE_VAR_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+
+const createInlineVarWarning = (type, message, name) => ({
+  type,
+  message,
+  ...(name ? { name } : {}),
+});
+
+export const parseInlineVars = (text = '') => {
+  const source = String(text ?? '');
+  const variables = {};
+  const warnings = [];
+  const openPattern = /<var="([^"]*)">/g;
+  let match;
+
+  while ((match = openPattern.exec(source)) !== null) {
+    const [openTag, name] = match;
+    const contentStart = match.index + openTag.length;
+    const closeStart = source.indexOf('</var>', contentStart);
+
+    if (closeStart === -1) {
+      warnings.push(createInlineVarWarning(
+        'unclosed_var',
+        `Inline variable "${name}" is missing a closing </var> tag.`,
+        name
+      ));
+      continue;
+    }
+
+    const content = source.slice(contentStart, closeStart);
+
+    if (!INLINE_VAR_NAME_PATTERN.test(name)) {
+      warnings.push(createInlineVarWarning(
+        'invalid_var_name',
+        `Inline variable name "${name}" is invalid.`,
+        name
+      ));
+      openPattern.lastIndex = closeStart + '</var>'.length;
+      continue;
+    }
+
+    if (/<var="[^"]*">/.test(content)) {
+      warnings.push(createInlineVarWarning(
+        'nested_var',
+        `Inline variable "${name}" contains a nested <var> block, which is not supported.`,
+        name
+      ));
+    }
+
+    if (Object.prototype.hasOwnProperty.call(variables, name)) {
+      warnings.push(createInlineVarWarning(
+        'duplicate_var',
+        `Inline variable "${name}" is defined more than once; the later value is used.`,
+        name
+      ));
+    }
+
+    variables[name] = content.trim();
+    openPattern.lastIndex = closeStart + '</var>'.length;
+  }
+
+  return { variables, warnings };
+};
+
 // Get all available variable names from TextNode nodes
 export const getAllAvailableVariables = (nodes = []) => {
   const variables = [];
@@ -39,6 +103,7 @@ export const getAllAvailableVariables = (nodes = []) => {
 };
 
 const MEDIA_TOKEN_TYPES = ['image', 'video', 'audio'];
+const TEMPLATE_VARIABLE_PATTERN = /@([A-Za-z_][A-Za-z0-9_-]*|[\u4e00-\u9fa5][A-Za-z0-9_\u4e00-\u9fa5-]*)/g;
 
 export const getNextMediaTokenIndex = (text = '', mediaType = '') => {
   const type = String(mediaType || '').toLowerCase();
@@ -74,7 +139,7 @@ export const getStaticMediaSuggestions = (text = '', query = '') => {
 // Get missing variables from template
 export const getMissingVariables = (template = '', variables = {}) => {
   const missing = new Set();
-  String(template ?? '').replace(/@([A-Za-z0-9_\u4e00-\u9fa5]+)/g, (match, variableName) => {
+  String(template ?? '').replace(TEMPLATE_VARIABLE_PATTERN, (match, variableName) => {
     if (!Object.prototype.hasOwnProperty.call(variables, variableName)) {
       missing.add(variableName);
     }
@@ -105,8 +170,8 @@ export const parseAtTokenAtCursor = (text = '', cursorPos = 0) => {
   // Extract the token from @ to cursor
   const token = text.slice(atPos, cursorPos);
 
-  // Validate token format: @[A-Za-z0-9_\u4e00-\u9fa5]*
-  if (!/^@[A-Za-z0-9_\u4e00-\u9fa5]*$/.test(token)) return null;
+  // Validate token format: @[A-Za-z0-9_\u4e00-\u9fa5-]*
+  if (!/^@[A-Za-z0-9_\u4e00-\u9fa5-]*$/.test(token)) return null;
 
   return {
     token,
@@ -118,7 +183,7 @@ export const parseAtTokenAtCursor = (text = '', cursorPos = 0) => {
 
 // Replaces @variables with connected Text node values. Unknown variables are intentionally preserved.
 export const resolveTextTemplate = (template = '', variables = {}) =>
-  String(template ?? '').replace(/@([A-Za-z0-9_\u4e00-\u9fa5]+)/g, (match, variableName) => {
+  String(template ?? '').replace(TEMPLATE_VARIABLE_PATTERN, (match, variableName) => {
     return Object.prototype.hasOwnProperty.call(variables, variableName) ? variables[variableName] : match;
   });
 
@@ -134,6 +199,8 @@ export const collectTextVariablesFromInputs = (currentNodeId, nodes = [], edges 
       if (!upstreamNode || upstreamNode.type !== 'textNode') return;
 
       const output = getTextNodeOutput(upstreamNode);
+      Object.assign(variables, parseInlineVars(output.text).variables);
+
       if (output.variableName) {
         variables[output.variableName] = output.value;
       }
@@ -144,17 +211,48 @@ export const collectTextVariablesFromInputs = (currentNodeId, nodes = [], edges 
 
 export const getConnectedTextVariables = (nodes = [], edges = [], currentNodeId = '') => {
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-  return edges
+  const variables = [];
+
+  edges
     .filter((edge) => edge.target === currentNodeId && (edge.targetHandle ?? edge.targetHandleId) === 'text:in')
     .map((edge) => nodeMap.get(edge.source))
     .filter((node) => node?.type === 'textNode')
-    .map((node) => getTextNodeOutput(node))
-    .filter((output) => output.variableName)
-    .map((output) => ({
-      name: output.variableName,
-      key: output.variableKey,
-      preview: output.text.slice(0, 50) + (output.text.length > 50 ? '...' : ''),
-    }));
+    .forEach((node) => {
+      const output = getTextNodeOutput(node);
+      const inlineVariables = parseInlineVars(output.text).variables;
+
+      Object.entries(inlineVariables).forEach(([name, value]) => {
+        const existingIndex = variables.findIndex((item) => item.name === name);
+        const item = {
+          name,
+          key: getVariableKey(name),
+          preview: value.slice(0, 50) + (value.length > 50 ? '...' : ''),
+        };
+
+        if (existingIndex >= 0) {
+          variables[existingIndex] = item;
+        } else {
+          variables.push(item);
+        }
+      });
+
+      if (output.variableName) {
+        const item = {
+          name: output.variableName,
+          key: output.variableKey,
+          preview: output.text.slice(0, 50) + (output.text.length > 50 ? '...' : ''),
+        };
+        const existingIndex = variables.findIndex((candidate) => candidate.name === output.variableName);
+
+        if (existingIndex >= 0) {
+          variables[existingIndex] = item;
+        } else {
+          variables.push(item);
+        }
+      }
+    });
+
+  return variables;
 };
 
 export const getTextConstructionOutput = (node, nodes = [], edges = []) => {

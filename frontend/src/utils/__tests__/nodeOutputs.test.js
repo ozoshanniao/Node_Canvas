@@ -181,6 +181,30 @@ const imageEdge = {
 // ==================== RouteNode Relay Tests ====================
 import { getNodeTextOutput } from '../nodeOutputs.js';
 
+{
+  const rawText = '<var="shot1">A shot description</var>\nPlain text';
+  const textNode = {
+    id: 'text-inline',
+    type: 'textNode',
+    data: { text: rawText },
+  };
+
+  assert.equal(getNodeTextOutput(textNode), rawText);
+}
+
+{
+  const textNode = {
+    id: 'text-media-token',
+    type: 'textNode',
+    data: {
+      text: '@image_1 prompt',
+      textTokens: [{ id: 'media-1', type: 'media', value: 'image_1', start: 0, end: 8 }],
+    },
+  };
+
+  assert.equal(getNodeTextOutput(textNode), '@image_1 prompt');
+}
+
 // 1. RouteNode 透传 TextNode text
 {
   const textNode = {
@@ -365,4 +389,3 @@ import { getNodeTextOutput } from '../nodeOutputs.js';
 }
 
 console.log('nodeOutputs tests passed');
-
