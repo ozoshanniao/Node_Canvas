@@ -1,11 +1,15 @@
+import { useI18n } from '../hooks/useI18n';
+
 export function TopProjectBar({ projectName, saveStatus, lastSavedAt, onSave }) {
+  const { t } = useI18n();
+
   const statusText = (() => {
-    if (saveStatus === 'saving') return 'Saving...';
-    if (saveStatus === 'error') return 'Save failed';
+    if (saveStatus === 'saving') return t('topBar.saving');
+    if (saveStatus === 'error') return t('topBar.saveFailed');
     if (saveStatus === 'saved') {
       return lastSavedAt
-        ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-        : 'Saved';
+        ? `${t('topBar.saved')} ${lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+        : t('topBar.saved');
     }
     return '';
   })();
@@ -17,7 +21,7 @@ export function TopProjectBar({ projectName, saveStatus, lastSavedAt, onSave }) 
       onClick={(event) => event.stopPropagation()}
     >
       <div className="max-w-[240px] truncate px-2 text-sm font-light text-white/75">
-        {projectName || 'Untitled Project'}
+        {projectName || t('topBar.untitledProject')}
       </div>
 
       <button
@@ -30,7 +34,7 @@ export function TopProjectBar({ projectName, saveStatus, lastSavedAt, onSave }) 
         disabled={saveStatus === 'saving'}
         className="nodrag nopan rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-light text-white/60 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
       >
-        Save
+        {t('topBar.save')}
       </button>
 
       {statusText && (
@@ -41,3 +45,4 @@ export function TopProjectBar({ projectName, saveStatus, lastSavedAt, onSave }) 
     </div>
   );
 }
+

@@ -3,14 +3,17 @@ import { useCallback, useEffect, useState } from 'react';
 export const APP_SETTINGS_STORAGE_KEYS = {
   showRawCustomParams: 'nodeCanvas.settings.showRawCustomParams',
   publicAssetStorage: 'nodeCanvas.settings.publicAssetStorage',
+  language: 'nodeCanvas.settings.language',
 };
 
 export const DEFAULT_APP_SETTINGS = {
   showRawCustomParams: false,
   publicAssetStorage: '',
+  language: 'zh-CN',
 };
 
 const PUBLIC_ASSET_STORAGE_VALUES = new Set(['', 'r2', 'tos']);
+const LANGUAGE_VALUES = new Set(['zh-CN', 'en-US']);
 
 const readBooleanSetting = (storageKey, fallback) => {
   try {
@@ -53,6 +56,11 @@ export const getAppSettings = () => ({
     DEFAULT_APP_SETTINGS.publicAssetStorage,
     PUBLIC_ASSET_STORAGE_VALUES
   ),
+  language: readStringSetting(
+    APP_SETTINGS_STORAGE_KEYS.language,
+    DEFAULT_APP_SETTINGS.language,
+    LANGUAGE_VALUES
+  ),
 });
 
 export const shouldShowRawCustomParams = (settings = getAppSettings()) =>
@@ -68,6 +76,8 @@ export const setAppSetting = (key, value) => {
     nextValue = Boolean(value);
   } else if (key === 'publicAssetStorage') {
     nextValue = PUBLIC_ASSET_STORAGE_VALUES.has(value) ? value : DEFAULT_APP_SETTINGS.publicAssetStorage;
+  } else if (key === 'language') {
+    nextValue = LANGUAGE_VALUES.has(value) ? value : DEFAULT_APP_SETTINGS.language;
   }
   try {
     globalThis.localStorage?.setItem(APP_SETTINGS_STORAGE_KEYS[key], JSON.stringify(nextValue));

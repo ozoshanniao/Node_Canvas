@@ -32,6 +32,7 @@ import {
 } from '../utils/videoGenerationOptions';
 import { shouldShowRawCustomParams, useAppSettings } from '../utils/appSettings';
 import { countRender } from '../utils/perfDebug';
+import { useI18n } from '../hooks/useI18n';
 
 const HANDLE_LABELS = {
   'text:prompt': 'prompt',
@@ -196,6 +197,7 @@ export function VideoNode({ id, data }) {
   const [videoMetadataRatioState, setVideoMetadataRatioState] = useState({ url: '', ratio: null });
   const [inputImageRatioState, setInputImageRatioState] = useState({ key: '', url: '', ratio: null });
   const [appSettings] = useAppSettings();
+  const { t } = useI18n();
   const toolbarRef = useRef(null);
   const lastHandledRunRequestRef = useRef(data?.runRequestId);
   const lastHandleSignatureRef = useRef('');
@@ -552,7 +554,7 @@ export function VideoNode({ id, data }) {
       setTask({
         status: 'error',
         progress: 0,
-        message: 'Connect an OmniComposerNode to provide Kling Omni prompt and elements.',
+        message: t('node.video.error.noOmni'),
       });
       return;
     }
@@ -560,7 +562,7 @@ export function VideoNode({ id, data }) {
       setTask({
         status: 'error',
         progress: 0,
-        message: omniParamsOutput?.errors?.[0] || 'Omni Composer input is invalid.',
+        message: omniParamsOutput?.errors?.[0] || t('node.video.error.omniInvalid'),
       });
       return;
     }
@@ -568,7 +570,7 @@ export function VideoNode({ id, data }) {
       setTask({
         status: 'error',
         progress: 0,
-        message: 'Multi-shot customize requires a ShotList input.',
+        message: t('node.video.error.noShotList'),
       });
       return;
     }
@@ -576,7 +578,7 @@ export function VideoNode({ id, data }) {
       setTask({
         status: 'error',
         progress: 0,
-        message: multiPromptOutput?.errors?.[0] || 'ShotList input is invalid.',
+        message: multiPromptOutput?.errors?.[0] || t('node.video.error.shotListInvalid'),
       });
       return;
     }
@@ -584,7 +586,7 @@ export function VideoNode({ id, data }) {
       setTask({
         status: 'error',
         progress: 0,
-        message: 'Prompt is required.',
+        message: t('node.video.error.noPrompt'),
       });
       return;
     }
@@ -592,7 +594,7 @@ export function VideoNode({ id, data }) {
       setTask({
         status: 'error',
         progress: 0,
-        message: 'Seedance frame mode requires a first frame image.',
+        message: t('node.video.error.seedanceNoFrame'),
       });
       return;
     }
@@ -606,7 +608,7 @@ export function VideoNode({ id, data }) {
       setTask({
         status: 'error',
         progress: 0,
-        message: 'Seedance audio references require at least one image or video reference.',
+        message: t('node.video.error.seedanceNoRef'),
       });
       return;
     }
@@ -688,6 +690,7 @@ export function VideoNode({ id, data }) {
     setTask,
     settings,
     startTask,
+    t,
   ]);
 
   useEffect(() => {
@@ -902,13 +905,13 @@ export function VideoNode({ id, data }) {
     }
 
     if (settings.task?.status === 'submitting') {
-      return <div className="text-sm font-light text-white/35">Submitting video task...</div>;
+      return <div className="text-sm font-light text-white/35">{t('node.video.status.submitting')}</div>;
     }
 
     if (['running', 'processing'].includes(settings.task?.status)) {
       return (
         <div className="flex flex-col items-center gap-3 text-white/45">
-          <div className="text-sm font-light">Generating video...</div>
+          <div className="text-sm font-light">{t('node.video.status.generating')}</div>
           <div className="h-1 w-36 overflow-hidden rounded-full bg-white/10">
             <div
               className="h-full rounded-full bg-white/70 transition-all"
@@ -921,7 +924,9 @@ export function VideoNode({ id, data }) {
     }
 
     if (['queued', 'pending', 'submitted'].includes(settings.task?.status)) {
-      const queueText = settings.task.queuePosition ? `Queued · #${settings.task.queuePosition}` : 'Queued...';
+      const queueText = settings.task.queuePosition
+        ? t('node.video.status.queuedAt', { position: settings.task.queuePosition })
+        : t('node.video.status.queued');
       return <div className="text-sm font-light text-white/35">{queueText}</div>;
     }
 
@@ -940,12 +945,12 @@ export function VideoNode({ id, data }) {
     if (settings.task?.status === 'success') {
       return (
         <div className="px-6 text-center text-sm font-light text-white/30">
-          {settings.task.message || 'Video generation completed, but no video URL was returned.'}
+          {settings.task.message || t('node.video.status.noVideoUrl')}
         </div>
       );
     }
 
-    return <div className="text-sm font-light tracking-wide text-white/12">Video output will appear here...</div>;
+    return <div className="text-sm font-light tracking-wide text-white/12">{t('node.video.status.noVideo')}</div>;
   };
 
   const modelOptions = providerConfig?.models || [];
@@ -979,7 +984,7 @@ export function VideoNode({ id, data }) {
           onWheel={(event) => event.stopPropagation()}
         >
           <div className="mb-2 flex shrink-0 items-center justify-between pr-2.5">
-            <div className="text-[11px] font-light uppercase tracking-[0.18em] text-white/35">ADVANCED</div>
+            <div className="text-[11px] font-light uppercase tracking-[0.18em] text-white/35">{t('node.video.advanced')}</div>
             <button
               type="button"
               onClick={() => setShowAdvanced(false)}
@@ -1007,7 +1012,7 @@ export function VideoNode({ id, data }) {
                   onClick={() => setCameraControlOpen((value) => !value)}
                   className="nodrag flex w-full items-center justify-between px-3 py-2 text-left text-[10px] uppercase tracking-[0.14em] text-white/35 transition-colors hover:bg-white/5 hover:text-white/55"
                 >
-                  <span>Camera Control</span>
+                  <span>{t('node.video.cameraControl')}</span>
                   <span>{cameraControlOpen ? '-' : '+'}</span>
                 </button>
 
@@ -1015,7 +1020,7 @@ export function VideoNode({ id, data }) {
                   <div className="grid gap-2 border-t border-white/5 p-3">
                     {hasEndImageEdge && (
                       <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5 text-[11px] text-white/35">
-                        End frame has priority. Camera Control will not be sent.
+                        {t('node.video.cameraControl.endFramePriority')}
                       </div>
                     )}
 
@@ -1074,7 +1079,7 @@ export function VideoNode({ id, data }) {
                     value={settings.negativePrompt || ''}
                     onChange={(event) => updateNodeData({ negativePrompt: event.target.value })}
                     className="nodrag nowheel block h-20 w-full resize-none bg-transparent px-3 py-2 text-xs text-white/75 outline-none overflow-y-auto overflow-x-hidden"
-                    placeholder="Optional negative prompt..."
+                    placeholder={t('node.video.negativePlaceholder')}
                   />
                 </div>
               </label>
@@ -1196,7 +1201,7 @@ export function VideoNode({ id, data }) {
 
       <div className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-full border border-white/5 bg-[#121212]/60 px-3 py-1.5 text-[11px] font-light text-white/50 backdrop-blur-md">
         <span className="h-2 w-2 rounded-full bg-white/35" />
-        <span>Video Generation</span>
+        <span>{t('node.video.label')}</span>
       </div>
 
       <div className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-[24px]">

@@ -33,6 +33,7 @@ assert.deepEqual(
 );
 assert.equal(shouldShowRawCustomParams(getAppSettings()), false);
 assert.equal(getAppSettings().publicAssetStorage, '');
+assert.equal(getAppSettings().language, 'zh-CN');
 
 globalThis.localStorage = createLocalStorageMock({
   [APP_SETTINGS_STORAGE_KEYS.showRawCustomParams]: 'true',
@@ -70,6 +71,20 @@ assert.equal(
   'publicAssetStorage should persist tos'
 );
 
+setAppSetting('language', 'en-US');
+assert.equal(
+  getAppSettings().language,
+  'en-US',
+  'language should persist en-US'
+);
+
+setAppSetting('language', 'zh-CN');
+assert.equal(
+  getAppSettings().language,
+  'zh-CN',
+  'language should persist zh-CN'
+);
+
 for (const rawValue of ['"s3"', 'true', 'null', 'invalid']) {
   globalThis.localStorage = createLocalStorageMock({
     [APP_SETTINGS_STORAGE_KEYS.publicAssetStorage]: rawValue,
@@ -78,6 +93,17 @@ for (const rawValue of ['"s3"', 'true', 'null', 'invalid']) {
     getAppSettings().publicAssetStorage,
     '',
     `invalid publicAssetStorage value ${rawValue} should fall back to env default`
+  );
+}
+
+for (const rawValue of ['"fr-FR"', 'true', 'null', 'invalid']) {
+  globalThis.localStorage = createLocalStorageMock({
+    [APP_SETTINGS_STORAGE_KEYS.language]: rawValue,
+  });
+  assert.equal(
+    getAppSettings().language,
+    'zh-CN',
+    `invalid language value ${rawValue} should fall back to zh-CN`
   );
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { 
   ReactFlow, 
   Background, 
@@ -69,6 +69,7 @@ import { DISABLE_MINIMAP, ONLY_RENDER_VISIBLE_ELEMENTS } from './utils/perfDebug
 import { normalizeImageInputEdgeLabels } from './utils/edgeLabels';
 import { uploadImageToInput } from './utils/uploadToInput';
 import { useAppSettings } from './utils/appSettings';
+import { useI18n } from './hooks/useI18n';
 //import { ButtonEdge } from './edges/ButtonEdge';
 
 const nodeTypes = {
@@ -333,8 +334,9 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
   const [isMiniMapCollapsed, setIsMiniMapCollapsed] = useState(false);
   const [isDraggingNode, setIsDraggingNode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState('developer');
+  const [settingsTab, setSettingsTab] = useState('general');
   const [appSettings, updateAppSetting] = useAppSettings();
+  const { t } = useI18n();
   const isSavingRef = useRef(false);
   const latestCanvasRef = useRef({ nodes: [], edges: [], groups: {} });
   const latestProjectRef = useRef({ projectPath, projectFilePath, projectName });
@@ -528,10 +530,21 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
   const [query, setQuery] = useState('');
 
   const availableNodes = NODE_DEFINITIONS;
-
-  const filteredNodes = availableNodes.filter(node => 
-    `${node.label} ${node.description || ''}`.toLowerCase().includes(query.toLowerCase())
+  const getNodeDisplayLabel = useCallback(
+    (node) => t(`nodeDef.${node.type}.label`) || node.label,
+    [t]
   );
+  const getNodeDisplayDescription = useCallback(
+    (node) => t(`nodeDef.${node.type}.description`) || node.description || '',
+    [t]
+  );
+
+  const filteredNodes = useMemo(() => {
+    const normalizedQuery = query.toLowerCase();
+    return availableNodes.filter((node) =>
+      `${getNodeDisplayLabel(node)} ${getNodeDisplayDescription(node)}`.toLowerCase().includes(normalizedQuery)
+    );
+  }, [availableNodes, getNodeDisplayDescription, getNodeDisplayLabel, query]);
 
   // --- 馃専 1. 鍏ㄥ眬鍓创鏉垮浘鐗囩矘璐达紙Paste锛夊叏鍦烘櫙閫氭潃鍝嶅簲鍣?---
   useEffect(() => {
@@ -1067,8 +1080,8 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
           className={`flex h-10 w-10 items-center justify-center rounded-full border text-white/60 shadow-[0_18px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl transition-all hover:border-white/20 hover:bg-[#181818]/90 hover:text-white/85 ${
             settingsOpen ? 'border-white/25 bg-[#181818]/90 text-white' : 'border-white/10 bg-[#121212]/75'
           }`}
-          aria-label="Settings"
-          title="Settings"
+          aria-label={t('settings.title')}
+          title={t('settings.title')}
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
@@ -1079,7 +1092,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         {settingsOpen && (
           <div className="absolute right-0 mt-3 w-[360px] min-h-[330px] overflow-hidden rounded-[22px] border border-white/10 bg-[#141414]/90 shadow-[0_28px_70px_rgba(0,0,0,0.58)] backdrop-blur-2xl">
             <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
-              <div className="text-sm font-light tracking-[0.08em] text-white/80">Settings</div>
+              <div className="text-sm font-light tracking-[0.08em] text-white/80">{t('settings.title')}</div>
               <button
                 type="button"
                 onClick={() => setSettingsOpen(false)}
@@ -1091,8 +1104,8 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
 
             <div className="flex gap-1 border-b border-white/5 px-3 py-2">
               {[
-                { id: 'general', label: 'General' },
-                { id: 'developer', label: 'Developer' },
+                { id: 'general', label: t('settings.tab.general') },
+                { id: 'developer', label: t('settings.tab.developer') },
               ].map((tab) => (
                 <button
                   type="button"
@@ -1113,10 +1126,10 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
               {settingsTab === 'developer' ? (
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-sm font-light text-white/80">Show Raw Custom Params</div>
+                      <div>
+                      <div className="text-sm font-light text-white/80">{t('settings.showRawCustomParams')}</div>
                       <div className="mt-1 text-xs leading-5 text-white/35">
-                        Show provider-specific raw JSON parameters in video nodes for debugging.
+                        {t('settings.showRawCustomParams.desc')}
                       </div>
                     </div>
                     <button
@@ -1136,20 +1149,37 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
                   </div>
                 </div>
               ) : (
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-sm font-light text-white/80">Public Asset Storage</div>
-                  <CustomSelect
-                    value={appSettings.publicAssetStorage || ''}
-                    onChange={(value) => updateAppSetting('publicAssetStorage', value)}
-                    options={[
-                      { value: '', label: 'Backend .env Default' },
-                      { value: 'r2', label: 'Cloudflare R2' },
-                      { value: 'tos', label: 'Volcengine TOS' },
-                    ]}
-                    className="relative mt-3 w-full nodrag"
-                    buttonClassName="flex w-full items-center justify-between rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 text-xs text-white/75 outline-none transition-colors hover:border-white/20 focus:border-white/35"
-                    menuClassName="nowheel nodrag animate-in fade-in zoom-in-95 absolute left-0 right-0 z-[100] mt-1.5 rounded-xl border border-white/10 bg-[#141414]/95 shadow-2xl backdrop-blur-xl duration-150 overflow-hidden"
-                  />
+                <div className="grid gap-3">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="text-sm font-light text-white/80">{t('settings.language')}</div>
+                    <CustomSelect
+                      value={appSettings.language || 'zh-CN'}
+                      onChange={(value) => updateAppSetting('language', value)}
+                      options={[
+                        { value: 'zh-CN', label: t('settings.language.zhCN') },
+                        { value: 'en-US', label: t('settings.language.enUS') },
+                      ]}
+                      className="relative mt-3 w-full nodrag"
+                      buttonClassName="flex w-full items-center justify-between rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 text-xs text-white/75 outline-none transition-colors hover:border-white/20 focus:border-white/35"
+                      menuClassName="nowheel nodrag animate-in fade-in zoom-in-95 absolute left-0 right-0 z-[100] mt-1.5 rounded-xl border border-white/10 bg-[#141414]/95 shadow-2xl backdrop-blur-xl duration-150 overflow-hidden"
+                    />
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="text-sm font-light text-white/80">{t('settings.publicAssetStorage')}</div>
+                    <CustomSelect
+                      value={appSettings.publicAssetStorage || ''}
+                      onChange={(value) => updateAppSetting('publicAssetStorage', value)}
+                      options={[
+                        { value: '', label: t('settings.storage.envDefault') },
+                        { value: 'r2', label: t('settings.storage.r2') },
+                        { value: 'tos', label: t('settings.storage.tos') },
+                      ]}
+                      className="relative mt-3 w-full nodrag"
+                      buttonClassName="flex w-full items-center justify-between rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 text-xs text-white/75 outline-none transition-colors hover:border-white/20 focus:border-white/35"
+                      menuClassName="nowheel nodrag animate-in fade-in zoom-in-95 absolute left-0 right-0 z-[100] mt-1.5 rounded-xl border border-white/10 bg-[#141414]/95 shadow-2xl backdrop-blur-xl duration-150 overflow-hidden"
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -1210,10 +1240,10 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
             ? 'bottom-6 h-10 w-10 rounded-full'
             : 'bottom-[166px] rounded-full px-3 py-2'
         }`}
-        aria-label={isMiniMapCollapsed ? 'Show minimap' : 'Hide minimap'}
-        title={isMiniMapCollapsed ? 'Show minimap' : 'Hide minimap'}
+        aria-label={isMiniMapCollapsed ? t('minimap.show') : t('minimap.hide')}
+        title={isMiniMapCollapsed ? t('minimap.show') : t('minimap.hide')}
       >
-        {isMiniMapCollapsed ? 'Map' : 'Hide map'}
+        {isMiniMapCollapsed ? t('minimap.show') : t('minimap.hide')}
       </button>
 
       {/* 3. Flora AI 鏋佺畝鏆楅粦椋庡弻鍑绘悳绱㈤潰鏉?*/}
@@ -1226,7 +1256,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
           <input
             type="text"
             autoFocus
-            placeholder="Search nodes..."
+            placeholder={t('search.placeholder')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -1247,12 +1277,12 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
                   }}
                   className="px-4 py-3 text-sm text-white/50 hover:text-white hover:bg-white/5 rounded-[10px] cursor-pointer transition-colors font-light flex items-center justify-between group"
                 >
-                  <span>{node.label}</span>
+                  <span>{getNodeDisplayLabel(node)}</span>
                   <span className="text-[10px] opacity-0 group-hover:opacity-30 transition-opacity font-mono">&gt;</span>
                 </div>
               ))
             ) : (
-              <div className="px-4 py-4 text-sm text-white/20 text-center font-light">No nodes found</div>
+              <div className="px-4 py-4 text-sm text-white/20 text-center font-light">{t('search.noResults')}</div>
             )}
           </div>
         </div>

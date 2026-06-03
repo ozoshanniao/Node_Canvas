@@ -7,10 +7,12 @@ import { TokenTextEditor } from '../components/TokenTextEditor';
 import { getNodeTextOutput } from '../utils/nodeOutputs';
 import { getVariableKey, normalizeVariableName, getStaticMediaSuggestions } from '../utils/textVariables';
 import { countRender } from '../utils/perfDebug';
+import { useI18n } from '../hooks/useI18n';
 
 export const TextNode = memo(function TextNode({ id, data }) {
   countRender('TextNode');
   const { setNodes } = useReactFlow();
+  const { t } = useI18n();
   const [isEditingVariable, setIsEditingVariable] = useState(false);
   const [draftVariableName, setDraftVariableName] = useState(data.variableName || '');
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
@@ -61,7 +63,7 @@ export const TextNode = memo(function TextNode({ id, data }) {
           <svg className="w-3.5 h-3.5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h11" />
           </svg>
-          <span>Text</span>
+          <span>{t('node.text.label')}</span>
         </div>
 
         <div className="ml-auto flex items-center gap-1.5 nodrag">
@@ -74,9 +76,9 @@ export const TextNode = memo(function TextNode({ id, data }) {
             className={`text-[9px] px-1.5 py-0.5 rounded-md font-light tracking-tighter transition-colors ${
               autoReceiveText ? 'bg-white/15 text-white/90' : 'bg-white/5 text-white/20 hover:text-white/50'
             }`}
-            title="Auto receive text input"
+            title={t('node.text.autoBtn')}
           >
-            Auto
+            {t('node.text.autoBtn')}
           </button>
 
           <button
@@ -109,7 +111,7 @@ export const TextNode = memo(function TextNode({ id, data }) {
                   cancelVariableNameEdit();
                 }
               }}
-              placeholder="name"
+              placeholder={t('node.text.variablePlaceholder')}
               className="w-20 bg-[#101010] border border-white/10 rounded-md px-2 py-0.5 text-[10px] text-white/80 placeholder-white/20 focus:outline-none focus:border-white/25"
             />
           )}
@@ -125,7 +127,7 @@ export const TextNode = memo(function TextNode({ id, data }) {
         onTokensChange={updateTextTokens}
         suggestions={mediaSuggestions}
         tokenType="media"
-        placeholder="Type your prompt here..."
+        placeholder={t('node.text.placeholder')}
         className="flex-1"
       />
 
@@ -155,13 +157,13 @@ export const TextNode = memo(function TextNode({ id, data }) {
 
       <FullscreenTextModal
         open={isFullscreenOpen}
-        title="Text"
+        title={t('node.text.label')}
         subtitle={variableKey || undefined}
         value={text}
         onChange={(nextText) => updateNodeData({ text: nextText, textTokens: [] })}
         onClose={() => setIsFullscreenOpen(false)}
         mode="single"
-        placeholder="Type your prompt here..."
+        placeholder={t('node.text.placeholder')}
       />
     </div>
   );

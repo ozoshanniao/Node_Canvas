@@ -1,6 +1,8 @@
-import React from 'react';
+import { useI18n } from '../hooks/useI18n';
 
 export function Launcher({ onLaunch }) {
+  const { t } = useI18n();
+
   const triggerFolderPicker = async () => {
     try {
       const res = await fetch('http://127.0.0.1:8000/api/select-folder');
@@ -49,21 +51,21 @@ export function Launcher({ onLaunch }) {
             onClick={triggerFolderPicker}
             className="w-full bg-white/5 border border-white/5 hover:border-white/10 hover:bg-white/10 text-white rounded-[24px] py-7 px-8 flex flex-col items-center gap-1.5 transition-all group active:scale-[0.98]"
           >
-            <span className="text-sm font-light tracking-wider">CREATE WORKSPACE</span>
-            <span className="text-[9px] text-white/20 font-light tracking-widest uppercase group-hover:text-white/40">Select directory to initialize</span>
+            <span className="text-sm font-light tracking-wider">{t('launcher.createWorkspace')}</span>
+            <span className="text-[9px] text-white/20 font-light tracking-widest uppercase group-hover:text-white/40">{t('launcher.createWorkspace.hint')}</span>
           </button>
 
           <button
             onClick={handleLoadProject}
             className="w-full bg-white text-black hover:bg-opacity-90 rounded-[24px] py-7 px-8 flex flex-col items-center gap-1.5 transition-all active:scale-[0.98]"
           >
-            <span className="text-sm font-light tracking-wider">OPEN WORKSPACE</span>
-            <span className="text-[9px] text-black/40 font-light tracking-widest uppercase">Load specific project JSON</span>
+            <span className="text-sm font-light tracking-wider">{t('launcher.openWorkspace')}</span>
+            <span className="text-[9px] text-black/40 font-light tracking-widest uppercase">{t('launcher.openWorkspace.hint')}</span>
           </button>
         </div>
 
         <div className="flex flex-col items-center gap-1 opacity-20">
-          <div className="text-[9px] text-white font-light tracking-[0.3em] uppercase">Production Ready</div>
+          <div className="text-[9px] text-white font-light tracking-[0.3em] uppercase">{t('launcher.productionReady')}</div>
           <div className="text-[8px] text-white font-light">v1.0.0 - 2026-05</div>
         </div>
       </div>

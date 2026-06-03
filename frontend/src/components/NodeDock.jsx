@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { DOCK_CATEGORIES, getDockCategoryNodes } from '../utils/nodeCategories';
 import { NODE_DEFINITIONS } from '../nodes/nodeDefinitions';
+import { useI18n } from '../hooks/useI18n';
 
 const CATEGORY_DOTS = {
   Text: 'bg-white/45',
@@ -26,7 +27,7 @@ const DockButton = ({ active, disabled = false, children, onClick }) => (
   </button>
 );
 
-const NodeItem = ({ definition, onCreateNode }) => (
+const NodeItem = ({ definition, onCreateNode, t }) => (
   <button
     type="button"
     onClick={() => onCreateNode(definition.type)}
@@ -34,7 +35,7 @@ const NodeItem = ({ definition, onCreateNode }) => (
   >
     <div className="min-w-0">
       <div className="truncate text-sm font-light text-white/75 group-hover:text-white">
-        {definition.label}
+        {t(`nodeDef.${definition.type}.label`) || definition.label}
       </div>
     </div>
     <span className="text-xs text-white/20 transition-colors group-hover:text-white/45">&gt;</span>
@@ -43,6 +44,7 @@ const NodeItem = ({ definition, onCreateNode }) => (
 
 export function NodeDock({ onCreateNode, onRunSelected, selectedRunnableNode }) {
   const [activeCategory, setActiveCategory] = useState(null);
+  const { t } = useI18n();
 
   const activeDefinition = useMemo(
     () => DOCK_CATEGORIES.find((category) => category.id === activeCategory),
@@ -77,7 +79,7 @@ export function NodeDock({ onCreateNode, onRunSelected, selectedRunnableNode }) 
         <div className="absolute bottom-[64px] left-1/2 w-[360px] -translate-x-1/2 rounded-[24px] border border-white/10 bg-[#181818]/90 p-3 shadow-[0_24px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl">
           <div className="mb-2 flex items-center justify-between px-2">
             <div className="text-[11px] font-light uppercase tracking-[0.24em] text-white/35">
-              {activeDefinition.label}
+              {t(`category.${activeDefinition.id}`) || activeDefinition.label}
             </div>
             <button
               type="button"
@@ -94,13 +96,14 @@ export function NodeDock({ onCreateNode, onRunSelected, selectedRunnableNode }) 
                 <NodeItem
                   key={definition.type}
                   definition={definition}
+                  t={t}
                   onCreateNode={handleCreateNode}
                 />
               ))}
             </div>
           ) : (
             <div className="flex h-24 items-center justify-center rounded-[18px] border border-white/5 bg-black/20 text-sm font-light text-white/25">
-              Coming soon
+              {t('dock.comingSoon')}
             </div>
           )}
         </div>
@@ -114,7 +117,7 @@ export function NodeDock({ onCreateNode, onRunSelected, selectedRunnableNode }) 
             onClick={() => handleCategoryClick(category.id)}
           >
             <span className={`h-1.5 w-1.5 rounded-full ${CATEGORY_DOTS[category.id] || 'bg-white/30'}`} />
-            {category.label}
+            {t(`category.${category.id}`) || category.label}
           </DockButton>
         ))}
 
@@ -126,7 +129,7 @@ export function NodeDock({ onCreateNode, onRunSelected, selectedRunnableNode }) 
           onClick={handleRun}
         >
           <span className="h-1.5 w-1.5 rounded-full bg-white/45" />
-          Run
+          {t('dock.run')}
         </DockButton>
       </div>
     </div>
