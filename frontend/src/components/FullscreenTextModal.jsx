@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useI18n } from '../hooks/useI18n';
 
 export function FullscreenTextModal({
   open,
@@ -9,10 +10,12 @@ export function FullscreenTextModal({
   onChange,
   onClose,
   previewValue,
-  previewTitle = 'Resolved Preview',
+  previewTitle,
   mode = 'single',
   placeholder,
 }) {
+  const { t } = useI18n();
+  const displayPreviewTitle = previewTitle ?? t('modal.fullscreenText.resolvedPreview');
   useEffect(() => {
     if (!open) return undefined;
 
@@ -69,7 +72,7 @@ export function FullscreenTextModal({
           }`}
         >
           <div className="min-h-0 w-full flex-1 flex flex-col">
-            {isTemplatePreview && <div className="text-[10px] uppercase tracking-wide text-white/35 mb-2">Template</div>}
+            {isTemplatePreview && <div className="text-[10px] uppercase tracking-wide text-white/35 mb-2">{t('modal.fullscreenText.template')}</div>}
             <textarea
               value={value}
               onChange={(event) => onChange?.(event.target.value)}
@@ -81,9 +84,9 @@ export function FullscreenTextModal({
 
           {isTemplatePreview && (
             <div className="min-h-0 flex flex-col">
-              <div className="text-[10px] uppercase tracking-wide text-white/35 mb-2">{previewTitle}</div>
+              <div className="text-[10px] uppercase tracking-wide text-white/35 mb-2">{displayPreviewTitle}</div>
               <div className="nowheel flex-1 min-h-0 overflow-y-auto rounded-[16px] bg-black/20 border border-white/5 px-4 py-3 text-sm leading-relaxed text-white/75 whitespace-pre-wrap">
-                {previewValue || <span className="text-white/25">No resolved text</span>}
+                {previewValue || <span className="text-white/25">{t('modal.fullscreenText.noResolvedText')}</span>}
               </div>
             </div>
           )}

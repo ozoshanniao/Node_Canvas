@@ -18,10 +18,12 @@ import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { getNodeImageOutput, getNodeTextOutput } from '../utils/nodeOutputs';
 import { countRender } from '../utils/perfDebug';
 import { fetchLLMSkills, getSkillDisplayName, normalizeEnabledSkills } from '../utils/llmSkills';
+import { useI18n } from '../hooks/useI18n';
 
 export function LLMProcessorNode({ id, data }) {
   countRender('LLMProcessorNode');
   const { setNodes, getNodes, getEdges } = useReactFlow();
+  const { t } = useI18n();
   const lastHandledRunRequestRef = useRef(data?.runRequestId);
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState(null);
@@ -141,7 +143,7 @@ export function LLMProcessorNode({ id, data }) {
 
       if (!modelCapabilities.supportsImages && imageInputEdges.length > 0) {
         updateNodeData({
-          outputText: 'Current DeepSeek model does not support image input. Remove image connections or switch to a vision-capable model.',
+          outputText: t('node.llm.error.noImageSupport'),
           status: 'error',
           lastRunAt: new Date().toISOString(),
         });
@@ -188,7 +190,7 @@ export function LLMProcessorNode({ id, data }) {
 
       if (!inputText.trim() && imageInputs.length === 0) {
         updateNodeData({
-          outputText: 'No text or image input connected. Please connect text:in or image:in.',
+          outputText: t('node.llm.error.noInput'),
           status: 'error',
           lastRunAt: new Date().toISOString(),
         });
@@ -499,27 +501,27 @@ export function LLMProcessorNode({ id, data }) {
             {supportsLocalSoftSkills && (
             <div className="flex w-full min-w-0 flex-col gap-2 border-t border-white/5 pt-3">
                 <div className="flex min-w-0 items-center justify-between gap-3 text-[9px] text-white/30 uppercase tracking-tighter">
-                <span className="min-w-0 truncate">Local Soft Skills</span>
+                <span className="min-w-0 truncate">{t('node.llm.skills.label')}</span>
                 <span className="shrink-0 text-white/60">{enabledSkills.length} / {availableSkills.length}</span>
                 </div>
 
                 <div className="nodrag nowheel max-h-[140px] w-full min-w-0 overflow-y-auto overflow-x-hidden rounded-lg border border-white/5 bg-[#101010]/80 p-1">
                 {skillsLoading && (
-                    <div className="truncate px-2 py-2 text-[10px] text-white/35">
-                    Loading local skills...
-                    </div>
+                  <div className="truncate px-2 py-2 text-[10px] text-white/35">
+                  {t('node.llm.skills.loading')}
+                  </div>
                 )}
 
                 {!skillsLoading && skillsError && (
-                    <div className="truncate px-2 py-2 text-[10px] text-white/35">
-                    Failed to load local skills
-                    </div>
+                  <div className="truncate px-2 py-2 text-[10px] text-white/35">
+                  {t('node.llm.skills.failed')}
+                  </div>
                 )}
 
                 {!skillsLoading && !skillsError && availableSkills.length === 0 && (
-                    <div className="truncate px-2 py-2 text-[10px] text-white/35">
-                    No local skills found
-                    </div>
+                  <div className="truncate px-2 py-2 text-[10px] text-white/35">
+                  {t('node.llm.skills.none')}
+                  </div>
                 )}
 
                 {!skillsLoading && !skillsError && availableSkills.map((skill) => (
@@ -610,7 +612,7 @@ export function LLMProcessorNode({ id, data }) {
               ? 'bg-white text-black'
               : 'bg-[#222222] text-white/60 hover:bg-white hover:text-black'
           }`}
-          title="Run LLM Processor"
+          title={t('node.llm.run')}
         >
           {isRunning ? (
             <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24">
@@ -643,7 +645,7 @@ export function LLMProcessorNode({ id, data }) {
             <svg className="w-3.5 h-3.5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h10M4 18h7" />
             </svg>
-            <span>LLM Processor</span>
+          <span>{t('node.llm.label')}</span>
           </div>
 
           <div className="ml-auto flex items-center gap-1.5 nodrag">
@@ -656,7 +658,7 @@ export function LLMProcessorNode({ id, data }) {
                   ? 'bg-white/5 text-white/40 hover:text-white/80 hover:bg-white/10'
                   : 'bg-white/5 text-white/15 cursor-not-allowed'
               }`}
-              title="Copy output"
+              title={t('node.llm.copyOutput')}
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -676,17 +678,17 @@ export function LLMProcessorNode({ id, data }) {
           <textarea
             value={outputText}
             onChange={handleOutputChange}
-            placeholder="LLM output will appear here..."
+            placeholder={t('node.llm.placeholder')}
             className="nodrag nowheel w-full h-full bg-transparent text-white/90 placeholder-white/20 resize-none focus:outline-none text-sm font-light tracking-wide leading-relaxed pr-4 pb-4"
           />
         </div>
 
         <div className="pt-2 border-t border-white/5 text-[10px] text-white/25 font-light">
-          {status === 'idle' && 'No output yet'}
-          {status === 'running' && 'Running...'}
-          {status === 'success' && `Done  ${charCount} chars out`}
-          {status === 'edited' && `Edited  ${charCount} chars out`}
-          {status === 'error' && 'Error'}
+          {status === 'idle' && t('node.llm.status.idle')}
+          {status === 'running' && t('node.llm.status.running')}
+          {status === 'success' && t('node.llm.status.success', { count: charCount })}
+          {status === 'edited' && t('node.llm.status.edited', { count: charCount })}
+          {status === 'error' && t('node.llm.status.error')}
         </div>
 
         <div className="absolute left-0 top-[38%] z-20 flex items-center">
@@ -731,8 +733,8 @@ export function LLMProcessorNode({ id, data }) {
 
         <FullscreenTextModal
           open={isFullscreenOpen}
-          title="LLM Processor"
-          subtitle={`${providerLabel} 路 ${modelLabel}`}
+          title={t('node.llm.label')}
+          subtitle={`${providerLabel} / ${modelLabel}`}
           value={outputText}
           onChange={(nextText) =>
             updateNodeData({
@@ -742,7 +744,7 @@ export function LLMProcessorNode({ id, data }) {
           }
           onClose={() => setIsFullscreenOpen(false)}
           mode="single"
-          placeholder="LLM output will appear here..."
+          placeholder={t('node.llm.placeholder')}
         />
       </div>
     </div>

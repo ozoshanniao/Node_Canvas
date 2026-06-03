@@ -7,6 +7,7 @@ import { getImageInputNodeSizeByRatio } from '../utils/imageInputSizing';
 import { countRender } from '../utils/perfDebug';
 import { getMatchingPreviewUrl } from '../utils/imagePreview';
 import { uploadImageToInput } from '../utils/uploadToInput';
+import { useI18n } from '../hooks/useI18n';
 
 const PanoramaViewerModal = lazy(() =>
   import('../components/PanoramaViewerModal').then((module) => ({
@@ -106,6 +107,7 @@ function SpatialUpstreamBridge({ nodeId, currentData }) {
 // ---------------------------------------------------------------------------
 export const SpatialPreviewNode = memo(function SpatialPreviewNode({ id, data, mode, title }) {
   countRender('SpatialPreviewNode');
+  const { t } = useI18n();
   const { getNodes, setNodes } = useReactFlow();
   const [isViewerOpen, setIsViewerOpen] = useState(false);
 
@@ -261,7 +263,7 @@ export const SpatialPreviewNode = memo(function SpatialPreviewNode({ id, data, m
             }}
             className="pointer-events-auto nodrag nopan rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] font-light text-white/60 backdrop-blur-md transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
           >
-            Open Viewer
+            {t('node.spatialPreview.openViewer')}
           </button>
         </div>
 
@@ -269,13 +271,13 @@ export const SpatialPreviewNode = memo(function SpatialPreviewNode({ id, data, m
           {resolvedSourceImageUrl ? (
             <img
               src={resolvedSourceImageUrl}
-              alt={`${title} preview`}
+              alt={`${title} ${t('node.spatialPreview.previewAlt')}`}
               draggable={false}
               className="canvas-image-preview absolute inset-0 h-full w-full object-cover pointer-events-none select-none"
             />
           ) : (
             <div className="flex h-full min-h-[170px] items-center justify-center text-sm font-light text-white/25">
-              Connect image
+              {t('node.spatialPreview.connectImage')}
             </div>
           )}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40" />
@@ -309,7 +311,7 @@ export const SpatialPreviewNode = memo(function SpatialPreviewNode({ id, data, m
         <Suspense
           fallback={
             <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 text-sm font-light text-white/35 backdrop-blur-xl">
-              Loading panorama viewer...
+              {t('node.spatialPreview.loadingViewer')}
             </div>
           }
         >

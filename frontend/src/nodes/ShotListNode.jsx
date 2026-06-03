@@ -1,4 +1,5 @@
 import { memo, useMemo } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { getNodeMultiPromptOutput } from '../utils/nodeOutputs';
@@ -12,6 +13,7 @@ const createShot = () => ({
 
 export const ShotListNode = memo(function ShotListNode({ id, data }) {
   countRender('ShotListNode');
+  const { t } = useI18n();
   const { setNodes } = useReactFlow();
   const shots = useMemo(
     () => (Array.isArray(data?.shots) && data.shots.length ? data.shots : [createShot()]),
@@ -57,9 +59,9 @@ export const ShotListNode = memo(function ShotListNode({ id, data }) {
       <div className="canvas-node-card relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[24px] border border-white/5 bg-[#181818] p-4 transition-colors duration-100 hover:border-white/20">
         <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
           <div className="rounded-full border border-white/5 bg-[#121212]/60 px-3 py-1.5 text-[11px] font-light text-white/55">
-            Shot List
+            {t('node.shotList.label')}
           </div>
-          <div className="text-[11px] font-light text-white/35">Total: {output.totalDuration}s</div>
+          <div className="text-[11px] font-light text-white/35">{t('node.shotList.totalDuration', { duration: output.totalDuration })}</div>
         </div>
 
         <div
@@ -87,14 +89,14 @@ export const ShotListNode = memo(function ShotListNode({ id, data }) {
                   onPointerDown={(event) => event.stopPropagation()}
                   className="nodrag nowheel h-7 w-14 rounded-lg border border-white/10 bg-black/25 px-2 text-xs text-white/75 outline-none"
                 />
-                <button type="button" onClick={() => moveShot(index, -1)} className="nodrag nowheel rounded px-2 text-xs text-white/35 hover:bg-white/5 hover:text-white">Up</button>
-                <button type="button" onClick={() => moveShot(index, 1)} className="nodrag nowheel rounded px-2 text-xs text-white/35 hover:bg-white/5 hover:text-white">Down</button>
+                <button type="button" onClick={() => moveShot(index, -1)} className="nodrag nowheel rounded px-2 text-xs text-white/35 hover:bg-white/5 hover:text-white">{t('node.shotList.up')}</button>
+                <button type="button" onClick={() => moveShot(index, 1)} className="nodrag nowheel rounded px-2 text-xs text-white/35 hover:bg-white/5 hover:text-white">{t('node.shotList.down')}</button>
                 <button
                   type="button"
                   onClick={() => updateShots(shots.filter((_, shotIndex) => shotIndex !== index))}
                   className="nodrag nowheel ml-auto rounded px-2 text-xs text-white/35 hover:bg-white/5 hover:text-red-200"
                 >
-                  Delete
+                  {t('node.shotList.delete')}
                 </button>
               </div>
               <div className="min-h-0 flex-1">
@@ -106,7 +108,7 @@ export const ShotListNode = memo(function ShotListNode({ id, data }) {
                   onPointerDown={(event) => event.stopPropagation()}
                   onWheel={(event) => event.stopPropagation()}
                   className="nodrag nowheel h-full min-h-[96px] w-full resize-none rounded-lg border border-white/10 bg-black/25 px-2 py-1.5 text-xs text-white/75 outline-none"
-                  placeholder="Shot prompt..."
+                  placeholder={t('node.shotList.placeholder')}
                 />
               </div>
             </div>
@@ -125,10 +127,10 @@ export const ShotListNode = memo(function ShotListNode({ id, data }) {
             disabled={shots.length >= 6}
             className="nodrag nowheel rounded-full border border-white/10 px-3 py-1.5 text-xs text-white/45 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-35"
           >
-            Add Shot
+            {t('node.shotList.addShot')}
           </button>
           <div className={`truncate text-[11px] ${output.isValid ? 'text-white/30' : 'text-red-300/70'}`}>
-            {output.isValid ? 'Valid' : output.errors[0]}
+            {output.isValid ? t('node.shotList.valid') : output.errors[0]}
           </div>
         </div>
       </div>

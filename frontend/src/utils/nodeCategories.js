@@ -12,12 +12,17 @@ export const DOCK_CATEGORIES = [
   {
     id: 'Video',
     label: 'Video',
-    nodeTypes: ['audioInputNode', 'videoInputNode', 'videoNode', 'easeCurveNode', 'shotListNode', 'omniComposerNode'],
+    nodeTypes: ['videoInputNode', 'videoNode', 'shotListNode', 'omniComposerNode'],
+  },
+  {
+    id: 'Audio',
+    label: 'Audio',
+    nodeTypes: ['audioInputNode'],
   },
   {
     id: 'Tools',
     label: 'Tools',
-    nodeTypes: ['splitGridNode', 'routeNode', 'ar720Node', 'panorama360Node'],
+    nodeTypes: ['splitGridNode', 'routeNode', 'ar720Node', 'panorama360Node', 'easeCurveNode'],
   },
 ];
 

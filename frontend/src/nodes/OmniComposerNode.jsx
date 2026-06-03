@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { Handle, Position, useEdges, useNodes, useReactFlow, useUpdateNodeInternals } from '@xyflow/react';
 import CustomSelect from '../components/CustomSelect';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
@@ -9,6 +10,7 @@ const ROLE_OPTIONS = ['reference', 'first_frame', 'end_frame'];
 
 export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
   countRender('OmniComposerNode');
+  const { t } = useI18n();
   const { setNodes } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
   const nodes = useNodes();
@@ -112,10 +114,10 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
       <div className="canvas-node-card relative flex h-full w-full flex-col rounded-[24px] border border-white/5 bg-[#181818] p-4 transition-colors duration-100 hover:border-white/20">
         <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
           <div className="rounded-full border border-white/5 bg-[#121212]/60 px-3 py-1.5 text-[11px] font-light text-white/55">
-            Omni Composer
+            {t('node.omniComposer.label')}
           </div>
           <div className={`truncate text-[11px] ${output.isValid ? 'text-white/30' : 'text-red-300/70'}`}>
-            {output.isValid ? 'Valid' : output.errors[0]}
+            {output.isValid ? t('node.omniComposer.valid') : output.errors[0]}
           </div>
         </div>
 
@@ -132,7 +134,7 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
               multiShot ? 'bg-white/10 text-white' : 'text-white/45 hover:bg-white/5 hover:text-white'
             }`}
           >
-            Multi Shot {multiShot ? 'On' : 'Off'}
+            {t('node.omniComposer.multiShot')} {multiShot ? t('node.omniComposer.on') : t('node.omniComposer.off')}
           </button>
           {multiShot && (
             <>
@@ -140,7 +142,7 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
               <CustomSelect
                 value={shotType}
                 onChange={(val) => updateShotSettings({ shotType: val })}
-                options={['intelligence', 'customize']}
+                options={['intelligence', 'customize'].map(opt => ({ value: opt, label: t('preset.' + opt) }))}
                 className="relative nodrag"
                 buttonClassName="flex items-center justify-between gap-1 rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[11px] text-white/60 outline-none transition-colors hover:border-white/20 disabled:cursor-not-allowed disabled:opacity-45"
                 menuClassName="nowheel nodrag animate-in fade-in zoom-in-95 absolute left-1/2 top-full z-[70] mt-1.5 min-w-[120px] -translate-x-1/2 overflow-hidden rounded-xl border border-white/10 bg-[#141414]/95 shadow-2xl backdrop-blur-xl duration-150"
@@ -157,18 +159,18 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
           onWheel={(event) => event.stopPropagation()}
         >
           <label className="flex flex-col gap-1.5 min-h-[120px] flex-grow flex-1">
-            <span className="text-[10px] uppercase tracking-[0.14em] text-white/30 shrink-0">Prompt</span>
+            <span className="text-[10px] uppercase tracking-[0.14em] text-white/30 shrink-0">{t('node.omniComposer.prompt')}</span>
             <textarea
               ref={promptRef}
               value={prompt}
               onChange={(event) => updateData({ prompt: event.target.value })}
               className="nodrag nowheel w-full flex-grow flex-1 min-h-[96px] resize-none rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-white/75 outline-none transition-colors hover:border-white/20"
-              placeholder="Use @image_1 and @element_1 in your prompt..."
+              placeholder={t('node.omniComposer.promptPlaceholder')}
             />
           </label>
 
           <div className="grid gap-1.5 shrink-0">
-            <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">Available References</span>
+            <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">{t('node.omniComposer.availableReferences')}</span>
             <div className="flex flex-wrap gap-1.5">
               {aliasPills.length ? (
                 aliasPills.map((alias) => (
@@ -182,13 +184,13 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
                   </button>
                 ))
               ) : (
-                <span className="text-[11px] text-white/25">Connect images or add elements to create references.</span>
+                <span className="text-[11px] text-white/25">{t('node.omniComposer.noReferences')}</span>
               )}
             </div>
           </div>
 
           <div className="grid gap-1.5 shrink-0">
-            <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">Image References</span>
+            <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">{t('node.omniComposer.imageReferences')}</span>
             {output.images.length ? (
               <div className="grid gap-1.5">
                 {output.images.map((image) => (
@@ -198,7 +200,7 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
                     <CustomSelect
                       value={image.role}
                       onChange={(value) => updateImageRole(image.alias, value)}
-                      options={ROLE_OPTIONS}
+                      options={ROLE_OPTIONS.map(opt => ({ value: opt, label: t('preset.' + opt) }))}
                       className="relative w-[116px] shrink-0 nodrag"
                       buttonClassName="flex w-full items-center justify-between gap-1 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/60 outline-none transition-colors hover:border-white/20 disabled:cursor-not-allowed disabled:opacity-45"
                       menuClassName="nowheel nodrag animate-in fade-in zoom-in-95 absolute left-1/2 top-full z-[70] mt-1.5 min-w-[124px] -translate-x-1/2 overflow-hidden rounded-xl border border-white/10 bg-[#141414]/95 shadow-2xl backdrop-blur-xl duration-150"
@@ -209,21 +211,21 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
               </div>
             ) : (
               <div className="rounded-xl border border-white/5 bg-black/15 px-3 py-2 text-[11px] text-white/25">
-                No image references connected.
+                {t('node.omniComposer.noImageReferences')}
               </div>
             )}
           </div>
 
           <div className="grid gap-1.5 shrink-0">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">Elements</span>
+              <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">{t('node.omniComposer.elements')}</span>
               <button
                 type="button"
                 onClick={addElement}
                 disabled={elements.length >= 3}
                 className="nodrag nowheel text-[10px] text-white/45 transition-colors hover:text-white disabled:opacity-30"
               >
-                + Add Element
+                {t('node.omniComposer.addElement')}
               </button>
             </div>
             <div className="grid gap-1.5">
@@ -235,14 +237,14 @@ export const OmniComposerNode = memo(function OmniComposerNode({ id, data }) {
                     value={element}
                     onChange={(event) => updateElement(index, event.target.value)}
                     className="nodrag nowheel h-8 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/25 px-3 text-xs text-white/70 outline-none"
-                    placeholder="Element ID"
+                    placeholder={t('node.omniComposer.elementPlaceholder')}
                   />
                   <button
                     type="button"
                     onClick={() => removeElement(index)}
                     className="nodrag nowheel h-8 rounded-xl border border-white/5 bg-black/25 px-2 text-xs text-white/35 transition-colors hover:border-red-500/30 hover:text-red-300"
                   >
-                    Delete
+                    {t('node.omniComposer.delete')}
                   </button>
                 </div>
               ))}

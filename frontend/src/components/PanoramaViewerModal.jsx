@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { createPortal } from 'react-dom';
 import { PanoramaViewerCanvas } from './PanoramaViewerCanvas';
 import {
@@ -67,6 +68,7 @@ export function PanoramaViewerModal({
   onCreateImageInputs,
   onClose,
 }) {
+  const { t } = useI18n();
   const viewerRef = useRef(null);
   const [localViewerState, setLocalViewerState] = useState(viewerState ?? { yaw: 0, pitch: 0, fov: 70 });
   const [viewerReady, setViewerReady] = useState(false);
@@ -91,7 +93,7 @@ export function PanoramaViewerModal({
     }
   }, [exportOptions]);
   const canCapture = Boolean(imageUrl && viewerReady && exportSize && !isCapturing && !isCapturingFourViews);
-  const exportSizeLabel = exportSize ? `${exportSize.width} × ${exportSize.height}` : 'Invalid size';
+  const exportSizeLabel = exportSize ? `${exportSize.width} × ${exportSize.height}` : t('modal.panorama.invalidSize');
   const presetViews = PRESET_VIEWS[mode] || PRESET_VIEWS.ar720;
 
   const handleClose = () => {
@@ -117,8 +119,8 @@ export function PanoramaViewerModal({
     console.error('[Panorama capture failed]', error);
     setCaptureError(
       error?.message?.includes('canvas export')
-        ? 'Failed to capture current view. Remote image may not allow canvas export.'
-        : error?.message || 'Failed to capture current view.'
+        ? t('modal.panorama.failedCaptureRemote')
+        : error?.message || t('modal.panorama.failedCapture')
     );
   };
 
@@ -134,7 +136,7 @@ export function PanoramaViewerModal({
     };
 
     setIsCapturing(true);
-    setCaptureError('Preparing capture...');
+    setCaptureError(t('modal.panorama.preparingCapture'));
 
     try {
       const size = getCaptureSizeOrThrow();
@@ -170,7 +172,7 @@ export function PanoramaViewerModal({
     const anchorPitch = exportOptions.keepCurrentPitchIn4Views ? currentView.pitch : 0;
 
     setIsCapturingFourViews(true);
-    setCaptureError('Preparing 4 views...');
+    setCaptureError(t('modal.panorama.preparing4Views'));
 
     try {
       const size = getCaptureSizeOrThrow();
@@ -205,6 +207,7 @@ export function PanoramaViewerModal({
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocalViewerState(viewerState ?? { yaw: 0, pitch: 0, fov: 70 });
     setViewerReady(false);
     setCaptureError('');
@@ -238,28 +241,28 @@ export function PanoramaViewerModal({
           <div>
             <div className="text-sm font-light text-white/80">{title}</div>
             <div className="text-[10px] font-light uppercase tracking-[0.22em] text-white/30">
-              Drag to look around / Scroll to zoom
+              {t('modal.panorama.dragToLook')}
             </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button type="button" onClick={() => viewerRef.current?.reset?.()} className={buttonClass}>
-              Reset
+              {t('modal.panorama.reset')}
             </button>
             <button type="button" onClick={() => viewerRef.current?.center?.()} className={buttonClass}>
-              Center
+              {t('modal.panorama.center')}
             </button>
             <button type="button" disabled={!canCapture} onClick={handleCaptureCurrentView} className={buttonClass}>
-              {isCapturing ? 'Capturing...' : 'Capture'}
+              {isCapturing ? t('modal.panorama.capturing') : t('modal.panorama.capture')}
             </button>
             <button type="button" disabled={!canCapture} onClick={handleCaptureFourViews} className={buttonClass}>
-              {isCapturingFourViews ? 'Exporting 4 Views...' : '4 Views'}
+              {isCapturingFourViews ? t('modal.panorama.exporting4Views') : t('modal.panorama.fourViews')}
             </button>
             <button
               type="button"
               onClick={handleClose}
               className="h-9 w-9 rounded-full border border-white/10 bg-white/5 text-white/45 transition-colors hover:bg-white/10 hover:text-white"
-              aria-label="Close panorama viewer"
+              aria-label={t('modal.panorama.closeViewer')}
             >
               x
             </button>
@@ -293,7 +296,7 @@ export function PanoramaViewerModal({
                 onClick={() => setLockPitch((current) => !current)}
                 className={`${buttonClass} ${lockPitch ? 'bg-white/20 text-white' : ''}`}
               >
-                {lockPitch ? 'Pitch Locked' : 'Pitch Limited'}
+                {lockPitch ? t('modal.panorama.pitchLocked') : t('modal.panorama.pitchLimited')}
               </button>
             )}
             <div className="flex flex-wrap items-center gap-1">
@@ -304,7 +307,7 @@ export function PanoramaViewerModal({
                   onClick={() => updateLocalViewerState({ yaw: view.yaw, pitch: view.pitch })}
                   className="nodrag nopan rounded-full border border-white/10 bg-black/25 px-2.5 py-1.5 text-[10px] font-light text-white/45 transition-colors hover:bg-white/10 hover:text-white/75"
                 >
-                  {view.label}
+                  {t('preset.' + view.label.toLowerCase())}
                 </button>
               ))}
             </div>
@@ -318,7 +321,7 @@ export function PanoramaViewerModal({
             >
               {PANORAMA_EXPORT_ASPECT_RATIOS.map((item) => (
                 <option key={item} value={item} className="bg-[#181818]">
-                  {item}
+                  {item === 'Custom' ? t('modal.panorama.custom') : item}
                 </option>
               ))}
             </select>
@@ -329,7 +332,7 @@ export function PanoramaViewerModal({
             >
               {PANORAMA_EXPORT_RESOLUTIONS.map((item) => (
                 <option key={item} value={item} className="bg-[#181818]">
-                  {item}
+                  {item === 'Custom' ? t('modal.panorama.custom') : item}
                 </option>
               ))}
             </select>
@@ -342,7 +345,7 @@ export function PanoramaViewerModal({
                   value={exportOptions.customWidth}
                   onChange={(event) => updateExportOptions({ customWidth: Number(event.target.value) })}
                   className={`${inputClass} w-24`}
-                  aria-label="Export width"
+                  aria-label={t('modal.panorama.exportWidth')}
                 />
                 <input
                   type="number"
@@ -351,7 +354,7 @@ export function PanoramaViewerModal({
                   value={exportOptions.customHeight}
                   onChange={(event) => updateExportOptions({ customHeight: Number(event.target.value) })}
                   className={`${inputClass} w-24`}
-                  aria-label="Export height"
+                  aria-label={t('modal.panorama.exportHeight')}
                 />
               </>
             )}
@@ -361,7 +364,7 @@ export function PanoramaViewerModal({
                 checked={exportOptions.useCurrentHeadingAsFront}
                 onChange={(event) => updateExportOptions({ useCurrentHeadingAsFront: event.target.checked })}
               />
-              Current Front
+              {t('modal.panorama.currentFront')}
             </label>
             <label className="flex items-center gap-2 text-[10px] font-light uppercase tracking-[0.12em] text-white/40">
               <input
@@ -369,7 +372,7 @@ export function PanoramaViewerModal({
                 checked={exportOptions.keepCurrentPitchIn4Views}
                 onChange={(event) => updateExportOptions({ keepCurrentPitchIn4Views: event.target.checked })}
               />
-              Keep Pitch
+              {t('modal.panorama.keepPitch')}
             </label>
             <span className="rounded-full border border-white/10 bg-black/30 px-3 py-2 text-[10px] font-light uppercase tracking-[0.14em] text-white/35">
               {exportSizeLabel}
@@ -398,7 +401,7 @@ export function PanoramaViewerModal({
             </>
           ) : (
             <div className="flex h-full items-center justify-center text-sm font-light text-white/25">
-              Connect image
+              {t('modal.panorama.connectImage')}
             </div>
           )}
         </div>
@@ -406,7 +409,7 @@ export function PanoramaViewerModal({
         <div className="flex h-11 shrink-0 items-center gap-4 border-t border-white/10 px-6 text-[10px] font-light uppercase tracking-[0.18em] text-white/35">
           <span>Yaw {formatAngle(localViewerState.yaw)}</span>
           {mode === 'panorama360' ? (
-            <span>{lockPitch ? 'Pitch Locked' : `Pitch ${formatAngle(localViewerState.pitch)}`}</span>
+            <span>{lockPitch ? t('modal.panorama.pitchLocked') : `Pitch ${formatAngle(localViewerState.pitch)}`}</span>
           ) : (
             <span>Pitch {formatAngle(localViewerState.pitch)}</span>
           )}

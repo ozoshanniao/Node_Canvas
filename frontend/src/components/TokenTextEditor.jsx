@@ -100,6 +100,7 @@ const setEditorContent = (root, text, tokens) => {
   root.replaceChildren(...nodes);
 };
 
+// eslint-disable-next-line no-unused-vars
 const setEditorPlainText = (root, text) => {
   if (!root) return;
   setEditorContent(root, text, []);

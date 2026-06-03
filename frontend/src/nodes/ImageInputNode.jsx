@@ -6,6 +6,7 @@ import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { getImageInputNodeSizeByRatio, getImageInputNodeSizeFromImageUrl } from '../utils/imageInputSizing';
 import { countRender, PERF_DEBUG } from '../utils/perfDebug';
 import { uploadImageToInput } from '../utils/uploadToInput';
+import { useI18n } from '../hooks/useI18n';
 
 const SPLIT_GRID_FIT_FALLBACK_SIZE = 260;
 
@@ -36,6 +37,7 @@ const getFittedSizeFromImage = (naturalWidth, naturalHeight) => {
 
 export const ImageInputNode = memo(function ImageInputNode({ id, data }) {
   countRender('ImageInputNode');
+  const { t } = useI18n();
   const fileInputRef = useRef(null);
   const containerRef = useRef(null);
   const { setNodes } = useReactFlow();
@@ -240,7 +242,7 @@ export const ImageInputNode = memo(function ImageInputNode({ id, data }) {
         <svg className="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 002-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
-        <span>Image Input</span>
+        <span>{t('node.imageInput.title')}</span>
       </div>
 
       {/* 修正位置 2：将 rounded-[24px] overflow-hidden 绑定在图片画布上，精准剪裁图片边缘 */}
@@ -250,14 +252,14 @@ export const ImageInputNode = memo(function ImageInputNode({ id, data }) {
         {imageSrc ? (
           <img 
             src={imageSrc} 
-            alt="Input Source" 
+            alt={t('node.imageInput.alt')} 
             onLoad={handleImageLoad}
             draggable={false}
             className={`canvas-image-preview absolute inset-0 w-full h-full ${imageObjectFit} pointer-events-none select-none transition-opacity duration-150`}
           />
         ) : (
           <div className="text-white/20 text-sm font-extralight tracking-wide hover:text-white/40 transition-colors pt-4">
-            Double Click to Upload Image
+            {t('node.imageInput.uploadHint')}
           </div>
         )}
       </div>

@@ -5,6 +5,7 @@ import { getNodeImageOutput } from '../utils/nodeOutputs';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { countRender } from '../utils/perfDebug';
 import { getMatchingPreviewUrl } from '../utils/imagePreview';
+import { useI18n } from '../hooks/useI18n';
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -94,6 +95,7 @@ function ImageCompareInputBridge({ nodeId, handleId, dataUrlKey, dataPreviewKey,
 // ---------------------------------------------------------------------------
 export const ImageCompareNode = memo(function ImageCompareNode({ id, data }) {
   countRender('ImageCompareNode');
+  const { t } = useI18n();
   const containerRef = useRef(null);
   const { setNodes } = useReactFlow();
   const splitPosition = clamp(Number(data?.splitPosition) || 50, 0, 100);
@@ -110,11 +112,11 @@ export const ImageCompareNode = memo(function ImageCompareNode({ id, data }) {
   const hasBothImages = Boolean(resolvedImageA && resolvedImageB);
   const singleImage = resolvedImageA || resolvedImageB;
   const missingLabel = !resolvedImageA && !resolvedImageB
-    ? 'Connect image A and B'
+    ? t('node.imageCompare.connectBoth')
     : !resolvedImageA
-      ? 'Connect image A'
+      ? t('node.imageCompare.connectA')
       : !resolvedImageB
-        ? 'Connect image B'
+        ? t('node.imageCompare.connectB')
         : '';
 
   // 是否挂载 Bridge：有连接时挂
@@ -184,7 +186,7 @@ export const ImageCompareNode = memo(function ImageCompareNode({ id, data }) {
             <>
               <img
                 src={resolvedImageB}
-                alt="Compare B"
+                alt={t('node.imageCompare.compareB')}
                 draggable={false}
                 className="canvas-image-preview absolute inset-0 h-full w-full object-contain pointer-events-none select-none"
               />
@@ -194,7 +196,7 @@ export const ImageCompareNode = memo(function ImageCompareNode({ id, data }) {
               >
                 <img
                   src={resolvedImageA}
-                  alt="Compare A"
+                  alt={t('node.imageCompare.compareA')}
                   draggable={false}
                   className="canvas-image-preview absolute inset-0 h-full w-full object-contain pointer-events-none select-none"
                 />
@@ -203,7 +205,7 @@ export const ImageCompareNode = memo(function ImageCompareNode({ id, data }) {
           ) : singleImage ? (
             <img
               src={singleImage}
-              alt="Compare input"
+              alt={t('node.imageCompare.compareInput')}
               draggable={false}
               className="canvas-image-preview absolute inset-0 h-full w-full object-contain pointer-events-none select-none"
             />
@@ -225,7 +227,7 @@ export const ImageCompareNode = memo(function ImageCompareNode({ id, data }) {
               type="button"
               onPointerDown={handlePointerDown}
               className="nodrag nopan absolute left-1/2 top-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-full border border-white/15 bg-black/45 text-xs font-light text-white/75 shadow-lg backdrop-blur-md transition-colors hover:bg-white/10 hover:text-white"
-              aria-label="Drag comparison split"
+              aria-label={t('node.imageCompare.dragLabel')}
             >
               <span className="tracking-[-0.12em]">‹ ›</span>
             </button>
@@ -237,7 +239,7 @@ export const ImageCompareNode = memo(function ImageCompareNode({ id, data }) {
             <svg className="h-3.5 w-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 3v18M16 3v18M3 8h18M3 16h18" />
             </svg>
-            <span>Image Compare</span>
+            <span>{t('node.imageCompare.title')}</span>
           </div>
 
           {hasBothImages && (
@@ -246,7 +248,7 @@ export const ImageCompareNode = memo(function ImageCompareNode({ id, data }) {
               onClick={handleReset}
               className="pointer-events-auto nodrag nopan rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] font-light text-white/60 backdrop-blur-md transition-colors hover:bg-white/10 hover:text-white"
             >
-              Reset
+              {t('node.imageCompare.reset')}
             </button>
           )}
         </div>

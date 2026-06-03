@@ -23,8 +23,12 @@ assert.equal(videoDefinition.inputs.some((input) => input.id === 'image:referenc
 
 const videoCategory = DOCK_CATEGORIES.find((category) => category.id === 'Video');
 const videoNodes = getDockCategoryNodes(videoCategory, NODE_DEFINITIONS).map((definition) => definition.type);
-assert.equal(videoNodes.includes('audioInputNode'), true);
+assert.equal(videoNodes.includes('audioInputNode'), false);
 assert.equal(videoNodes.includes('videoInputNode'), true);
+
+const audioCategory = DOCK_CATEGORIES.find((category) => category.id === 'Audio');
+const audioNodes = getDockCategoryNodes(audioCategory, NODE_DEFINITIONS).map((definition) => definition.type);
+assert.equal(audioNodes.includes('audioInputNode'), true);
 
 const easeCurveDefinition = getNodeDefinition('easeCurveNode');
 assert.equal(easeCurveDefinition.label, 'Easy Curve');
@@ -35,6 +39,10 @@ assert.equal(easeCurveDefinition.outputs.some((output) => output.id === 'easeCur
 assert.deepEqual(easeCurveDefinition.defaultSize, { width: 360, height: 260 });
 assert.equal(getCompatibleTargetHandle('easeCurveNode', 'video:out'), 'video:in');
 assert.equal(getCompatibleTargetHandle('easeCurveNode', 'easeCurve:out'), 'easeCurve:in');
-assert.equal(videoNodes.includes('easeCurveNode'), true);
+assert.equal(videoNodes.includes('easeCurveNode'), false);
+
+const toolsCategory = DOCK_CATEGORIES.find((category) => category.id === 'Tools');
+const toolsNodes = getDockCategoryNodes(toolsCategory, NODE_DEFINITIONS).map((definition) => definition.type);
+assert.equal(toolsNodes.includes('easeCurveNode'), true);
 
 console.log('nodeDefinitions tests passed');
