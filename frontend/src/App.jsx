@@ -477,6 +477,114 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     return () => window.clearInterval(interval);
   }, [projectPath]);
 
+  const handleCanvasCopy = useCallback(() => {
+    const { nodes: currentNodes, edges: currentEdges } = latestCanvasRef.current;
+    const selectedNodes = currentNodes.filter((n) => n.selected);
+    if (selectedNodes.length === 0) return;
+
+    const selectedNodeIds = new Set(selectedNodes.map((n) => n.id));
+    const internalEdges = currentEdges.filter(
+      (e) => selectedNodeIds.has(e.source) && selectedNodeIds.has(e.target)
+    );
+
+    const clipboardData = {
+      __isNodeCanvasClipboard: true,
+      nodes: selectedNodes,
+      edges: internalEdges,
+    };
+
+    try {
+      navigator.clipboard.writeText(JSON.stringify(clipboardData));
+    } catch (err) {
+      console.warn('[App] System clipboard write failed:', err);
+    }
+    window.__nodeCanvasClipboard = clipboardData;
+  }, []);
+
+  const handleCanvasPaste = useCallback(async () => {
+    let clipboardData = null;
+    try {
+      const text = await navigator.clipboard.readText();
+      const parsed = JSON.parse(text);
+      if (parsed && parsed.__isNodeCanvasClipboard) {
+        clipboardData = parsed;
+      }
+    } catch {
+      // Ignore clipboard permission or parse errors
+    }
+
+    if (!clipboardData) {
+      clipboardData = window.__nodeCanvasClipboard;
+    }
+
+    if (!clipboardData || !clipboardData.__isNodeCanvasClipboard) return;
+
+    const { nodes: currentNodes, edges: currentEdges, groups: currentGroups } = latestCanvasRef.current;
+    const oldToNewIdMap = {};
+    const now = Date.now();
+
+    const nextPastedNodes = clipboardData.nodes.map((oldNode, index) => {
+      const newId = `${oldNode.type}-${now}-${index}-${Math.random().toString(36).substr(2, 5)}`;
+      oldToNewIdMap[oldNode.id] = newId;
+
+      const cleanedData = { ...(oldNode.data || {}) };
+      cleanedData.projectPath = projectPath;
+
+      // Clean running, error, outputs and temporary resource fields
+      delete cleanedData.runRequestId;
+      delete cleanedData.progress;
+      delete cleanedData.status;
+      delete cleanedData.error;
+      delete cleanedData.errorMessage;
+      delete cleanedData.outputText;
+      delete cleanedData.outputVideo;
+      delete cleanedData.outputVideoWarning;
+      delete cleanedData.outputMetadata;
+      delete cleanedData.outputs;
+      delete cleanedData.slices;
+      delete cleanedData.outputImages;
+      delete cleanedData.dataUrl;
+      delete cleanedData.groupId;
+
+      cleanedData.status = 'idle';
+
+      return {
+        ...oldNode,
+        id: newId,
+        groupId: undefined,
+        position: {
+          x: (oldNode.position?.x ?? 0) + 40,
+          y: (oldNode.position?.y ?? 0) + 40,
+        },
+        data: cleanedData,
+        selected: true,
+        dragging: false,
+      };
+    });
+
+    const nextPastedEdges = clipboardData.edges.map((oldEdge, index) => {
+      const newEdgeId = `edge-${now}-${index}-${Math.random().toString(36).substr(2, 5)}`;
+      return {
+        ...oldEdge,
+        id: newEdgeId,
+        source: oldToNewIdMap[oldEdge.source],
+        target: oldToNewIdMap[oldEdge.target],
+      };
+    });
+
+    const updatedCurrentNodes = currentNodes.map((node) => ({
+      ...node,
+      selected: false,
+    }));
+
+    const newNodes = updatedCurrentNodes.concat(nextPastedNodes);
+    const newEdges = currentEdges.concat(nextPastedEdges);
+
+    setNodes(newNodes);
+    setEdges(newEdges);
+    commitHistory(newNodes, newEdges, currentGroups);
+  }, [projectPath, setNodes, setEdges, commitHistory]);
+
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (!(event.ctrlKey || event.metaKey) || isEditableShortcutTarget(event.target)) return;
@@ -504,12 +612,25 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
       if (key === 's') {
         event.preventDefault();
         saveProject('shortcut');
+        return;
+      }
+
+      if (key === 'c') {
+        event.preventDefault();
+        handleCanvasCopy();
+        return;
+      }
+
+      if (key === 'v') {
+        event.preventDefault();
+        handleCanvasPaste();
+        return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [redo, saveProject, undo]);
+  }, [redo, saveProject, undo, handleCanvasCopy, handleCanvasPaste]);
 
   // 馃専 灏嗚ˉ涓佹斁鍦ㄨ繖閲岋細
   useEffect(() => {
@@ -1090,7 +1211,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         </button>
 
         {settingsOpen && (
-          <div className="absolute right-0 mt-3 w-[360px] min-h-[330px] overflow-hidden rounded-[22px] border border-white/10 bg-[#141414]/90 shadow-[0_28px_70px_rgba(0,0,0,0.58)] backdrop-blur-2xl">
+          <div className="absolute right-0 mt-3 w-[360px] min-h-[330px] overflow-visible rounded-[22px] border border-white/10 bg-[#141414]/90 shadow-[0_28px_70px_rgba(0,0,0,0.58)] backdrop-blur-2xl">
             <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
               <div className="text-sm font-light tracking-[0.08em] text-white/80">{t('settings.title')}</div>
               <button

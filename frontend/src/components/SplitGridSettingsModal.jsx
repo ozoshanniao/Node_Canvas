@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { SPLIT_GRID_PRESETS, getSplitGridCount } from '../utils/gridPresets';
 import {
   fetchImageGenerationRegistry,
@@ -11,6 +12,7 @@ import {
 } from '../utils/imageGenerationOptions';
 
 export function SplitGridSettingsModal({ open, data, onSave, onCreateSets, onClose }) {
+  const { t } = useI18n();
   const [registry, setRegistry] = useState(null);
   const [layout, setLayout] = useState(data?.layout || '2x3');
   const [rows, setRows] = useState(data?.rows || 2);
@@ -43,11 +45,13 @@ export function SplitGridSettingsModal({ open, data, onSave, onCreateSets, onClo
 
   useEffect(() => {
     if (!open) return;
+    /* eslint-disable react-hooks/set-state-in-effect */
     setLayout(data?.layout || '2x3');
     setRows(data?.rows || 2);
     setCols(data?.cols || 3);
     setDefaultPrompt(data?.defaultPrompt || '');
     setGenerateSettings(normalizeImageGenerationSettings(data?.generateSettings || getDefaultImageGenerationSettings(registry), registry));
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [data, open, registry]);
 
   if (!open) return null;
@@ -134,9 +138,9 @@ export function SplitGridSettingsModal({ open, data, onSave, onCreateSets, onClo
       >
         <div className="mb-5 flex items-center justify-between gap-4">
           <div>
-            <div className="text-sm font-light text-white/90">Split Grid Settings</div>
+            <div className="text-sm font-light text-white/90">{t('modal.splitGrid.title')}</div>
             <div className="mt-1 text-xs font-light text-white/35">
-              {rows} x {cols} grid, {getSplitGridCount(rows, cols)} slices
+              {t('modal.splitGrid.desc', { rows, cols, count: getSplitGridCount(rows, cols) })}
             </div>
           </div>
           <button
@@ -144,14 +148,14 @@ export function SplitGridSettingsModal({ open, data, onSave, onCreateSets, onClo
             onClick={onClose}
             className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-light text-white/45 transition-colors hover:bg-white/5 hover:text-white/80"
           >
-            Close
+            {t('modal.splitGrid.close')}
           </button>
         </div>
 
         <div className="space-y-5">
           <section>
             <div className="mb-2 text-[11px] font-light uppercase tracking-[0.2em] text-white/35">
-              Grid Layout
+              {t('modal.splitGrid.layout')}
             </div>
             <div className="grid grid-cols-4 gap-2">
               {SPLIT_GRID_PRESETS.map((preset) => {
@@ -168,7 +172,7 @@ export function SplitGridSettingsModal({ open, data, onSave, onCreateSets, onClo
                     }`}
                   >
                     <div className="text-sm font-light">{preset.label}</div>
-                    <div className="mt-0.5 text-[10px] font-light text-white/35">{preset.count} slices</div>
+                    <div className="mt-0.5 text-[10px] font-light text-white/35">{t('modal.splitGrid.presetSlices', { count: preset.count })}</div>
                   </button>
                 );
               })}
@@ -177,41 +181,41 @@ export function SplitGridSettingsModal({ open, data, onSave, onCreateSets, onClo
 
           <section>
             <div className="mb-2 text-[11px] font-light uppercase tracking-[0.2em] text-white/35">
-              Default Prompt
+              {t('modal.splitGrid.defaultPrompt')}
             </div>
             <textarea
               value={defaultPrompt}
               onChange={(event) => setDefaultPrompt(event.target.value)}
-              placeholder="Default prompt for future generated text nodes..."
+              placeholder={t('modal.splitGrid.defaultPromptPlaceholder')}
               className="nowheel h-24 w-full resize-none rounded-[14px] border border-white/10 bg-black/25 px-3 py-2.5 text-sm font-light leading-relaxed text-white/85 placeholder-white/20 outline-none transition-colors focus:border-white/25"
             />
           </section>
 
           <section>
             <div className="mb-2 text-[11px] font-light uppercase tracking-[0.2em] text-white/35">
-              Generate Settings
+              {t('modal.splitGrid.generateSettings')}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <SelectField
-                label="Provider"
+                label={t('modal.splitGrid.provider')}
                 value={generateSettings.provider}
                 options={providerOptions}
                 onChange={updateProvider}
               />
               <SelectField
-                label="Model"
+                label={t('modal.splitGrid.model')}
                 value={generateSettings.model}
                 options={modelOptions}
                 onChange={updateModel}
               />
               <SelectField
-                label="Aspect Ratio"
+                label={t('modal.splitGrid.aspectRatio')}
                 value={generateSettings.aspectRatio}
                 options={aspectRatioOptions}
                 onChange={(value) => updateGenerateSetting('aspectRatio', value)}
               />
               <SelectField
-                label="Resolution"
+                label={t('modal.splitGrid.resolution')}
                 value={generateSettings.resolution}
                 options={resolutionOptions}
                 onChange={(value) => updateGenerateSetting('resolution', value)}
@@ -226,14 +230,14 @@ export function SplitGridSettingsModal({ open, data, onSave, onCreateSets, onClo
             onClick={onClose}
             className="rounded-full border border-white/10 px-4 py-2 text-xs font-light text-white/45 transition-colors hover:bg-white/5 hover:text-white/80"
           >
-            Cancel
+            {t('modal.splitGrid.cancel')}
           </button>
           <button
             type="button"
             onClick={handleSave}
             className="rounded-full border border-white/20 bg-white/12 px-5 py-2 text-xs font-light text-white/85 transition-colors hover:bg-white/18 hover:text-white"
           >
-            Save
+            {t('modal.splitGrid.save')}
           </button>
           <button
             type="button"
@@ -241,7 +245,7 @@ export function SplitGridSettingsModal({ open, data, onSave, onCreateSets, onClo
             disabled={getSplitGridCount(rows, cols) <= 0}
             className="rounded-full border border-white/25 bg-white px-5 py-2 text-xs font-light text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Create {getSplitGridCount(rows, cols)} Generate Sets
+            {t('modal.splitGrid.createSets', { count: getSplitGridCount(rows, cols) })}
           </button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { CubicBezierEditor } from './CubicBezierEditor.jsx';
 import { EASING_PRESET_OPTIONS } from '../lib/easingPresets.js';
 import { generateEasingPolyline } from '../lib/easingFunctions.js';
@@ -14,6 +15,7 @@ export function EaseCurveControls({
   onHandlesCommit,
   onPresetChange,
 }) {
+  const { t } = useI18n();
   const presetRef = useRef(null);
   const [presetOpen, setPresetOpen] = useState(false);
   const status = data?.status || 'idle';
@@ -44,13 +46,13 @@ export function EaseCurveControls({
   return (
     <div className="nodrag nopan nowheel flex w-[340px] flex-col gap-3 rounded-[24px] border border-white/10 bg-[#181818]/95 p-4 text-white shadow-[0_28px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[11px] font-light uppercase tracking-[0.18em] text-white/35">Speed Curve</div>
+        <div className="text-[11px] font-light uppercase tracking-[0.18em] text-white/35">{t('controls.easeCurve.title')}</div>
         <StatusPill status={status} progress={progress} />
       </div>
 
       <div className="grid grid-cols-[1fr_92px] gap-2">
         <div ref={presetRef} className="relative">
-          <span className="mb-1 block text-[10px] font-light uppercase tracking-[0.14em] text-white/30">Preset</span>
+          <span className="mb-1 block text-[10px] font-light uppercase tracking-[0.14em] text-white/30">{t('controls.easeCurve.preset')}</span>
           <button
             type="button"
             disabled={Boolean(inheritedFrom) || isBusy}
@@ -61,7 +63,7 @@ export function EaseCurveControls({
             }}
             className="nodrag nopan flex w-full items-center justify-between rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-left text-xs text-white/75 outline-none transition-colors hover:border-white/20 focus:border-white/35 disabled:opacity-45"
           >
-            <span className="truncate">{activePreset?.label || 'Custom'}</span>
+            <span className="truncate">{activePreset ? t('preset.' + activePreset.id) : t('controls.easeCurve.custom')}</span>
             <span className="text-white/35">v</span>
           </button>
 
@@ -82,7 +84,7 @@ export function EaseCurveControls({
         </div>
 
         <label className="block">
-          <span className="mb-1 block text-[10px] font-light uppercase tracking-[0.14em] text-white/30">Duration</span>
+          <span className="mb-1 block text-[10px] font-light uppercase tracking-[0.14em] text-white/30">{t('controls.easeCurve.duration')}</span>
           <input
             type="number"
             min="0.25"
@@ -104,9 +106,9 @@ export function EaseCurveControls({
 
       <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
         <div className="flex items-center justify-between gap-3 text-xs">
-          <span className="text-white/45">Video input</span>
+          <span className="text-white/45">{t('controls.easeCurve.videoInput')}</span>
           <span className={hasVideoInput ? 'text-white/75' : 'text-white/35'}>
-            {hasVideoInput ? 'Connected' : 'Required'}
+            {hasVideoInput ? t('controls.easeCurve.connected') : t('controls.easeCurve.required')}
           </span>
         </div>
         {data?.outputVideoWarning && (
@@ -123,13 +125,14 @@ export function EaseCurveControls({
         onClick={onApply}
         className="nodrag mt-auto rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs font-medium text-white/80 transition-colors hover:border-white/25 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {isBusy ? `Applying ${Math.round(progress)}%` : 'Apply Curve'}
+        {isBusy ? t('controls.easeCurve.applying', { progress: Math.round(progress) }) : t('controls.easeCurve.apply')}
       </button>
     </div>
   );
 }
 
 function PresetOption({ preset, selected, onSelect }) {
+  const { t } = useI18n();
   const [imageFailed, setImageFailed] = useState(false);
 
   return (
@@ -159,7 +162,7 @@ function PresetOption({ preset, selected, onSelect }) {
           <PresetSvgPreview handles={preset.handles} />
         )}
       </div>
-      <div className="truncate text-[11px] font-medium">{preset.label}</div>
+      <div className="truncate text-[11px] font-medium">{t('preset.' + preset.id)}</div>
     </button>
   );
 }
@@ -184,7 +187,8 @@ function PresetSvgPreview({ handles }) {
 }
 
 function StatusPill({ status, progress }) {
-  const label = status === 'running' ? `${Math.round(progress)}%` : status === 'done' ? 'Ready' : status === 'error' ? 'Error' : 'Idle';
+  const { t } = useI18n();
+  const label = status === 'running' ? `${Math.round(progress)}%` : status === 'done' ? t('controls.easeCurve.status.ready') : status === 'error' ? t('controls.easeCurve.status.error') : t('controls.easeCurve.status.idle');
   const className =
     status === 'done'
       ? 'border-emerald-200/20 bg-emerald-300/10 text-emerald-100/75'

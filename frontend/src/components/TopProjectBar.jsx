@@ -21,7 +21,7 @@ export function TopProjectBar({ projectName, saveStatus, lastSavedAt, onSave }) 
       onClick={(event) => event.stopPropagation()}
     >
       <div className="max-w-[240px] truncate px-2 text-sm font-light text-white/75">
-        {projectName || t('topBar.untitledProject')}
+        {projectName === 'Untitled Project' ? t('topBar.untitledProject') : (projectName || t('topBar.untitledProject'))}
       </div>
 
       <button

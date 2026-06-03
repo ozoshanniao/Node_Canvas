@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import { SplitGridSettingsModal } from '../components/SplitGridSettingsModal';
 import { getSplitGridCount, getSplitGridLabel } from '../utils/gridPresets';
@@ -93,6 +94,7 @@ function SplitGridUpstreamBridge({ nodeId, currentData }) {
 // ---------------------------------------------------------------------------
 export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
   countRender('SplitGridNode');
+  const { t } = useI18n();
   const { getNodes, setNodes, setEdges } = useReactFlow();
   const lastHandledRunRequestRef = useRef(data?.runRequestId);
 
@@ -117,17 +119,14 @@ export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
   const settingsOpen = Boolean(data?.settingsOpen);
   const hasValidGrid = Number.isInteger(rows) && rows > 0 && Number.isInteger(cols) && cols > 0;
   const generatedSetCount = Number(data?.generatedSetCount) || 0;
-  const gridLabel = `${getSplitGridLabel(rows, cols)} (${sliceCount} images)`;
-  const statusText =
-    isSplitting
-      ? 'Splitting...'
-      : status === 'error'
-        ? data?.error || 'Split failed'
-        : slices.length > 0
-          ? `${slices.length} slices ready`
-          : isConfigured
-            ? 'Configured'
-            : 'Not configured';
+  const gridLabel = t('node.splitGrid.info.gridDesc', { presetLabel: getSplitGridLabel(rows, cols), count: sliceCount });
+  const statusText = (() => {
+    if (isSplitting) return t('node.splitGrid.status.splitting');
+    if (status === 'error') return data?.error || t('node.splitGrid.status.failed');
+    if (slices.length > 0) return t('node.splitGrid.status.slicesReady', { count: slices.length });
+    if (isConfigured) return t('node.splitGrid.status.configured');
+    return t('node.splitGrid.status.notConfigured');
+  })();
 
   const updateNodeData = (nextData) => {
     setNodes((nds) =>
@@ -251,7 +250,7 @@ export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
     if (!splitSourceUrl) {
       updateNodeData({
         status: 'error',
-        error: 'No source image to split.',
+        error: t('node.splitGrid.error.noSource'),
       });
       return;
     }
@@ -259,7 +258,7 @@ export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
     if (!data?.projectPath) {
       updateNodeData({
         status: 'error',
-        error: 'SplitGrid requires projectPath to resolve input image',
+        error: t('node.splitGrid.error.projectPath'),
       });
       return;
     }
@@ -320,7 +319,7 @@ export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
             <svg className="h-3.5 w-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 7h16M4 17h16M7 4v16M17 4v16" />
             </svg>
-            <span>Split Grid</span>
+            <span>{t('node.splitGrid.label')}</span>
           </div>
 
           <div className="pointer-events-auto flex items-center gap-2 nodrag nopan">
@@ -329,7 +328,7 @@ export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
               onClick={openSettings}
               className="rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] font-light text-white/60 backdrop-blur-md transition-colors hover:bg-white/10 hover:text-white"
             >
-              Settings
+              {t('node.splitGrid.settings')}
             </button>
             <button
               type="button"
@@ -337,7 +336,7 @@ export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
               disabled={isSplitting}
               className="rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[10px] font-light text-white/60 backdrop-blur-md transition-colors hover:bg-white/10 hover:text-white"
             >
-              {isSplitting ? 'Splitting' : 'Split'}
+              {isSplitting ? t('node.splitGrid.splitting') : t('node.splitGrid.split')}
             </button>
           </div>
         </div>
@@ -372,17 +371,17 @@ export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
             </>
           ) : (
             <div className="flex h-full min-h-[190px] items-center justify-center text-sm font-light text-white/25">
-              Connect image
+              {t('node.splitGrid.connectImage')}
             </div>
           )}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/35" />
         </div>
 
         <div className="grid grid-cols-4 gap-2 border-t border-white/5 bg-[#141414]/90 px-4 py-3 text-[11px] font-light backdrop-blur-md">
-          <InfoItem label="Grid" value={gridLabel} />
-          <InfoItem label="Slices" value={slices.length > 0 ? `${slices.length} ready` : 'Not split'} />
-          <InfoItem label="Sets" value={generatedSetCount > 0 ? `${generatedSetCount} created` : 'No generate sets'} />
-          <InfoItem label="Status" value={statusText} tone={status === 'error' ? 'error' : 'normal'} />
+          <InfoItem label={t('node.splitGrid.info.grid')} value={gridLabel} />
+          <InfoItem label={t('node.splitGrid.info.slices')} value={slices.length > 0 ? t('node.splitGrid.info.slicesReady', { count: slices.length }) : t('node.splitGrid.info.notSplit')} />
+          <InfoItem label={t('node.splitGrid.info.sets')} value={generatedSetCount > 0 ? t('node.splitGrid.info.setsCreated', { count: generatedSetCount }) : t('node.splitGrid.info.noSets')} />
+          <InfoItem label={t('node.splitGrid.info.status')} value={statusText} tone={status === 'error' ? 'error' : 'normal'} />
         </div>
       </div>
 

@@ -7,6 +7,7 @@ const CATEGORY_DOTS = {
   Text: 'bg-white/45',
   Image: 'bg-white/35',
   Video: 'bg-white/25',
+  Audio: 'bg-white/20',
   Tools: 'bg-white/30',
 };
 

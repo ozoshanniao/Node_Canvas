@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { ViewportPortal, useStore } from '@xyflow/react';
 import { GROUP_COLORS, getGroupColor, getSelectedNodesBounds } from '../utils/groupBoxes';
 
@@ -22,6 +23,7 @@ function SelectionToolbar({
   selectedNodeIds,
   onCreateGroup,
 }) {
+  const { t } = useI18n();
   if (!isValidBounds(bounds)) return null;
 
   return (
@@ -52,13 +54,14 @@ function SelectionToolbar({
         }}
         className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-light text-white/65 transition-colors hover:bg-white/10 hover:text-white"
       >
-        Create Group
+        {t('groups.createGroup')}
       </button>
     </div>
   );
 }
 
 function GroupMenu({ group, onRenameGroup, onChangeGroupColor, onDeleteGroup, onClose }) {
+  const { t } = useI18n();
   return (
     <div
       className="pointer-events-auto absolute bottom-full left-0 z-[90] mb-2 w-[168px] overflow-hidden rounded-[14px] border border-white/10 bg-[#141414]/95 py-1.5 shadow-2xl backdrop-blur-xl"
@@ -69,15 +72,15 @@ function GroupMenu({ group, onRenameGroup, onChangeGroupColor, onDeleteGroup, on
         type="button"
         className="flex w-full px-3 py-2 text-left text-xs font-light text-white/55 transition-colors hover:bg-white/5 hover:text-white/85"
         onClick={() => {
-          const nextName = window.prompt('Rename group', group.name);
+          const nextName = window.prompt(t('groups.renamePrompt'), group.name);
           if (nextName?.trim()) onRenameGroup(group.id, nextName.trim());
           onClose();
         }}
       >
-        Rename
+        {t('groups.rename')}
       </button>
       <div className="border-t border-white/5 px-3 py-2">
-        <div className="mb-2 text-[10px] font-light uppercase tracking-[0.14em] text-white/25">Color</div>
+        <div className="mb-2 text-[10px] font-light uppercase tracking-[0.14em] text-white/25">{t('groups.color')}</div>
         <div className="grid grid-cols-6 gap-1.5">
           {GROUP_COLORS.map((color) => (
             <button
@@ -105,7 +108,7 @@ function GroupMenu({ group, onRenameGroup, onChangeGroupColor, onDeleteGroup, on
           onClose();
         }}
       >
-        Delete
+        {t('groups.delete')}
       </button>
     </div>
   );
@@ -122,6 +125,7 @@ function GroupControls({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const dragRef = useRef(null);
+  const { t } = useI18n();
   const color = getGroupColor(group.color);
 
   useEffect(() => {
@@ -223,7 +227,7 @@ function GroupControls({
           onPointerDown={(event) => event.stopPropagation()}
         >
           <span className="h-2 w-2 rounded-full" style={{ background: color.accent }} />
-          <span className="block max-w-[210px] truncate">{group.name || 'Group'}</span>
+          <span className="block max-w-[210px] truncate">{group.name || t('groups.defaultName')}</span>
           <button
             type="button"
             aria-label="Group menu"

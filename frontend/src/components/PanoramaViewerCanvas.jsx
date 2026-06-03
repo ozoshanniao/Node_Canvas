@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import * as THREE from 'three';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 
@@ -39,6 +40,7 @@ export const PanoramaViewerCanvas = forwardRef(function PanoramaViewerCanvas(
   },
   ref
 ) {
+  const { t } = useI18n();
   const mountRef = useRef(null);
   const rendererRef = useRef(null);
   const sceneRef = useRef(null);
@@ -150,7 +152,8 @@ export const PanoramaViewerCanvas = forwardRef(function PanoramaViewerCanvas(
           throw new Error(
             `Failed to capture current view. Remote image may not allow canvas export. ${
               captureError?.message || ''
-            }`
+            }`,
+            { cause: captureError }
           );
         }
 
@@ -237,7 +240,7 @@ export const PanoramaViewerCanvas = forwardRef(function PanoramaViewerCanvas(
         textureReadyRef.current = false;
         setIsLoading(false);
         onReadyChange?.(false);
-        setError('Failed to load panorama image. Please check whether the image URL is still available.');
+        setError(t('modal.panorama.failedLoadImage'));
       }
     );
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -360,7 +363,7 @@ export const PanoramaViewerCanvas = forwardRef(function PanoramaViewerCanvas(
       )}
       {isLoading && !error && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/45 px-6 text-center text-sm font-light text-white/35">
-          Loading panorama...
+          {t('modal.panorama.loading')}
         </div>
       )}
     </div>

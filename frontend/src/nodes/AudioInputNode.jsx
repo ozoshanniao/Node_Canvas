@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { Handle, Position, useReactFlow, useUpdateNodeInternals } from '@xyflow/react';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { isSupportedAudioFile, naturalCompareAudioFiles, SUPPORTED_AUDIO_EXTENSIONS } from '../utils/audioFiles';
@@ -45,6 +46,7 @@ const clampIndex = (index, length) => {
 
 export const AudioInputNode = memo(function AudioInputNode({ id, data }) {
   countRender('AudioInputNode');
+  const { t } = useI18n();
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
   const audioRef = useRef(null);
@@ -288,7 +290,7 @@ export const AudioInputNode = memo(function AudioInputNode({ id, data }) {
     <div
       ref={containerRef}
       onDoubleClick={handleDoubleClick}
-      title="Double click to choose audio files. Alt+double click to choose a folder."
+      title={t('node.audioInput.uploadTitle')}
       className="canvas-node-card canvas-image-node-card group relative h-full min-h-[120px] w-full min-w-[220px] select-none rounded-[24px] border border-white/5 bg-[#181818] text-white transition-colors duration-100 hover:border-white/20"
     >
       <input
@@ -318,14 +320,14 @@ export const AudioInputNode = memo(function AudioInputNode({ id, data }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
           </svg>
-          <span>Audio Input</span>
+          <span>{t('node.audioInput.label')}</span>
         </div>
 
         {audioUrl ? (
           <div className="flex h-full min-h-0 flex-col px-4 pb-4 pt-14">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div className="min-w-0 truncate text-xs font-light text-white/70" title={currentAudio?.filename || ''}>
-                {currentAudio?.filename || 'Audio'}
+                {currentAudio?.filename || t('node.audioInput.audio')}
               </div>
               <div className="shrink-0 font-mono text-[10px] text-white/35">
                 {formatAudioTime(currentTime)} / {formatAudioTime(duration)}
@@ -336,7 +338,7 @@ export const AudioInputNode = memo(function AudioInputNode({ id, data }) {
               type="button"
               onClick={seekFromPointer}
               className="nodrag nowheel min-h-0 flex-1 cursor-pointer rounded-[14px] border border-white/5 bg-black/20 p-2 transition-colors hover:border-white/10"
-              aria-label="Seek audio waveform"
+              aria-label={t('node.audioInput.aria.seekWaveform')}
             >
               <canvas ref={canvasRef} className="block h-full w-full" />
             </button>
@@ -346,7 +348,7 @@ export const AudioInputNode = memo(function AudioInputNode({ id, data }) {
                 type="button"
                 onClick={togglePlayback}
                 className="nodrag flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 transition-colors hover:border-white/25 hover:bg-white/10 hover:text-white"
-                aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
+                aria-label={isPlaying ? t('node.audioInput.aria.pause') : t('node.audioInput.aria.play')}
               >
                 {isPlaying ? (
                   <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
@@ -363,7 +365,7 @@ export const AudioInputNode = memo(function AudioInputNode({ id, data }) {
                 type="button"
                 onClick={seekFromPointer}
                 className="nodrag h-1.5 flex-1 overflow-hidden rounded-full bg-white/10"
-                aria-label="Seek audio progress"
+                aria-label={t('node.audioInput.aria.seekProgress')}
               >
                 <span className="block h-full rounded-full bg-white/70" style={{ width: `${progress * 100}%` }} />
               </button>
@@ -377,7 +379,7 @@ export const AudioInputNode = memo(function AudioInputNode({ id, data }) {
                       setCurrentIndex((currentIndex - 1 + audioFiles.length) % audioFiles.length);
                     }}
                     className="rounded-full px-1.5 py-0.5 transition-colors hover:bg-white/5 hover:text-white"
-                    aria-label="Previous audio"
+                    aria-label={t('node.audioInput.aria.prev')}
                   >
                     ‹
                   </button>
@@ -389,7 +391,7 @@ export const AudioInputNode = memo(function AudioInputNode({ id, data }) {
                       setCurrentIndex((currentIndex + 1) % audioFiles.length);
                     }}
                     className="rounded-full px-1.5 py-0.5 transition-colors hover:bg-white/5 hover:text-white"
-                    aria-label="Next audio"
+                    aria-label={t('node.audioInput.aria.next')}
                   >
                     ›
                   </button>
@@ -407,7 +409,7 @@ export const AudioInputNode = memo(function AudioInputNode({ id, data }) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.3} d="M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.3} d="M21 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
               </svg>
-              <div className="text-sm font-extralight tracking-wide">No audio</div>
+              <div className="text-sm font-extralight tracking-wide">{t('node.audioInput.noAudio')}</div>
             </div>
           </div>
         )}

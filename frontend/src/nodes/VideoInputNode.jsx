@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { Handle, Position, useReactFlow, useUpdateNodeInternals } from '@xyflow/react';
 import { NodeResizeCorner } from '../components/NodeResizeCorner.jsx';
 import { resolveImageUrl } from '../utils/resolveImageUrl.js';
@@ -57,6 +58,7 @@ const readVideoMetadata = (videoUrl) =>
   });
 
 function CapsuleUrlBar({ initialUrl, onApply }) {
+  const { t } = useI18n();
   const [draftUrl, setDraftUrl] = useState(initialUrl);
 
   const handleApply = useCallback(() => {
@@ -69,8 +71,8 @@ function CapsuleUrlBar({ initialUrl, onApply }) {
       onPointerDown={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
     >
-      <span className="shrink-0 pl-1 text-[10px] font-light uppercase tracking-[0.16em] text-white/50">
-        Video URL
+      <span className="shrink-0 pl-1 text-[10px] font-light uppercase tracking-[0.16em] text-white/55">
+        {t('node.videoInput.urlLabel')}
       </span>
       <input
         type="text"
@@ -83,7 +85,7 @@ function CapsuleUrlBar({ initialUrl, onApply }) {
             handleApply();
           }
         }}
-        placeholder="https://..."
+        placeholder={t('node.videoInput.urlPlaceholder')}
         className="nodrag h-6 min-w-0 flex-1 rounded-full border border-white/10 bg-black/30 px-2 text-[11px] text-white/75 outline-none transition-colors placeholder:text-white/25 hover:border-white/20 focus:border-white/35"
       />
       <button
@@ -95,7 +97,7 @@ function CapsuleUrlBar({ initialUrl, onApply }) {
         }}
         className="nodrag shrink-0 rounded-full border border-white/10 bg-white/[0.07] px-2.5 py-1 text-[10px] font-medium text-white/70 transition-colors hover:border-white/25 hover:bg-white/12 hover:text-white"
       >
-        Apply
+        {t('node.videoInput.apply')}
       </button>
     </div>
   );
@@ -103,6 +105,7 @@ function CapsuleUrlBar({ initialUrl, onApply }) {
 
 export const VideoInputNode = memo(function VideoInputNode({ id, data, selected }) {
   countRender('VideoInputNode');
+  const { t } = useI18n();
   const fileInputRef = useRef(null);
   const { setNodes } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -275,7 +278,7 @@ export const VideoInputNode = memo(function VideoInputNode({ id, data, selected 
   return (
     <div
       onDoubleClick={handleDoubleClick}
-      title="Double click to choose a video file"
+      title={t('node.videoInput.uploadTitle')}
       className="canvas-node-card group relative h-full min-h-[120px] w-full min-w-[220px] select-none rounded-[24px] border border-white/5 bg-[#181818] text-white transition-colors duration-100 hover:border-white/20"
     >
       <input
@@ -311,7 +314,7 @@ export const VideoInputNode = memo(function VideoInputNode({ id, data, selected 
             d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
           />
         </svg>
-        <span>Video Input</span>
+        <span>{t('node.videoInput.label')}</span>
       </div>
 
       <div className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-[24px] bg-[#181818]">
@@ -335,7 +338,7 @@ export const VideoInputNode = memo(function VideoInputNode({ id, data, selected 
                 d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
               />
             </svg>
-            <span className="text-sm font-extralight tracking-wide">Double click to upload</span>
+            <span className="text-sm font-extralight tracking-wide">{t('node.videoInput.doubleClickToUpload')}</span>
           </div>
         )}
       </div>

@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import { NodeResizeCorner } from '../components/NodeResizeCorner.jsx';
 import { EaseCurveControls } from '../components/EaseCurveControls.jsx';
@@ -29,6 +30,7 @@ const resolveMediaUrl = (url, projectPath) => {
 
 export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected }) {
   countRender('EaseCurveNode');
+  const { t } = useI18n();
   const { setNodes } = useReactFlow();
   const flowEdges = useEdges();
   const flowNodes = useNodes();
@@ -134,7 +136,7 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
   const handleApply = useCallback(async () => {
     const sourceVideo = incoming.sourceVideo;
     if (!sourceVideo) {
-      updateData({ status: 'error', error: 'Connect a video input before applying Easy Curve.' });
+      updateData({ status: 'error', error: t('node.easeCurve.error.noVideoInput') });
       return;
     }
 
@@ -189,9 +191,9 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
   return (
     <div className="relative h-full min-h-[240px] w-full min-w-[320px] select-none text-white group">
       <div className="canvas-node-card relative h-full w-full overflow-hidden rounded-[24px] border border-white/5 bg-[#181818] transition-colors duration-100 hover:border-white/20">
-        <div className="pointer-events-none absolute left-4 top-4 z-20 flex items-center gap-2 rounded-full border border-white/5 bg-[#121212]/60 px-3 py-1.5 text-[11px] font-light text-white/50 backdrop-blur-md">
+        <div className="pointer-events-none absolute left-4 top-4 z-20 flex items-center gap-2 rounded-full border border-white/5 bg-[#121212]/60 px-3 py-1.5 text-[11px] font-light text-white/55 backdrop-blur-md">
           <span className="h-1.5 w-1.5 rounded-full bg-white/45" />
-          <span>{mergedData.label || 'Easy Curve'}</span>
+          <span>{mergedData.label || t('node.easeCurve.label')}</span>
         </div>
         <PreviewStatusBadge status={mergedData.status} progress={mergedData.progress} />
 
@@ -212,14 +214,14 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
             </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-              <div className="text-xs font-light uppercase tracking-[0.18em] text-white/22">SPEED REMAP PREVIEW</div>
-              <div className="text-[11px] font-light text-white/35">Connect a video input</div>
+              <div className="text-xs font-light uppercase tracking-[0.18em] text-white/22">{t('node.easeCurve.preview')}</div>
+              <div className="text-[11px] font-light text-white/35">{t('node.easeCurve.connectVideoInput')}</div>
             </div>
           )}
 
           {isBusy && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/55 backdrop-blur-sm">
-              <div className="text-[11px] font-light uppercase tracking-[0.18em] text-white/65">Applying Curve</div>
+              <div className="text-[11px] font-light uppercase tracking-[0.18em] text-white/65">{t('node.easeCurve.applying')}</div>
               <div className="h-1.5 w-32 overflow-hidden rounded-full bg-white/10">
                 <div
                   className="h-full rounded-full bg-white/65 transition-all"
@@ -291,15 +293,16 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
 });
 
 function PreviewStatusBadge({ status, progress }) {
+  const { t } = useI18n();
   const normalized = status || 'idle';
   const label =
     normalized === 'running'
-      ? `LOADING ${Math.round(Number(progress) || 0)}%`
+      ? t('node.easeCurve.status.loading', { progress: Math.round(Number(progress) || 0) })
       : normalized === 'done'
-        ? 'COMPLETE'
+        ? t('node.easeCurve.status.complete')
         : normalized === 'error'
-          ? 'ERROR'
-          : 'IDLE';
+          ? t('node.easeCurve.status.error')
+          : t('node.easeCurve.status.idle');
   const className =
     normalized === 'done'
       ? 'border-emerald-200/20 bg-emerald-300/10 text-emerald-100/75'

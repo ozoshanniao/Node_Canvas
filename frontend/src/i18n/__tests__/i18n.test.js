@@ -5,6 +5,8 @@ import {
   t,
   translateWithLanguage,
 } from '../index.js';
+import { zh_CN } from '../locales/zh-CN.js';
+import { en_US } from '../locales/en-US.js';
 
 const createLocalStorageMock = (initial = {}) => {
   const store = new Map(Object.entries(initial));
@@ -54,6 +56,17 @@ assert.equal(
   '设置',
   'unsupported language should fall back to zh-CN'
 );
+
+// 验证两个语言包 key 一致性
+const zhKeys = Object.keys(zh_CN);
+const enKeys = Object.keys(en_US);
+
+for (const key of zhKeys) {
+  assert.ok(en_US[key] !== undefined, `Key "${key}" exists in zh-CN but is missing in en-US`);
+}
+for (const key of enKeys) {
+  assert.ok(zh_CN[key] !== undefined, `Key "${key}" exists in en-US but is missing in zh-CN`);
+}
 
 if (originalLocalStorage === undefined) {
   delete globalThis.localStorage;

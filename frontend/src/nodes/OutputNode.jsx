@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { Handle, Position, useEdges, useNodes, useReactFlow, useUpdateNodeInternals } from '@xyflow/react';
 import { OutputImageModal } from '../components/OutputImageModal';
 import { AspectRatioResizeCorner } from '../components/AspectRatioResizeCorner';
@@ -56,6 +57,7 @@ const normalizeImageItems = (images = []) =>
 
 export const OutputNode = memo(function OutputNode({ id, data }) {
   countRender('OutputNode');
+  const { t } = useI18n();
   const nodes = useNodes();
   const edges = useEdges();
   const { setNodes } = useReactFlow();
@@ -317,7 +319,7 @@ export const OutputNode = memo(function OutputNode({ id, data }) {
           </>
         ) : (
           <div className="h-full w-full flex items-center justify-center bg-[#181818] text-sm font-light text-white/25">
-            No image connected
+            {t('node.output.noImage')}
           </div>
         )}
 
@@ -326,7 +328,7 @@ export const OutputNode = memo(function OutputNode({ id, data }) {
             <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 7h16M4 17h16M7 4v16M17 4v16" />
             </svg>
-            <span>Output</span>
+            <span>{t('node.output.label')}</span>
           </div>
 
           <button
@@ -339,7 +341,7 @@ export const OutputNode = memo(function OutputNode({ id, data }) {
             }}
             className="pointer-events-auto nodrag nopan rounded-full border border-white/10 bg-black/35 px-4 py-2 text-[10px] font-light text-white/65 backdrop-blur-md transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
           >
-            Expand
+            {t('node.output.expand')}
           </button>
         </div>
 

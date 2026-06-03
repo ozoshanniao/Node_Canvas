@@ -790,6 +790,7 @@ export const getVideoAdvancedParamEntries = (modelConfig = {}) =>
 export const shouldShowVideoNegativePrompt = (modelConfig = {}, settings = {}) =>
   !(isSeedanceModel(modelConfig) || isSeedanceModel(settings));
 
+// eslint-disable-next-line no-unused-vars
 export const shouldShowVideoCustomParams = (_modelConfig = {}, _settings = {}, appSettings = {}) =>
   Boolean(appSettings?.showRawCustomParams);
 

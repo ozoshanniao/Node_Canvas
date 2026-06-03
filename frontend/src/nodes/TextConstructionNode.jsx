@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import { FullscreenTextModal } from '../components/FullscreenTextModal';
 import { NodeFullscreenButton } from '../components/NodeFullscreenButton';
@@ -9,6 +10,7 @@ import { countRender, PERF_DEBUG } from '../utils/perfDebug';
 
 export const TextConstructionNode = memo(function TextConstructionNode({ id, data }) {
   countRender('TextConstructionNode');
+  const { t } = useI18n();
   const { setNodes } = useReactFlow();
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
   const nodes = useNodes();
@@ -96,7 +98,7 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
           <svg className="w-3.5 h-3.5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h10M4 18h16" />
           </svg>
-          <span>Text Construction</span>
+          <span>{t('node.textConstruction.label')}</span>
         </div>
 
         <div className="ml-auto flex items-center gap-1.5 nodrag">
@@ -106,7 +108,7 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
 
           <button
             type="button"
-            title="Toggle resolved preview"
+            title={t('node.textConstruction.togglePreview')}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -139,14 +141,14 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
         onTokensChange={updateTemplateTokens}
         suggestions={availableVariables}
         tokenType="text-var"
-        placeholder="Use @A, @prompt, @scene_1..."
+        placeholder={t('node.textConstruction.placeholder')}
         className="flex-1"
         filterSuggestion={(suggestion, query) => suggestion.name.toLowerCase().includes(query)}
       />
 
       {availableVariables.length > 0 && (
         <div className="mt-2 flex shrink-0 items-center gap-1 overflow-hidden border-t border-white/5 pt-2 text-[10px] text-white/30">
-          <span className="shrink-0 text-white/20">Available:</span>
+          <span className="shrink-0 text-white/20">{t('node.textConstruction.available')}</span>
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
             {availableVariables.slice(0, 4).map((variable) => (
               <span
@@ -164,15 +166,15 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
       )}
 
       <div className="mt-2 border-t border-white/5 pt-2 text-[10px] text-white/30 font-light leading-relaxed flex items-center gap-3">
-        <span className="text-white/20">Input:</span>
-        <span>{template.length} chars</span>
+        <span className="text-white/20">{t('node.textConstruction.input')}</span>
+        <span>{t('node.textConstruction.chars', { count: template.length })}</span>
         <span className="text-white/10">·</span>
-        <span className="text-white/20">Resolved:</span>
-        <span>{resolvedText.length} chars</span>
+        <span className="text-white/20">{t('node.textConstruction.resolved')}</span>
+        <span>{t('node.textConstruction.chars', { count: resolvedText.length })}</span>
         {missingVariables.length > 0 && (
           <>
             <span className="text-white/10">·</span>
-            <span className="text-amber-400/60">Missing: {missingVariables.length}</span>
+            <span className="text-amber-400/60">{t('node.textConstruction.missing', { count: missingVariables.length })}</span>
           </>
         )}
       </div>
@@ -196,7 +198,7 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
       {previewPanelOpen && (
         <aside className="nodrag nopan absolute left-full top-0 ml-4 w-[320px] max-h-full rounded-[18px] bg-[#141414]/95 border border-white/10 shadow-2xl p-3 flex flex-col z-40">
           <div className="flex items-center justify-between gap-3 mb-2 shrink-0">
-            <div className="text-[10px] uppercase tracking-wide text-white/35">Resolved</div>
+            <div className="text-[10px] uppercase tracking-wide text-white/35">{t('node.textConstruction.resolvedPanel')}</div>
             <button
               type="button"
               onClick={(e) => {
@@ -212,22 +214,22 @@ export const TextConstructionNode = memo(function TextConstructionNode({ id, dat
             </button>
           </div>
           <div className="nowheel overflow-y-auto pr-1 text-xs leading-relaxed text-white/70 whitespace-pre-wrap">
-            {resolvedText || <span className="text-white/25">No resolved text</span>}
+            {resolvedText || <span className="text-white/25">{t('node.textConstruction.noResolvedText')}</span>}
           </div>
         </aside>
       )}
 
       <FullscreenTextModal
         open={isFullscreenOpen}
-        title="Text Construction"
-        subtitle={variableKeys.length ? `Variables: ${variableKeys.map((key) => `@${key}`).join(', ')}` : 'No connected variables'}
+        title={t('node.textConstruction.label')}
+        subtitle={variableKeys.length ? t('node.textConstruction.variables', { vars: variableKeys.map((key) => `@${key}`).join(', ') }) : t('node.textConstruction.noConnectedVars')}
         value={template}
         onChange={updateTemplate}
         onClose={() => setIsFullscreenOpen(false)}
         previewValue={resolvedText}
-        previewTitle="Resolved Preview"
+        previewTitle={t('node.textConstruction.resolvedPreviewTitle')}
         mode="template-preview"
-        placeholder="Use @A, @prompt, @scene_1..."
+        placeholder={t('node.textConstruction.placeholder')}
       />
     </div>
   );
