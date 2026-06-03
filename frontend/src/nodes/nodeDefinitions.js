@@ -1,6 +1,7 @@
 import { mergeNodeDefaults } from '../utils/nodeDefaults.js';
 import { DEFAULT_IMAGE_GENERATION_SETTINGS } from '../utils/imageGenerationOptions.js';
 import { DEFAULT_VIDEO_GENERATION_SETTINGS } from '../utils/videoGenerationOptions.js';
+import { DEFAULT_EASE_CURVE_DATA } from '../lib/easingPresets.js';
 
 export const NODE_DEFINITIONS = [
   {
@@ -77,6 +78,24 @@ export const NODE_DEFINITIONS = [
     defaultSize: { width: 280, height: 160 },
   },
   {
+    type: 'videoInputNode',
+    label: 'Video Input',
+    description: 'Video material input node',
+    category: 'Video',
+    order: 9,
+    showInConnectionMenu: true,
+    inputs: [],
+    outputs: [{ id: 'video:out', kind: 'video' }],
+    defaultData: {
+      videoFile: null,
+      videoUrl: '',
+      aspectRatio: '16:9',
+      naturalWidth: null,
+      naturalHeight: null,
+    },
+    defaultSize: { width: 360, height: 203 },
+  },
+  {
     type: 'videoNode',
     label: 'Video Generator',
     description: 'Specs-driven video generation shell',
@@ -102,6 +121,24 @@ export const NODE_DEFINITIONS = [
     defaultData: { ...DEFAULT_VIDEO_GENERATION_SETTINGS },
     defaultsKind: 'videoGeneration',
     defaultSize: { width: 520, height: 293 },
+  },
+  {
+    type: 'easeCurveNode',
+    label: 'Easy Curve',
+    description: 'Cubic bezier speed remapping for video clips',
+    category: 'Video',
+    order: 18,
+    showInConnectionMenu: true,
+    inputs: [
+      { id: 'video:in', kind: 'video', label: 'Video' },
+      { id: 'easeCurve:in', kind: 'easeCurve', label: 'Curve' },
+    ],
+    outputs: [
+      { id: 'video:out', kind: 'video', label: 'Video' },
+      { id: 'easeCurve:out', kind: 'easeCurve', label: 'Curve' },
+    ],
+    defaultData: { ...DEFAULT_EASE_CURVE_DATA },
+    defaultSize: { width: 360, height: 260 },
   },
   {
     type: 'shotListNode',

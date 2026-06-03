@@ -156,3 +156,15 @@ html, body, #root {
   fill: rgba(255, 255, 255, 0.28) !important;
   stroke: rgba(255, 255, 255, 0.08) !important;
 }
+
+.node-canvas-flow .react-flow__edges {
+  z-index: 10 !important;
+}
+
+.node-canvas-flow .react-flow__nodes {
+  z-index: 20 !important;
+}
+
+.node-canvas-flow .react-flow__node {
+  z-index: 20;
+}

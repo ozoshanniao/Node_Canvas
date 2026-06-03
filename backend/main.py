@@ -67,6 +67,7 @@ class NodeData(BaseModel):
     position: Optional[Position] = None  # 馃専 鏍稿績锛氬繀椤诲湪杩欓噷娣诲姞 position 瀛楁
     width: Optional[float] = None        # 馃専 蹇呴』鏈夊搴﹀瓧娈?
     height: Optional[float] = None       # 馃専 蹇呴』鏈夐珮搴﹀瓧娈?
+    groupId: Optional[str] = None
     data: Dict[str, Any]
 
 class EdgeData(BaseModel):
@@ -92,6 +93,7 @@ class ProjectConfig(BaseModel):
     projectName: Optional[str] = None
     nodes: Optional[List[NodeData]] = []
     edges: Optional[List[EdgeData]] = []
+    groups: Optional[Dict[str, Any]] = {}
 
 # 鍏ㄥ眬鍙橀噺閿佸畾褰撳墠椤圭洰锛岀敤浜庡姩鎬佸浘鐗囪鍙?
 CURRENT_PROJECT_PATH = None
@@ -138,7 +140,7 @@ async def init_project(config: ProjectConfig):
         
         # 鍒涘缓/璇诲彇 project.json
         project_file = os.path.join(abs_path, "project.json")
-        existing_data = {"projectName": os.path.basename(abs_path) or "Untitled Project", "nodes": [], "edges": []}
+        existing_data = {"projectName": os.path.basename(abs_path) or "Untitled Project", "nodes": [], "edges": [], "groups": {}}
         
         if os.path.exists(project_file):
             with open(project_file, "r", encoding="utf-8") as f:
@@ -251,7 +253,8 @@ async def save_project(config: ProjectConfig):
     data = {
         "projectName": config.projectName or Path(project_file).stem or os.path.basename(config.path) or "Untitled Project",
         "nodes": [n.model_dump() for n in config.nodes],
-        "edges": [e.model_dump() for e in config.edges]
+        "edges": [e.model_dump() for e in config.edges],
+        "groups": config.groups or {},
     }
     with open(project_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
