@@ -16,6 +16,7 @@ import ImageEdge from './components/ImageEdge';
 import { TopProjectBar } from './components/TopProjectBar';
 import { ConnectionNodeMenu } from './components/ConnectionNodeMenu';
 import { NodeDock } from './components/NodeDock';
+import { GroupsOverlay } from './components/GroupsOverlay';
 import CustomSelect from './components/CustomSelect';
 
 import { TextNode } from './nodes/TextNode';
@@ -23,6 +24,8 @@ import { TextConstructionNode } from './nodes/TextConstructionNode';
 import { LLMProcessorNode } from './nodes/LLMProcessorNode';
 import { ImageNode } from './nodes/ImageNode';
 import { VideoNode } from './nodes/VideoNode';
+import { VideoInputNode } from './nodes/VideoInputNode';
+import { EaseCurveNode } from './nodes/EaseCurveNode';
 import { AudioInputNode } from './nodes/AudioInputNode';
 import { ShotListNode } from './nodes/ShotListNode';
 import { OmniComposerNode } from './nodes/OmniComposerNode';
@@ -34,14 +37,33 @@ import { RouteNode } from './nodes/RouteNode';
 import { AR720Node } from './nodes/AR720Node';
 import { Panorama360Node } from './nodes/Panorama360Node';
 import { NODE_DEFINITIONS, createDefaultNodeData, getNodeDefinition } from './nodes/nodeDefinitions';
+import { DEFAULT_EASE_CURVE_DATA, normalizeEasingPresetId } from './lib/easingPresets';
+import { normalizeBezierHandles } from './lib/easingFunctions';
 import {
   getCompatibleNodeDefinitions,
   getCompatibleTargetHandle,
   groupNodeDefinitionsByCategory,
 } from './utils/nodeCompatibility';
 import { useCanvasHistory } from './hooks/useCanvasHistory';
-import { getImageNodeAspectRatio, getImageNodeSizeByAspectRatio, hasValidNodeSize } from './utils/nodeSizing';
+import {
+  DEFAULT_VIDEO_INPUT_ASPECT_RATIO,
+  getImageNodeAspectRatio,
+  getImageNodeSizeByAspectRatio,
+  getVideoInputNodeAspectRatio,
+  getVideoInputNodeSizeByAspectRatio,
+  hasValidNodeSize,
+} from './utils/nodeSizing';
 import { saveProjectCore } from './utils/projectSave';
+import {
+  assignNodeToContainingGroupState,
+  createGroupState,
+  deleteGroupState,
+  moveGroupState,
+  reconcileGroupsForLoad,
+  removeNodesFromGroupState,
+  resizeGroupState,
+  updateGroupState,
+} from './utils/groupBoxes';
 import { RUNNABLE_NODE_TYPES } from './utils/nodeCategories';
 import { DISABLE_MINIMAP, ONLY_RENDER_VISIBLE_ELEMENTS } from './utils/perfDebug';
 import { normalizeImageInputEdgeLabels } from './utils/edgeLabels';
@@ -54,6 +76,8 @@ const nodeTypes = {
   textConstruction: TextConstructionNode,
   imageNode: ImageNode,
   videoNode: VideoNode,
+  videoInputNode: VideoInputNode,
+  easeCurveNode: EaseCurveNode,
   audioInputNode: AudioInputNode,
   shotListNode: ShotListNode,
   omniComposerNode: OmniComposerNode,
@@ -189,11 +213,38 @@ const normalizeNodesForLoad = (nodes = []) =>
       data.template = data.template ?? data.text ?? '';
     }
 
+    if (node.type === 'easeCurveNode') {
+      Object.assign(data, {
+        ...DEFAULT_EASE_CURVE_DATA,
+        ...data,
+        bezierHandles: normalizeBezierHandles(data.bezierHandles || DEFAULT_EASE_CURVE_DATA.bezierHandles),
+        easingPreset: normalizeEasingPresetId(data.easingPreset) || null,
+        outputDuration: Math.max(0.25, Number(data.outputDuration) || DEFAULT_EASE_CURVE_DATA.outputDuration),
+        progress: Number.isFinite(Number(data.progress)) ? Number(data.progress) : 0,
+      });
+      if (typeof data.outputVideo === 'string' && data.outputVideo.startsWith('blob:')) {
+        data.outputVideo = null;
+        data.outputVideoWarning = 'Temporary Easy Curve output was cleared on load. Apply the curve again.';
+        data.status = 'idle';
+      }
+    }
+
+    if (node.type === 'videoInputNode') {
+      data.aspectRatio = getVideoInputNodeAspectRatio(data) || DEFAULT_VIDEO_INPUT_ASPECT_RATIO;
+      data.naturalWidth = Number.isFinite(Number(data.naturalWidth)) ? Number(data.naturalWidth) : null;
+      data.naturalHeight = Number.isFinite(Number(data.naturalHeight)) ? Number(data.naturalHeight) : null;
+      data.videoUrl = data.videoUrl || data.url || data.filePath || '';
+    }
+
     const defaultSize = getNodeDefinition(node.type)?.defaultSize;
     const sizePatch =
-      (node.type === 'imageNode' || node.type === 'videoNode') && !hasValidNodeSize(node)
+      node.type === 'videoInputNode' && !hasValidNodeSize(node)
+        ? getVideoInputNodeSizeByAspectRatio(data.aspectRatio || DEFAULT_VIDEO_INPUT_ASPECT_RATIO)
+        : (node.type === 'imageNode' || node.type === 'videoNode') && !hasValidNodeSize(node)
         ? getImageNodeSizeByAspectRatio(
-            node.type === 'videoNode' ? data.aspectRatio || '16:9' : getImageNodeAspectRatio(data)
+            node.type === 'videoNode'
+              ? data.aspectRatio || '16:9'
+              : getImageNodeAspectRatio(data)
           )
         : !hasValidNodeSize(node) && defaultSize
           ? defaultSize
@@ -208,6 +259,16 @@ const normalizeNodesForLoad = (nodes = []) =>
       ...sizePatch,
     };
   });
+
+const normalizeCanvasForLoad = (data = {}) => {
+  const normalizedNodes = normalizeNodesForLoad(data.nodes || []);
+  const { nodes: nextNodes, groups } = reconcileGroupsForLoad(normalizedNodes, data.groups || {});
+  return {
+    nodes: nextNodes,
+    edges: normalizeEdges(data.edges || []),
+    groups,
+  };
+};
 
 const isValidConnection = (c) => {
   if (!c.sourceHandle || !c.targetHandle) return false;
@@ -260,9 +321,13 @@ const isEditableShortcutTarget = (target) => {
   return tagName === 'input' || tagName === 'textarea' || Boolean(target?.isContentEditable);
 };
 
+const DEBUG_GROUPS = import.meta.env.DEV;
+
 function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) {
-  const [nodes, setNodes, onNodesChange] = useNodesState(normalizeNodesForLoad(initialData?.nodes || []));
-  const [edges, setEdges] = useEdgesState(normalizeEdges(initialData?.edges || []));
+  const initialCanvas = normalizeCanvasForLoad(initialData || {});
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialCanvas.nodes);
+  const [edges, setEdges] = useEdgesState(initialCanvas.edges);
+  const [groups, setGroups] = useState(initialCanvas.groups);
   const [saveStatus, setSaveStatus] = useState('idle');
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [isMiniMapCollapsed, setIsMiniMapCollapsed] = useState(false);
@@ -271,27 +336,30 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
   const [settingsTab, setSettingsTab] = useState('developer');
   const [appSettings, updateAppSetting] = useAppSettings();
   const isSavingRef = useRef(false);
-  const latestCanvasRef = useRef({ nodes: [], edges: [] });
+  const latestCanvasRef = useRef({ nodes: [], edges: [], groups: {} });
   const latestProjectRef = useRef({ projectPath, projectFilePath, projectName });
   const pendingConnectionRef = useRef(null);
   const connectionSuccessfulRef = useRef(false);
   const { commitHistory, undo, redo } = useCanvasHistory({
     nodes,
     edges,
+    groups,
     setNodes,
     setEdges,
+    setGroups,
     maxHistory: 50,
   });
 
   //
   useEffect(() => {
     if (initialData && Array.isArray(initialData.nodes)) {
-      const sanitizedNodes = normalizeNodesForLoad(initialData.nodes);
-      const sanitizedEdges = normalizeEdges(initialData.edges || []);
-      setNodes(applyImageInputConnectionFlags(sanitizedNodes, sanitizedEdges));
-      setEdges(sanitizedEdges);
+      const nextCanvas = normalizeCanvasForLoad(initialData);
+      setNodes(applyImageInputConnectionFlags(nextCanvas.nodes, nextCanvas.edges));
+      setEdges(nextCanvas.edges);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setGroups(nextCanvas.groups);
     }
-  }, [initialData, setNodes, setEdges]);
+  }, [initialData, setNodes, setEdges, setGroups]);
 
   const { screenToFlowPosition } = useReactFlow();
 
@@ -307,8 +375,8 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
   }, [edges, setNodes]);
 
   useEffect(() => {
-    latestCanvasRef.current = { nodes, edges };
-  }, [nodes, edges]);
+    latestCanvasRef.current = { nodes, edges, groups };
+  }, [nodes, edges, groups]);
 
   useEffect(() => {
     latestProjectRef.current = { projectPath, projectFilePath, projectName };
@@ -324,13 +392,14 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
       });
       const result = await res.json();
       if (result.status === 'success' && result.data) {
-        const nextEdges = normalizeEdges(result.data.edges || []);
-        setNodes(applyImageInputConnectionFlags(normalizeNodesForLoad(result.data.nodes), nextEdges));
-        setEdges(nextEdges);
+        const nextCanvas = normalizeCanvasForLoad(result.data);
+        setNodes(applyImageInputConnectionFlags(nextCanvas.nodes, nextCanvas.edges));
+        setEdges(nextCanvas.edges);
+        setGroups(nextCanvas.groups);
       }
     };
     if (projectPath && !initialData) loadProject();
-  }, [projectPath, initialData, setNodes, setEdges]);
+  }, [projectPath, initialData, setNodes, setEdges, setGroups]);
 
   //
   const saveProject = useCallback(
@@ -346,6 +415,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         projectName,
         nodes,
         edges,
+        groups,
         reason,
       });
 
@@ -361,14 +431,14 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
 
       return result;
     },
-    [projectPath, projectFilePath, projectName, nodes, edges]
+    [projectPath, projectFilePath, projectName, nodes, edges, groups]
   );
 
   useEffect(() => {
     if (!projectPath) return undefined;
 
     const saveLatestCanvas = async () => {
-      const { nodes: latestNodes, edges: latestEdges } = latestCanvasRef.current;
+      const { nodes: latestNodes, edges: latestEdges, groups: latestGroups } = latestCanvasRef.current;
       const {
         projectPath: latestProjectPath,
         projectFilePath: latestProjectFilePath,
@@ -386,6 +456,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         projectName: latestProjectName,
         nodes: latestNodes,
         edges: latestEdges,
+        groups: latestGroups,
         reason: 'interval-auto-save',
       });
 
@@ -638,7 +709,9 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         ? getImageNodeSizeByAspectRatio(getImageNodeAspectRatio(data))
         : type === 'videoNode'
           ? getImageNodeSizeByAspectRatio(data.aspectRatio || '16:9')
-          : getNodeDefinition(type)?.defaultSize || {};
+          : type === 'videoInputNode'
+            ? getVideoInputNodeSizeByAspectRatio(data.aspectRatio || DEFAULT_VIDEO_INPUT_ASPECT_RATIO)
+            : getNodeDefinition(type)?.defaultSize || {};
 
     return {
       id: `${type}-${Date.now()}`,
@@ -817,6 +890,155 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     setEdges((eds) => eds.map((edge) => ({ ...edge, selected: false })));
   };
 
+  const applyCanvasState = useCallback(
+    (nextNodes, nextEdges, nextGroups) => {
+      latestCanvasRef.current = {
+        nodes: nextNodes,
+        edges: nextEdges,
+        groups: nextGroups,
+      };
+      setNodes(nextNodes);
+      setEdges(nextEdges);
+      setGroups(nextGroups);
+    },
+    [setEdges, setGroups, setNodes]
+  );
+
+  const createGroup = useCallback(
+    (nodeIds) => {
+      const { nodes: latestNodes, edges: latestEdges, groups: latestGroups } = latestCanvasRef.current;
+      const selectedNodeIds = Array.isArray(nodeIds) && nodeIds.length > 0
+        ? nodeIds
+        : latestNodes.filter((node) => node.selected).map((node) => node.id);
+
+      if (DEBUG_GROUPS) {
+        console.debug('[groups] createGroup invoked', {
+          requestedNodeIds: nodeIds,
+          selectedNodeIds,
+          selectedCount: selectedNodeIds.length,
+          groupCountBefore: Object.keys(latestGroups || {}).length,
+        });
+      }
+
+      if (selectedNodeIds.length < 2) return;
+
+      const nextState = createGroupState({ nodes: latestNodes, groups: latestGroups, nodeIds: selectedNodeIds });
+      if (!nextState) {
+        if (DEBUG_GROUPS) {
+          console.debug('[groups] createGroupState returned null', {
+            selectedNodeIds,
+            nodeCount: latestNodes.length,
+          });
+        }
+        return;
+      }
+
+      applyCanvasState(nextState.nodes, latestEdges, nextState.groups);
+      commitHistory(nextState.nodes, latestEdges, nextState.groups, 'create-group');
+
+      if (DEBUG_GROUPS) {
+        console.debug('[groups] createGroup applied', {
+          newGroupId: nextState.group.id,
+          groupCountAfter: Object.keys(nextState.groups || {}).length,
+          groupedNodeIds: nextState.nodes.filter((node) => node.groupId === nextState.group.id).map((node) => node.id),
+          group: nextState.group,
+        });
+      }
+    },
+    [applyCanvasState, commitHistory]
+  );
+
+  // Kept for future group menu or shortcut actions.
+  // eslint-disable-next-line no-unused-vars
+  const removeNodesFromGroup = useCallback(
+    (nodeIds) => {
+      const { nodes: latestNodes, edges: latestEdges, groups: latestGroups } = latestCanvasRef.current;
+      const nextState = removeNodesFromGroupState({ nodes: latestNodes, groups: latestGroups, nodeIds });
+
+      applyCanvasState(nextState.nodes, latestEdges, nextState.groups);
+      commitHistory(nextState.nodes, latestEdges, nextState.groups, 'remove-from-group');
+    },
+    [applyCanvasState, commitHistory]
+  );
+
+  const deleteGroup = useCallback(
+    (groupId) => {
+      const { nodes: latestNodes, edges: latestEdges, groups: latestGroups } = latestCanvasRef.current;
+      const nextState = deleteGroupState({ nodes: latestNodes, groups: latestGroups, groupId });
+
+      applyCanvasState(nextState.nodes, latestEdges, nextState.groups);
+      commitHistory(nextState.nodes, latestEdges, nextState.groups, 'delete-group');
+    },
+    [applyCanvasState, commitHistory]
+  );
+
+  const moveGroup = useCallback(
+    (groupId, delta, shouldCommit = false) => {
+      const { nodes: latestNodes, edges: latestEdges, groups: latestGroups } = latestCanvasRef.current;
+      const nextState =
+        delta.x || delta.y
+          ? moveGroupState({ nodes: latestNodes, groups: latestGroups, groupId, delta })
+          : { nodes: latestNodes, groups: latestGroups };
+
+      applyCanvasState(nextState.nodes, latestEdges, nextState.groups);
+      if (shouldCommit) commitHistory(nextState.nodes, latestEdges, nextState.groups, 'move-group');
+    },
+    [applyCanvasState, commitHistory]
+  );
+
+  const resizeGroup = useCallback(
+    (groupId, handle, delta, shouldCommit = false) => {
+      const { nodes: latestNodes, edges: latestEdges, groups: latestGroups } = latestCanvasRef.current;
+      const nextGroups =
+        delta.x || delta.y ? resizeGroupState({ groups: latestGroups, groupId, handle, delta }) : latestGroups;
+
+      applyCanvasState(latestNodes, latestEdges, nextGroups);
+      if (shouldCommit) commitHistory(latestNodes, latestEdges, nextGroups, 'resize-group');
+    },
+    [applyCanvasState, commitHistory]
+  );
+
+  const renameGroup = useCallback(
+    (groupId, name) => {
+      const { nodes: latestNodes, edges: latestEdges, groups: latestGroups } = latestCanvasRef.current;
+      const nextGroups = updateGroupState({ groups: latestGroups, groupId, patch: { name } });
+
+      applyCanvasState(latestNodes, latestEdges, nextGroups);
+      commitHistory(latestNodes, latestEdges, nextGroups, 'rename-group');
+    },
+    [applyCanvasState, commitHistory]
+  );
+
+  const changeGroupColor = useCallback(
+    (groupId, color) => {
+      const { nodes: latestNodes, edges: latestEdges, groups: latestGroups } = latestCanvasRef.current;
+      const nextGroups = updateGroupState({ groups: latestGroups, groupId, patch: { color } });
+
+      applyCanvasState(latestNodes, latestEdges, nextGroups);
+      commitHistory(latestNodes, latestEdges, nextGroups, 'change-group-color');
+    },
+    [applyCanvasState, commitHistory]
+  );
+
+  const handleNodeDragStop = useCallback(
+    (event, draggedNode) => {
+      setIsDraggingNode(false);
+      if (!draggedNode?.id) return;
+
+      const { nodes: latestNodes, edges: latestEdges, groups: latestGroups } = latestCanvasRef.current;
+      const nextNodes = assignNodeToContainingGroupState({
+        nodes: latestNodes,
+        groups: latestGroups,
+        nodeId: draggedNode.id,
+      });
+
+      if (nextNodes === latestNodes) return;
+      applyCanvasState(nextNodes, latestEdges, latestGroups);
+      commitHistory(nextNodes, latestEdges, latestGroups, 'node-group-assignment');
+    },
+    [applyCanvasState, commitHistory]
+  );
+
   return (
     <div 
       style={{ width: '100vw', height: '100vh' }} 
@@ -936,6 +1158,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
       </div>
 
       <ReactFlow 
+        className="node-canvas-flow"
         nodes={nodes} 
         edges={edges}
         onNodesChange={onNodesChange}
@@ -945,19 +1168,29 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         onConnectStart={handleConnectStart}
         onConnectEnd={handleConnectEnd}
         onNodeDragStart={() => setIsDraggingNode(true)}
-        onNodeDragStop={() => setIsDraggingNode(false)}
+        onNodeDragStop={handleNodeDragStop}
         nodeTypes={nodeTypes} 
         edgeTypes={edgeTypes}
         isValidConnection={isValidConnection}
         zoomOnDoubleClick={false} 
-        minZoom={0.05} // 缂╂斁鑷敱闄愬埗瑙ｉ櫎
+        minZoom={0.05}
         maxZoom={4}
-        deleteKeyCode={['Backspace', 'Delete']} // 蹇嵎閿竴閿垹闄?        selectionMode="Partial" // 鏆楅粦楂樼骇妗嗛€?        onPaneClick={handlePaneClick} 
-        selectionMode="partial"
+        deleteKeyCode={['Backspace', 'Delete']}
+        selectionMode="full"
         onPaneClick={handlePaneClick}
         onlyRenderVisibleElements={ONLY_RENDER_VISIBLE_ELEMENTS}
       >
         <Background variant="dots" gap={20} size={1} color="#222" />
+        <GroupsOverlay
+          nodes={nodes}
+          groups={groups}
+          onCreateGroup={createGroup}
+          onMoveGroup={moveGroup}
+          onResizeGroup={resizeGroup}
+          onDeleteGroup={deleteGroup}
+          onRenameGroup={renameGroup}
+          onChangeGroupColor={changeGroupColor}
+        />
         {!DISABLE_MINIMAP && !isMiniMapCollapsed && (
           <MiniMap
             pannable

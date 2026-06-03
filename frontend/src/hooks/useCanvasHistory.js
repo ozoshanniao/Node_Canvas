@@ -10,7 +10,10 @@ const cloneValue = (value) => {
 
 const sanitizeNodesForHistory = (nodes = []) =>
   nodes.map((node) => {
-    const { selected, dragging, resizing, ...restNode } = node;
+    const restNode = { ...node };
+    delete restNode.selected;
+    delete restNode.dragging;
+    delete restNode.resizing;
     const nodeData = { ...(restNode.data || {}) };
 
     // Strip base64 image fields to reduce snapshot size
@@ -24,7 +27,11 @@ const sanitizeNodesForHistory = (nodes = []) =>
     if (Array.isArray(nodeData.images)) {
       nodeData.images = nodeData.images.map((img) => {
         if (!img || typeof img !== 'object') return img;
-        const { dataUrl, previewUrl, previewSourceUrl, thumbnailUrl, ...restImg } = img;
+        const restImg = { ...img };
+        delete restImg.dataUrl;
+        delete restImg.previewUrl;
+        delete restImg.previewSourceUrl;
+        delete restImg.thumbnailUrl;
         return restImg;
       });
     }
@@ -37,7 +44,8 @@ const sanitizeNodesForHistory = (nodes = []) =>
 
 const sanitizeEdgesForHistory = (edges = []) =>
   edges.map((edge) => {
-    const { selected, ...restEdge } = edge;
+    const restEdge = { ...edge };
+    delete restEdge.selected;
     const data = { ...(restEdge.data || {}) };
     delete data.flowing;
     return {
@@ -47,24 +55,29 @@ const sanitizeEdgesForHistory = (edges = []) =>
     };
   });
 
-const createSnapshot = (nodes, edges) => ({
+const sanitizeGroupsForHistory = (groups = {}) => cloneValue(groups || {});
+
+const createSnapshot = (nodes, edges, groups = {}) => ({
   nodes: cloneValue(sanitizeNodesForHistory(nodes)),
   edges: cloneValue(sanitizeEdgesForHistory(edges)),
+  groups: sanitizeGroupsForHistory(groups),
 });
 
-const createShallowSnapshot = (nodes, edges) => ({
+const createShallowSnapshot = (nodes, edges, groups = {}) => ({
   nodes: sanitizeNodesForHistory(nodes),
   edges: sanitizeEdgesForHistory(edges),
+  groups,
 });
 
 const getSnapshotHash = (snapshot) => JSON.stringify(snapshot);
 
-const createLayoutComparableSnapshot = (nodes = [], edges = []) => ({
+const createLayoutComparableSnapshot = (nodes = [], edges = [], groups = {}) => ({
   nodes: nodes.map((node) => ({
     id: node.id,
     position: node.position || null,
     width: node.width ?? null,
     height: node.height ?? null,
+    groupId: node.groupId ?? null,
   })),
   edges: edges.map((edge) => ({
     id: edge.id,
@@ -73,10 +86,11 @@ const createLayoutComparableSnapshot = (nodes = [], edges = []) => ({
     target: edge.target,
     targetHandle: edge.targetHandle ?? edge.targetHandleId ?? null,
   })),
+  groups,
 });
 
-const getLayoutSnapshotHash = (nodes, edges) =>
-  JSON.stringify(createLayoutComparableSnapshot(nodes, edges));
+const getLayoutSnapshotHash = (nodes, edges, groups) =>
+  JSON.stringify(createLayoutComparableSnapshot(nodes, edges, groups));
 
 const extractLayoutNodes = (nodes = []) =>
   nodes.map((node) => ({
@@ -84,6 +98,7 @@ const extractLayoutNodes = (nodes = []) =>
     position: node.position ? { ...node.position } : null,
     width: node.width ?? null,
     height: node.height ?? null,
+    groupId: node.groupId ?? null,
   }));
 
 const applyLayoutNodes = (nodes = [], layoutNodes = []) => {
@@ -97,6 +112,7 @@ const applyLayoutNodes = (nodes = [], layoutNodes = []) => {
       ...(layout.position ? { position: { ...layout.position } } : {}),
       ...(layout.width == null ? {} : { width: layout.width }),
       ...(layout.height == null ? {} : { height: layout.height }),
+      ...(layout.groupId == null ? { groupId: undefined } : { groupId: layout.groupId }),
     };
   });
 };
@@ -152,8 +168,10 @@ const logHistoryTiming = ({
 export function useCanvasHistory({
   nodes,
   edges,
+  groups = {},
   setNodes,
   setEdges,
+  setGroups,
   maxHistory = 50,
   debounceMs = DEFAULT_DEBOUNCE_MS,
 }) {
@@ -161,20 +179,30 @@ export function useCanvasHistory({
   const futureRef = useRef([]);
   const latestNodesRef = useRef(nodes);
   const latestEdgesRef = useRef(edges);
-  const lastSnapshotRef = useRef(createSnapshot(nodes, edges));
-  const lastSnapshotHashRef = useRef(getSnapshotHash(lastSnapshotRef.current));
+  const latestGroupsRef = useRef(groups);
+  const initialSnapshot = createSnapshot(nodes, edges, groups);
+  const lastSnapshotRef = useRef(initialSnapshot);
+  const lastSnapshotHashRef = useRef(getSnapshotHash(initialSnapshot));
   const debounceTimerRef = useRef(null);
   const isApplyingHistoryRef = useRef(false);
   const wasInteractingRef = useRef(false);
   const pendingInteractionSnapshotRef = useRef(false);
   const [version, setVersion] = useState(0);
+  const [availability, setAvailability] = useState({ canUndo: false, canRedo: false });
 
   useEffect(() => {
     latestNodesRef.current = nodes;
     latestEdgesRef.current = edges;
-  }, [nodes, edges]);
+    latestGroupsRef.current = groups;
+  }, [nodes, edges, groups]);
 
-  const refreshState = useCallback(() => setVersion((value) => value + 1), []);
+  const refreshState = useCallback(() => {
+    setAvailability({
+      canUndo: pastRef.current.length > 0,
+      canRedo: futureRef.current.length > 0,
+    });
+    setVersion((value) => value + 1);
+  }, []);
 
   const clearTimer = useCallback(() => {
     if (debounceTimerRef.current) {
@@ -183,11 +211,15 @@ export function useCanvasHistory({
     }
   }, []);
 
-  const commitHistory = useCallback((nextNodes = latestNodesRef.current, nextEdges = latestEdgesRef.current, reason = 'full') => {
+  const commitHistory = useCallback((nextNodes = latestNodesRef.current, nextEdges = latestEdgesRef.current, nextGroups = latestGroupsRef.current, reason = 'full') => {
     if (isApplyingHistoryRef.current) return false;
+    if (typeof nextGroups === 'string') {
+      reason = nextGroups;
+      nextGroups = latestGroupsRef.current;
+    }
 
     const t0 = performance.now();
-    const nextSnapshot = createSnapshot(nextNodes, nextEdges);
+    const nextSnapshot = createSnapshot(nextNodes, nextEdges, nextGroups);
     const t1 = performance.now();
     const nextHash = getSnapshotHash(nextSnapshot);
     const t2 = performance.now();
@@ -223,12 +255,12 @@ export function useCanvasHistory({
     return true;
   }, [maxHistory, refreshState]);
 
-  const commitLayoutHistory = useCallback((nextNodes = latestNodesRef.current, nextEdges = latestEdgesRef.current) => {
+  const commitLayoutHistory = useCallback((nextNodes = latestNodesRef.current, nextEdges = latestEdgesRef.current, nextGroups = latestGroupsRef.current) => {
     if (isApplyingHistoryRef.current) return false;
 
     const t0 = performance.now();
-    const nextLayoutHash = getLayoutSnapshotHash(nextNodes, nextEdges);
-    const previousLayoutHash = getLayoutSnapshotHash(lastSnapshotRef.current.nodes, lastSnapshotRef.current.edges);
+    const nextLayoutHash = getLayoutSnapshotHash(nextNodes, nextEdges, nextGroups);
+    const previousLayoutHash = getLayoutSnapshotHash(lastSnapshotRef.current.nodes, lastSnapshotRef.current.edges, lastSnapshotRef.current.groups);
     const t1 = performance.now();
 
     if (nextLayoutHash === previousLayoutHash) {
@@ -250,10 +282,12 @@ export function useCanvasHistory({
         kind: 'layout',
         before: extractLayoutNodes(lastSnapshotRef.current.nodes),
         after: extractLayoutNodes(nextNodes),
+        beforeGroups: cloneValue(lastSnapshotRef.current.groups || {}),
+        afterGroups: cloneValue(nextGroups || {}),
       },
     ].slice(-maxHistory);
     futureRef.current = [];
-    lastSnapshotRef.current = createShallowSnapshot(nextNodes, nextEdges);
+    lastSnapshotRef.current = createShallowSnapshot(nextNodes, nextEdges, nextGroups);
     lastSnapshotHashRef.current = nextLayoutHash;
     refreshState();
     const t2 = performance.now();
@@ -275,7 +309,7 @@ export function useCanvasHistory({
     clearTimer();
     debounceTimerRef.current = setTimeout(() => {
       debounceTimerRef.current = null;
-      commitHistory(undefined, undefined, 'debounced-full');
+      commitHistory(undefined, undefined, undefined, 'debounced-full');
     }, debounceMs);
   }, [clearTimer, commitHistory, debounceMs]);
 
@@ -295,13 +329,13 @@ export function useCanvasHistory({
       wasInteractingRef.current = false;
       pendingInteractionSnapshotRef.current = false;
       clearTimer();
-      commitLayoutHistory(nodes, edges);
+      commitLayoutHistory(nodes, edges, groups);
       return clearTimer;
     }
 
     scheduleHistoryCommit();
     return clearTimer;
-  }, [nodes, edges, scheduleHistoryCommit, clearTimer, commitLayoutHistory]);
+  }, [nodes, edges, groups, scheduleHistoryCommit, clearTimer, commitLayoutHistory]);
 
   const undo = useCallback(() => {
     clearTimer();
@@ -315,16 +349,18 @@ export function useCanvasHistory({
     if (previousEntry.kind === 'layout') {
       const nextNodes = applyLayoutNodes(latestNodesRef.current, previousEntry.before);
       futureRef.current = [...futureRef.current, previousEntry].slice(-maxHistory);
-      lastSnapshotRef.current = createShallowSnapshot(nextNodes, latestEdgesRef.current);
-      lastSnapshotHashRef.current = getLayoutSnapshotHash(nextNodes, latestEdgesRef.current);
+      lastSnapshotRef.current = createShallowSnapshot(nextNodes, latestEdgesRef.current, previousEntry.beforeGroups || {});
+      lastSnapshotHashRef.current = getLayoutSnapshotHash(nextNodes, latestEdgesRef.current, previousEntry.beforeGroups || {});
       setNodes(nextNodes);
+      setGroups?.(cloneValue(previousEntry.beforeGroups || {}));
     } else {
-      const currentSnapshot = createSnapshot(latestNodesRef.current, latestEdgesRef.current);
+      const currentSnapshot = createSnapshot(latestNodesRef.current, latestEdgesRef.current, latestGroupsRef.current);
       futureRef.current = [...futureRef.current, currentSnapshot].slice(-maxHistory);
       lastSnapshotRef.current = cloneValue(previousEntry);
       lastSnapshotHashRef.current = getSnapshotHash(previousEntry);
       setNodes(cloneValue(previousEntry.nodes));
       setEdges(cloneValue(previousEntry.edges));
+      setGroups?.(cloneValue(previousEntry.groups || {}));
     }
 
     refreshState();
@@ -334,7 +370,7 @@ export function useCanvasHistory({
     }, 0);
 
     return true;
-  }, [clearTimer, maxHistory, refreshState, setEdges, setNodes]);
+  }, [clearTimer, maxHistory, refreshState, setEdges, setGroups, setNodes]);
 
   const redo = useCallback(() => {
     clearTimer();
@@ -348,16 +384,18 @@ export function useCanvasHistory({
     if (nextEntry.kind === 'layout') {
       const nextNodes = applyLayoutNodes(latestNodesRef.current, nextEntry.after);
       pastRef.current = [...pastRef.current, nextEntry].slice(-maxHistory);
-      lastSnapshotRef.current = createShallowSnapshot(nextNodes, latestEdgesRef.current);
-      lastSnapshotHashRef.current = getLayoutSnapshotHash(nextNodes, latestEdgesRef.current);
+      lastSnapshotRef.current = createShallowSnapshot(nextNodes, latestEdgesRef.current, nextEntry.afterGroups || {});
+      lastSnapshotHashRef.current = getLayoutSnapshotHash(nextNodes, latestEdgesRef.current, nextEntry.afterGroups || {});
       setNodes(nextNodes);
+      setGroups?.(cloneValue(nextEntry.afterGroups || {}));
     } else {
-      const currentSnapshot = createSnapshot(latestNodesRef.current, latestEdgesRef.current);
+      const currentSnapshot = createSnapshot(latestNodesRef.current, latestEdgesRef.current, latestGroupsRef.current);
       pastRef.current = [...pastRef.current, currentSnapshot].slice(-maxHistory);
       lastSnapshotRef.current = cloneValue(nextEntry);
       lastSnapshotHashRef.current = getSnapshotHash(nextEntry);
       setNodes(cloneValue(nextEntry.nodes));
       setEdges(cloneValue(nextEntry.edges));
+      setGroups?.(cloneValue(nextEntry.groups || {}));
     }
 
     refreshState();
@@ -367,13 +405,13 @@ export function useCanvasHistory({
     }, 0);
 
     return true;
-  }, [clearTimer, maxHistory, refreshState, setEdges, setNodes]);
+  }, [clearTimer, maxHistory, refreshState, setEdges, setGroups, setNodes]);
 
   const clear = useCallback(() => {
     clearTimer();
     pastRef.current = [];
     futureRef.current = [];
-    lastSnapshotRef.current = createSnapshot(latestNodesRef.current, latestEdgesRef.current);
+    lastSnapshotRef.current = createSnapshot(latestNodesRef.current, latestEdgesRef.current, latestGroupsRef.current);
     lastSnapshotHashRef.current = getSnapshotHash(lastSnapshotRef.current);
     refreshState();
   }, [clearTimer, refreshState]);
@@ -386,8 +424,8 @@ export function useCanvasHistory({
     undo,
     redo,
     clear,
-    canUndo: pastRef.current.length > 0,
-    canRedo: futureRef.current.length > 0,
+    canUndo: availability.canUndo,
+    canRedo: availability.canRedo,
     isApplyingHistoryRef,
     historyVersion: version,
   };

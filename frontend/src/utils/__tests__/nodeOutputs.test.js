@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getNodeAudioOutput, getNodeImageOutput, getNodeOmniParamsOutput, getNodeVideoOutput } from '../nodeOutputs.js';
+import { getNodeAudioOutput, getNodeEaseCurveOutput, getNodeImageOutput, getNodeOmniParamsOutput, getNodeVideoInputOutput, getNodeVideoOutput } from '../nodeOutputs.js';
 import { normalizeImageInputEdgeLabels } from '../edgeLabels.js';
 
 const makeOmniNode = (data) => ({
@@ -40,6 +40,18 @@ const imageEdge = {
 }
 
 {
+  const videoInputOutput = getNodeVideoInputOutput({
+    id: 'video-input-1',
+    type: 'videoInputNode',
+    data: { videoUrl: 'input/ref.mp4' },
+  });
+  assert.equal(videoInputOutput, 'http://127.0.0.1:8000/api/input/ref.mp4');
+  assert.deepEqual(getNodeVideoOutput({
+    id: 'video-input-1',
+    type: 'videoInputNode',
+    data: { videoUrl: 'input/ref.mp4' },
+  }), ['http://127.0.0.1:8000/api/input/ref.mp4']);
+
   const videoOutput = getNodeVideoOutput({
     id: 'video-1',
     type: 'videoNode',
@@ -63,6 +75,27 @@ const imageEdge = {
       ],
     },
   }), ['input/ref2.flac']);
+}
+
+{
+  const easeCurveNode = {
+    id: 'curve-1',
+    type: 'easeCurveNode',
+    data: {
+      outputVideo: 'data:video/webm;base64,abc',
+      bezierHandles: { x1: 0.42, y1: 0, x2: 0.58, y2: 1 },
+      easingPreset: 'easeInOut',
+      outputDuration: 2,
+    },
+  };
+  assert.deepEqual(getNodeVideoOutput(easeCurveNode), ['data:video/webm;base64,abc']);
+  assert.deepEqual(getNodeEaseCurveOutput(easeCurveNode), {
+    type: 'easeCurve',
+    bezierHandles: { x1: 0.42, y1: 0, x2: 0.58, y2: 1 },
+    easingPreset: 'ease-in-out',
+    outputDuration: 2,
+    sourceNodeId: 'curve-1',
+  });
 }
 
 {

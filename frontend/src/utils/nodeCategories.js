@@ -12,7 +12,7 @@ export const DOCK_CATEGORIES = [
   {
     id: 'Video',
     label: 'Video',
-    nodeTypes: ['audioInputNode', 'videoNode', 'shotListNode', 'omniComposerNode'],
+    nodeTypes: ['audioInputNode', 'videoInputNode', 'videoNode', 'easeCurveNode', 'shotListNode', 'omniComposerNode'],
   },
   {
     id: 'Tools',
@@ -24,6 +24,7 @@ export const DOCK_CATEGORIES = [
 export const RUNNABLE_NODE_TYPES = new Set([
   'imageNode',
   'videoNode',
+  'easeCurveNode',
   'llmProcessor',
   'splitGridNode',
 ]);

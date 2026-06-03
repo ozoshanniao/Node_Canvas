@@ -1,4 +1,9 @@
 import { getTextConstructionOutput, getTextNodeOutput } from './textVariables.js';
+import { normalizeBezierHandles } from '../lib/easingFunctions.js';
+import { normalizeEasingPresetId } from '../lib/easingPresets.js';
+import { resolveImageUrl } from './resolveImageUrl.js';
+
+const videoFileObjectUrlCache = new WeakMap();
 
 export const getNodeTextOutput = (node, nodes = [], edges = [], visited = new Set()) => {
   if (!node) return '';
@@ -110,6 +115,11 @@ export const getNodeVideoOutput = (node, sourceHandle, edge, nodes = [], edges =
   if (!node) return [];
   if (visited.has(node.id)) return [];
 
+  if (node.type === 'videoInputNode') {
+    const output = getNodeVideoInputOutput(node);
+    return output ? [output] : [];
+  }
+
   if (node.type === 'videoNode') {
     const outputs = node.data?.outputs || {};
     const candidates = [
@@ -121,6 +131,10 @@ export const getNodeVideoOutput = (node, sourceHandle, edge, nodes = [], edges =
       node.data?.url,
     ];
     return candidates.filter(Boolean).slice(0, 1);
+  }
+
+  if (node.type === 'easeCurveNode') {
+    return node.data?.outputVideo ? [node.data.outputVideo] : [];
   }
 
   if (node.type === 'routeNode') {
@@ -139,6 +153,68 @@ export const getNodeVideoOutput = (node, sourceHandle, edge, nodes = [], edges =
   }
 
   return [];
+};
+
+export function getNodeVideoInputOutput(node) {
+  if (!node) return null;
+  if (typeof File !== 'undefined' && node.data?.videoFile instanceof File) {
+    if (!videoFileObjectUrlCache.has(node.data.videoFile)) {
+      videoFileObjectUrlCache.set(node.data.videoFile, URL.createObjectURL(node.data.videoFile));
+    }
+    return videoFileObjectUrlCache.get(node.data.videoFile);
+  }
+  const candidates = [
+    node.data?.videoUrl,
+    node.data?.url,
+    node.data?.publicUrl,
+    node.data?.proxyUrl,
+    node.data?.src,
+    node.data?.filePath,
+  ];
+  const rawOutput = candidates.find(Boolean) || null;
+  const output = rawOutput ? resolveImageUrl(rawOutput, node.data?.projectPath) : null;
+
+  if (import.meta.env?.DEV) {
+    console.debug('[VideoInput output]', {
+      nodeId: node.id,
+      data: node.data,
+      output,
+      rawOutput,
+    });
+  }
+
+  return output;
+}
+
+export const getNodeEaseCurveOutput = (node, sourceHandle, edge, nodes = [], edges = [], visited = new Set()) => {
+  if (!node) return null;
+  if (visited.has(node.id)) return null;
+
+  if (node.type === 'easeCurveNode') {
+    return {
+      type: 'easeCurve',
+      bezierHandles: normalizeBezierHandles(node.data?.bezierHandles),
+      easingPreset: normalizeEasingPresetId(node.data?.easingPreset) || null,
+      outputDuration: Math.max(0.25, Number(node.data?.outputDuration) || 1.5),
+      sourceNodeId: node.id,
+    };
+  }
+
+  if (node.type === 'routeNode') {
+    const nextVisited = new Set(visited);
+    nextVisited.add(node.id);
+    const nodeMap = new Map(nodes.map((item) => [item.id, item]));
+    const curveInputEdges = edges.filter(
+      (inputEdge) => inputEdge.target === node.id && (inputEdge.targetHandle ?? inputEdge.targetHandleId) === 'easeCurve:in'
+    );
+
+    for (const inputEdge of curveInputEdges) {
+      const output = getNodeEaseCurveOutput(nodeMap.get(inputEdge.source), inputEdge.sourceHandle, inputEdge, nodes, edges, nextVisited);
+      if (output) return output;
+    }
+  }
+
+  return null;
 };
 
 export const getNodeAudioOutput = (node) => {

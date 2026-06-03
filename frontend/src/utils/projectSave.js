@@ -16,11 +16,14 @@ export const sanitizeNodesForSave = (nodes = []) =>
     const data = { ...(persistedNode.data || {}) };
 
     delete data.file;
+    delete data.videoFile;
     delete data.flowing;
     delete data.isLoading;
-    delete data.status;
-    delete data.error;
-    delete data.progress;
+    if (node.type !== 'easeCurveNode') {
+      delete data.status;
+      delete data.error;
+      delete data.progress;
+    }
     delete data.hover;
     delete data.resolvedText;
 
@@ -54,6 +57,18 @@ export const sanitizeNodesForSave = (nodes = []) =>
       delete data.url;
     }
 
+    if (node.type === 'easeCurveNode' && data.outputVideo?.startsWith?.('blob:')) {
+      console.warn('[project:save easy curve warning]', {
+        nodeId: node.id,
+        type: node.type,
+        reason: 'blob URL is not persistent and will not be saved as outputVideo',
+        preview: data.outputVideo.slice(0, 80),
+      });
+      delete data.outputVideo;
+      data.outputVideoWarning = 'Temporary Easy Curve output is not saved. Apply the curve again after reload.';
+      data.status = data.status === 'running' ? 'idle' : data.status;
+    }
+
     return { ...persistedNode, data };
   });
 
@@ -68,17 +83,18 @@ export const sanitizeEdgesForSave = (edges = []) =>
     return { ...persistedEdge, type: 'default', data };
   });
 
-export const sanitizeProjectBeforeSave = ({ nodes = [], edges = [] }) => ({
+export const sanitizeProjectBeforeSave = ({ nodes = [], edges = [], groups = {} }) => ({
   nodes: sanitizeNodesForSave(nodes),
   edges: sanitizeEdgesForSave(edges),
+  groups: groups || {},
 });
 
-export const saveProjectCore = async ({ projectPath, projectFilePath, projectName, nodes, edges, reason = 'manual' }) => {
+export const saveProjectCore = async ({ projectPath, projectFilePath, projectName, nodes, edges, groups = {}, reason = 'manual' }) => {
   if (!projectPath) {
     return { ok: false, error: 'Missing projectPath' };
   }
 
-  const sanitized = sanitizeProjectBeforeSave({ nodes, edges });
+  const sanitized = sanitizeProjectBeforeSave({ nodes, edges, groups });
 
   try {
     const response = await fetch('http://127.0.0.1:8000/api/project/save', {
@@ -90,6 +106,7 @@ export const saveProjectCore = async ({ projectPath, projectFilePath, projectNam
         projectName,
         nodes: sanitized.nodes,
         edges: sanitized.edges,
+        groups: sanitized.groups,
         reason,
       }),
     });
