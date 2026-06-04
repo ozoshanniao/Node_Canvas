@@ -94,6 +94,7 @@ class ProjectConfig(BaseModel):
     nodes: Optional[List[NodeData]] = []
     edges: Optional[List[EdgeData]] = []
     groups: Optional[Dict[str, Any]] = {}
+    viewport: Optional[Dict[str, Any]] = None
 
 # 鍏ㄥ眬鍙橀噺閿佸畾褰撳墠椤圭洰锛岀敤浜庡姩鎬佸浘鐗囪鍙?
 CURRENT_PROJECT_PATH = None
@@ -140,7 +141,7 @@ async def init_project(config: ProjectConfig):
         
         # 鍒涘缓/璇诲彇 project.json
         project_file = os.path.join(abs_path, "project.json")
-        existing_data = {"projectName": os.path.basename(abs_path) or "Untitled Project", "nodes": [], "edges": [], "groups": {}}
+        existing_data = {"projectName": os.path.basename(abs_path) or "Untitled Project", "nodes": [], "edges": [], "groups": {}, "viewport": None}
         
         if os.path.exists(project_file):
             with open(project_file, "r", encoding="utf-8") as f:
@@ -255,6 +256,7 @@ async def save_project(config: ProjectConfig):
         "nodes": [n.model_dump() for n in config.nodes],
         "edges": [e.model_dump() for e in config.edges],
         "groups": config.groups or {},
+        "viewport": config.viewport,
     }
     with open(project_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)

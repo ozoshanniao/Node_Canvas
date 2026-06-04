@@ -34,6 +34,8 @@ export const zh_CN = {
   'settings.language': '界面语言',
   'settings.language.zhCN': '中文（简体）',
   'settings.language.enUS': 'English',
+  'settings.canvasBackgroundColor': '画布底色',
+  'settings.canvasGridColor': '网格点颜色',
 
   'search.placeholder': '搜索节点...',
   'search.noResults': '未找到节点',

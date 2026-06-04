@@ -18,7 +18,6 @@ export const useImageAspect = (id, containerRef) => {
         if (node.id === id) {
           return {
             ...node,
-            // 🌟 核心：不仅是更新数据，而是更新 React Flow 掌控的物理尺寸
             width: currentWidth,
             height: perfectHeight,
           };

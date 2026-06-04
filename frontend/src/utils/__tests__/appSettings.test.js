@@ -2,9 +2,13 @@ import assert from 'node:assert/strict';
 import {
   APP_SETTINGS_STORAGE_KEYS,
   DEFAULT_APP_SETTINGS,
+  getColorPickerValue,
   getAppSettings,
+  getHexColorInputValue,
+  parseAndNormalizeHexColor,
   setAppSetting,
   shouldShowRawCustomParams,
+  updateHexColorAppSetting,
 } from '../appSettings.js';
 
 const createLocalStorageMock = (initial = {}) => {
@@ -34,6 +38,18 @@ assert.deepEqual(
 assert.equal(shouldShowRawCustomParams(getAppSettings()), false);
 assert.equal(getAppSettings().publicAssetStorage, '');
 assert.equal(getAppSettings().language, 'zh-CN');
+assert.equal(getAppSettings().canvasBackgroundColor, '#0b0b0b');
+assert.equal(getAppSettings().canvasGridColor, '#222222');
+
+assert.equal(parseAndNormalizeHexColor('abc'), '#abc');
+assert.equal(parseAndNormalizeHexColor('#ABCDEF'), '#abcdef');
+assert.equal(parseAndNormalizeHexColor('  0B0B0B  '), '#0b0b0b');
+assert.equal(parseAndNormalizeHexColor('bad-value', '#123456'), '#123456');
+assert.equal(parseAndNormalizeHexColor('12', '#123456'), '#123456');
+assert.equal(parseAndNormalizeHexColor('#1234', '#123456'), '#123456');
+assert.equal(parseAndNormalizeHexColor(null, '#123456'), '#123456');
+assert.equal(getHexColorInputValue('#0B0B0B', '#000000'), '0b0b0b');
+assert.equal(getColorPickerValue('#222', '#000000'), '#222222');
 
 globalThis.localStorage = createLocalStorageMock({
   [APP_SETTINGS_STORAGE_KEYS.showRawCustomParams]: 'true',
@@ -85,6 +101,34 @@ assert.equal(
   'language should persist zh-CN'
 );
 
+setAppSetting('canvasBackgroundColor', '1A2B3C');
+assert.equal(
+  getAppSettings().canvasBackgroundColor,
+  '#1a2b3c',
+  'canvasBackgroundColor should persist normalized six-digit colors'
+);
+
+setAppSetting('canvasGridColor', '#ABC');
+assert.equal(
+  getAppSettings().canvasGridColor,
+  '#abc',
+  'canvasGridColor should persist normalized three-digit colors'
+);
+
+setAppSetting('canvasBackgroundColor', 'not-a-color');
+assert.equal(
+  getAppSettings().canvasBackgroundColor,
+  DEFAULT_APP_SETTINGS.canvasBackgroundColor,
+  'invalid canvasBackgroundColor should fall back to the default color'
+);
+
+setAppSetting('canvasGridColor', '#12');
+assert.equal(
+  getAppSettings().canvasGridColor,
+  DEFAULT_APP_SETTINGS.canvasGridColor,
+  'invalid canvasGridColor should fall back to the default color'
+);
+
 for (const rawValue of ['"s3"', 'true', 'null', 'invalid']) {
   globalThis.localStorage = createLocalStorageMock({
     [APP_SETTINGS_STORAGE_KEYS.publicAssetStorage]: rawValue,
@@ -106,6 +150,46 @@ for (const rawValue of ['"fr-FR"', 'true', 'null', 'invalid']) {
     `invalid language value ${rawValue} should fall back to zh-CN`
   );
 }
+
+for (const rawValue of ['"ABCDEF"', '"#a1B2c3"', '#654321']) {
+  globalThis.localStorage = createLocalStorageMock({
+    [APP_SETTINGS_STORAGE_KEYS.canvasBackgroundColor]: rawValue,
+  });
+  assert.match(
+    getAppSettings().canvasBackgroundColor,
+    /^#[0-9a-f]{6}$/,
+    `valid stored canvas color ${rawValue} should be normalized`
+  );
+}
+
+for (const rawValue of ['"1234"', 'true', 'null', 'invalid']) {
+  globalThis.localStorage = createLocalStorageMock({
+    [APP_SETTINGS_STORAGE_KEYS.canvasGridColor]: rawValue,
+  });
+  assert.equal(
+    getAppSettings().canvasGridColor,
+    DEFAULT_APP_SETTINGS.canvasGridColor,
+    `invalid canvasGridColor value ${rawValue} should fall back to default`
+  );
+}
+
+const colorSettingUpdates = [];
+const updateSettingSpy = (key, value) => {
+  colorSettingUpdates.push({ key, value });
+  return { [key]: value };
+};
+updateHexColorAppSetting(updateSettingSpy, 'canvasBackgroundColor', 'F0F');
+updateHexColorAppSetting(updateSettingSpy, 'canvasGridColor', '#123456');
+updateHexColorAppSetting(updateSettingSpy, 'canvasGridColor', 'invalid');
+assert.deepEqual(
+  colorSettingUpdates,
+  [
+    { key: 'canvasBackgroundColor', value: '#f0f' },
+    { key: 'canvasGridColor', value: '#123456' },
+    { key: 'canvasGridColor', value: DEFAULT_APP_SETTINGS.canvasGridColor },
+  ],
+  'text input and color swatch updates should normalize values before updating settings'
+);
 
 globalThis.localStorage = createLocalStorageMock();
 const existingCustomParams = { seedance: { mode: 'frame', firstFrame: '/api/image/a.png' } };

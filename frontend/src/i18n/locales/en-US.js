@@ -34,6 +34,8 @@ export const en_US = {
   'settings.language': 'Interface Language',
   'settings.language.zhCN': '中文（简体）',
   'settings.language.enUS': 'English',
+  'settings.canvasBackgroundColor': 'Canvas Background',
+  'settings.canvasGridColor': 'Grid Color',
 
   'search.placeholder': 'Search nodes...',
   'search.noResults': 'No nodes found',

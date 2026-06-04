@@ -556,7 +556,6 @@ export function LLMProcessorNode({ id, data }) {
         </div>
         )}
 
-      {/* 椤堕儴鑳跺泭宸ュ叿鏍?*/}
       <div className="absolute -top-13 left-1/2 -translate-x-1/2 bg-[#181818] border border-white/5 rounded-full px-6 py-2.5 flex items-center gap-2 text-sm text-white/60 shadow-xl z-50 font-light whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity duration-300 delay-[1000ms] group-hover:delay-0 before:content-[''] before:absolute before:top-full before:left-0 before:w-full before:h-4">
         <span
           onClick={(e) => {

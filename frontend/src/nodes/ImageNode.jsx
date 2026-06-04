@@ -23,13 +23,13 @@ import { useI18n } from '../hooks/useI18n';
 export function ImageNode({ id, data }) {
   countRender('ImageNode');
   const { t } = useI18n();
-  const containerRef = useRef(null); // 🌟 建立容器引用
+  const containerRef = useRef(null);
   const lastHandledRunRequestRef = useRef(data?.runRequestId);
   const { setNodes, getNodes, getEdges, setEdges } = useReactFlow();
 
-  const [registry, setRegistry] = useState(null); // 🌟 存储后端 specs
-  const [showAdvanced, setShowAdvanced] = useState(false); // 🌟 控制副胶囊显示
-  const [currentIndex] = useState(0); // 🌟 记录当前预览的是第几张图
+  const [registry, setRegistry] = useState(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [currentIndex] = useState(0);
 
   useEffect(() => {
   const fetchSpecs = async () => {
@@ -43,19 +43,16 @@ export function ImageNode({ id, data }) {
   fetchSpecs();
 }, []);
 
-  // 🌟 新增：图片比例自动校准逻辑 (与 ImageInputNode 保持绝对一致)
   const handleImageLoad = useImageAspect(id, containerRef);
   
   // --- 2. 核心状态管理 (升级为全局受控) ---
   
-  // 🌟 读取主画布派发过来的值，如果为空则自动fallback到默认值
   const normalizedGenerationSettings = normalizeImageGenerationSettings(data, registry);
   const provider = normalizedGenerationSettings.provider;
   const providerOptions = getImageProviderOptions(registry);
   const availableModels = getImageModelOptions(provider, registry).map((item) => item.id);
   const model = normalizedGenerationSettings.model;
 
-  // 🌟 从统一配置源里抓取当前模型的“能力说明书”
   const currentSpec = getImageModelConfig(provider, model, registry) || {};
 
   const availableRatios = getImageAspectRatioOptions(provider, model, registry).map((item) => item.id);
@@ -77,7 +74,6 @@ export function ImageNode({ id, data }) {
   // 【唯一保留的局部状态】控制当前打开的下拉菜单（因为画布主壳不需要关心谁的菜单开了）
   const [activeMenu, setActiveMenu] = useState(null);
 
-  // 🌟 智能比例校准：确保节点永远缩放在 600x600 的安全区内
   const handleRatioChange = (ratioStr) => {
     const { width, height } = getImageNodeSizeByAspectRatio(ratioStr);
 
@@ -99,7 +95,6 @@ export function ImageNode({ id, data }) {
     );
   };
 
-  // 🌟 必须定义这个函数，否则点击菜单会崩溃
   const updateNodeData = (newData) => {
     setLastNodeDefaults('imageGeneration', newData);
     setNodes((nds) =>
@@ -142,12 +137,11 @@ export function ImageNode({ id, data }) {
 
 // 2. 修改 handleRun 函数
   const handleRun = async (e = { stopPropagation: () => {} }) => {
-    if (isLoading) return; // 🌟 防呆：如果正在加载，直接拦截
+    if (isLoading) return;
     e.stopPropagation(); // 防止点击按钮触发节点的选中状态
 
-    setIsLoading(true); // 🌟 开始加载
+    setIsLoading(true);
 
-    // 🌟 A. 开启流动动画：找到所有连向自己的线，注入 CSS 类名
     setEdges((eds) => {
       const flowingEdgeIds = getFlowingEdgeIds(eds);
       
@@ -175,7 +169,6 @@ export function ImageNode({ id, data }) {
     const allNodes = getNodes();
     const allEdges = getEdges();
 
-    // 🌟 优先级：节点私有数据 > 全局保底 > 默认空串
     const activePath = data.projectPath || window.currentProjectPath || "";
 
     if (!activePath) {
@@ -200,7 +193,6 @@ export function ImageNode({ id, data }) {
       return;
     }
 
-    // 🌟 核心：拓扑动态索引扫描
     // 1. 获取所有连向本节点 image:in 端口的线
   try {
     const imageEdges = allEdges.filter(
@@ -256,10 +248,9 @@ export function ImageNode({ id, data }) {
       nodes: runtimeNodes,
       edges: allEdges,
       imageInputs: connectedImages.filter((item) => !!item.url),
-      projectPath: data.projectPath || window.currentProjectPath // 🌟 必须包含这个字段！
+      projectPath: data.projectPath || window.currentProjectPath
     };
 
-      // 🌟 真正的全栈握手请求
       const response = await fetch('http://127.0.0.1:8000/run-workflow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -268,7 +259,6 @@ export function ImageNode({ id, data }) {
 
       const result = await response.json();
       if (result.status === 'success') {
-        // 🌟 将后端返回的图片 URL 写回当前节点的 data
         updateNodeData({ url: result.data.url, urls: result.data.urls });
         console.log(" 图片已生成并渲染:", result.data.url || result.data.urls);
       }
@@ -276,9 +266,8 @@ export function ImageNode({ id, data }) {
     } catch (error) {
       console.error(" 渲染失败:", error);
     } finally {
-        setIsLoading(false); // 🌟 结束加载，恢复按钮点击
+        setIsLoading(false);
 
-      // 🌟 B. 关闭流动动画：无论成功失败，停止光流
       setEdges((eds) => {
         const flowingEdgeIds = getFlowingEdgeIds(eds);
         console.log('[ImageNode flowing:clear]', {
@@ -299,7 +288,6 @@ export function ImageNode({ id, data }) {
     }
   };
 
-  // 🌟 核心：计算当前应显示的图片 URL
   useEffect(() => {
     if (!data?.runRequestId || lastHandledRunRequestRef.current === data.runRequestId) return;
     lastHandledRunRequestRef.current = data.runRequestId;
@@ -322,7 +310,7 @@ export function ImageNode({ id, data }) {
   }, [data?.previewSourceUrl, data?.previewUrl, id, rawDisplayUrl, setNodes]);
 
   return (
-    <div ref={containerRef} // 🌟 绑定引用
+    <div ref={containerRef}
       className="canvas-node-card canvas-image-node-card bg-[#181818] rounded-[24px] w-full h-full min-w-[50px] min-h-[50px] flex flex-col text-white select-none group relative border border-white/5 transition-colors duration-100 hover:border-white/20">
       
     {showAdvanced && currentSpec.n && (
@@ -424,7 +412,7 @@ export function ImageNode({ id, data }) {
                   key={item}
                   onClick={(e) => { 
                    e.stopPropagation();    // 阻止冒泡，防止触发节点选中
-                   handleRatioChange(item); // 🌟 触发联动校准
+                   handleRatioChange(item);
                    setActiveMenu(null); }}
                   className={`px-4 py-2 text-xs cursor-pointer transition-colors ${ratio === item ? 'text-white bg-white/5 font-normal' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
                 >
@@ -483,13 +471,12 @@ export function ImageNode({ id, data }) {
         {/* 向上箭头生成触发按钮 */}
         <button 
           onClick={handleRun}
-          disabled={isLoading} // 🌟 物理禁用按钮
+          disabled={isLoading}
           className={`w-5 h-5 rounded-full bg-[#222222] flex items-center justify-center text-white/60 hover:bg-white hover:text-black transition-all nodrag ${
             isLoading ? 'bg-white text-black' : 'bg-[#222222] text-white/60 hover:bg-white hover:text-black'
           }`}
         >
           {isLoading ? (
-            // 🌟 旋转加载圆圈
           <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -506,7 +493,6 @@ export function ImageNode({ id, data }) {
 {/* 2. 主体全域画布（恢复 flex-1 弹性高宽，内部包含悬浮文字） */}
       <div className="absolute inset-0 nowheel overflow-hidden rounded-[24px] flex items-center justify-center">
         
-{/* 🌟 悬浮毛玻璃胶囊：完美对齐 ImageInput 设计语言 */}
       {/* 顶部悬浮文字标签栏 */}
       <div className="absolute top-4 left-4 z-20 flex items-center gap-2 text-white/50 text-[11px] font-light bg-[#121212]/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/5 pointer-events-none">
         <svg className="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -520,7 +506,7 @@ export function ImageNode({ id, data }) {
           <img 
             src={displayUrl}
             alt="AI Generated"
-            onLoad={handleImageLoad} // 🌟 调用 Hook 返回的逻辑
+            onLoad={handleImageLoad}
             draggable={false}
             className="canvas-image-preview absolute inset-0 w-full h-full object-contain pointer-events-none select-none transition-opacity duration-150"
           />

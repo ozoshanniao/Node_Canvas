@@ -125,6 +125,7 @@ function ImageEdge({
               className="nodrag nopan w-5 h-5 bg-[#141414] border border-white/5 rounded-full flex items-center justify-center text-white/40 hover:text-red-500 hover:border-red-500 shadow-xl"
               style={{
                 position: 'absolute',
+                zIndex: 25,
                 transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
                 pointerEvents: 'all',
               }}

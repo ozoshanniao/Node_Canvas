@@ -68,7 +68,12 @@ import { RUNNABLE_NODE_TYPES } from './utils/nodeCategories';
 import { DISABLE_MINIMAP, ONLY_RENDER_VISIBLE_ELEMENTS } from './utils/perfDebug';
 import { normalizeImageInputEdgeLabels } from './utils/edgeLabels';
 import { uploadImageToInput } from './utils/uploadToInput';
-import { useAppSettings } from './utils/appSettings';
+import {
+  getColorPickerValue,
+  getHexColorInputValue,
+  updateHexColorAppSetting,
+  useAppSettings,
+} from './utils/appSettings';
 import { useI18n } from './hooks/useI18n';
 //import { ButtonEdge } from './edges/ButtonEdge';
 
@@ -94,6 +99,45 @@ const nodeTypes = {
 
 const edgeTypes = {
   default: ImageEdge, //default: ButtonEdge, 
+};
+
+const CanvasColorSetting = ({ label, settingKey, value, fallback, onChange }) => {
+  const normalizedValue = value || fallback;
+  const colorPickerValue = getColorPickerValue(normalizedValue, fallback);
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <div className="text-sm font-light text-white/80">{label}</div>
+      <div className="mt-3 flex items-center overflow-hidden rounded-xl border border-white/10 bg-black/35 text-xs text-white/75 transition-colors focus-within:border-white/35 hover:border-white/20">
+        <label
+          className="relative flex h-10 w-11 shrink-0 cursor-pointer items-center justify-center border-r border-white/10"
+          title={label}
+        >
+          <span
+            className="h-5 w-5 rounded-md border border-white/20 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+            style={{ backgroundColor: colorPickerValue }}
+          />
+          <input
+            type="color"
+            aria-label={label}
+            value={colorPickerValue}
+            onChange={(event) => updateHexColorAppSetting(onChange, settingKey, event.target.value)}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          />
+        </label>
+        <span className="px-3 text-white/35">#</span>
+        <input
+          type="text"
+          value={getHexColorInputValue(normalizedValue, fallback)}
+          onChange={(event) => updateHexColorAppSetting(onChange, settingKey, event.target.value)}
+          spellCheck={false}
+          maxLength={6}
+          inputMode="text"
+          className="min-w-0 flex-1 bg-transparent px-0 py-2.5 font-mono text-xs lowercase text-white/75 outline-none placeholder:text-white/20"
+        />
+      </div>
+    </div>
+  );
 };
 
 const normalizeEdges = (edges = []) =>
@@ -271,6 +315,13 @@ const normalizeCanvasForLoad = (data = {}) => {
   };
 };
 
+const isValidViewport = (viewport) =>
+  viewport &&
+  Number.isFinite(Number(viewport.x)) &&
+  Number.isFinite(Number(viewport.y)) &&
+  Number.isFinite(Number(viewport.zoom)) &&
+  Number(viewport.zoom) > 0;
+
 const isValidConnection = (c) => {
   if (!c.sourceHandle || !c.targetHandle) return false;
   return c.sourceHandle.split(':')[0] === c.targetHandle.split(':')[0];
@@ -340,6 +391,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
   const isSavingRef = useRef(false);
   const latestCanvasRef = useRef({ nodes: [], edges: [], groups: {} });
   const latestProjectRef = useRef({ projectPath, projectFilePath, projectName });
+  const hasRestoredViewportRef = useRef(false);
   const pendingConnectionRef = useRef(null);
   const connectionSuccessfulRef = useRef(false);
   const { commitHistory, undo, redo } = useCanvasHistory({
@@ -351,6 +403,27 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     setGroups,
     maxHistory: 50,
   });
+  const { screenToFlowPosition, getViewport, setViewport } = useReactFlow();
+
+  const restoreProjectViewport = useCallback(
+    (viewport) => {
+      if (hasRestoredViewportRef.current || !isValidViewport(viewport)) return;
+      hasRestoredViewportRef.current = true;
+      const nextViewport = {
+        x: Number(viewport.x),
+        y: Number(viewport.y),
+        zoom: Number(viewport.zoom),
+      };
+      window.setTimeout(() => {
+        setViewport(nextViewport);
+      }, 50);
+    },
+    [setViewport]
+  );
+
+  useEffect(() => {
+    hasRestoredViewportRef.current = false;
+  }, [projectPath]);
 
   //
   useEffect(() => {
@@ -360,10 +433,9 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
       setEdges(nextCanvas.edges);
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setGroups(nextCanvas.groups);
+      restoreProjectViewport(initialData.viewport);
     }
-  }, [initialData, setNodes, setEdges, setGroups]);
-
-  const { screenToFlowPosition } = useReactFlow();
+  }, [initialData, setNodes, setEdges, setGroups, restoreProjectViewport]);
 
   const onEdgesChange = useCallback(
     (changes) => {
@@ -398,10 +470,11 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         setNodes(applyImageInputConnectionFlags(nextCanvas.nodes, nextCanvas.edges));
         setEdges(nextCanvas.edges);
         setGroups(nextCanvas.groups);
+        restoreProjectViewport(result.data.viewport);
       }
     };
     if (projectPath && !initialData) loadProject();
-  }, [projectPath, initialData, setNodes, setEdges, setGroups]);
+  }, [projectPath, initialData, setNodes, setEdges, setGroups, restoreProjectViewport]);
 
   //
   const saveProject = useCallback(
@@ -418,6 +491,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         nodes,
         edges,
         groups,
+        viewport: getViewport(),
         reason,
       });
 
@@ -433,7 +507,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
 
       return result;
     },
-    [projectPath, projectFilePath, projectName, nodes, edges, groups]
+    [projectPath, projectFilePath, projectName, nodes, edges, groups, getViewport]
   );
 
   useEffect(() => {
@@ -459,6 +533,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         nodes: latestNodes,
         edges: latestEdges,
         groups: latestGroups,
+        viewport: getViewport(),
         reason: 'interval-auto-save',
       });
 
@@ -475,7 +550,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
 
     const interval = window.setInterval(saveLatestCanvas, 60_000);
     return () => window.clearInterval(interval);
-  }, [projectPath]);
+  }, [projectPath, getViewport]);
 
   const handleCanvasCopy = useCallback(() => {
     const { nodes: currentNodes, edges: currentEdges } = latestCanvasRef.current;
@@ -501,22 +576,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     window.__nodeCanvasClipboard = clipboardData;
   }, []);
 
-  const handleCanvasPaste = useCallback(async () => {
-    let clipboardData = null;
-    try {
-      const text = await navigator.clipboard.readText();
-      const parsed = JSON.parse(text);
-      if (parsed && parsed.__isNodeCanvasClipboard) {
-        clipboardData = parsed;
-      }
-    } catch {
-      // Ignore clipboard permission or parse errors
-    }
-
-    if (!clipboardData) {
-      clipboardData = window.__nodeCanvasClipboard;
-    }
-
+  const pasteCanvasClipboardData = useCallback((clipboardData) => {
     if (!clipboardData || !clipboardData.__isNodeCanvasClipboard) return;
 
     const { nodes: currentNodes, edges: currentEdges, groups: currentGroups } = latestCanvasRef.current;
@@ -620,19 +680,13 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         handleCanvasCopy();
         return;
       }
-
-      if (key === 'v') {
-        event.preventDefault();
-        handleCanvasPaste();
-        return;
-      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [redo, saveProject, undo, handleCanvasCopy, handleCanvasPaste]);
+  }, [redo, saveProject, undo, handleCanvasCopy]);
 
-  // 馃専 灏嗚ˉ涓佹斁鍦ㄨ繖閲岋細
+  // Keep projectPath mirrored into node data for runtime operations.
   useEffect(() => {
     if (projectPath) {
       window.currentProjectPath = projectPath;
@@ -667,18 +721,17 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     );
   }, [availableNodes, getNodeDisplayDescription, getNodeDisplayLabel, query]);
 
-  // --- 馃専 1. 鍏ㄥ眬鍓创鏉垮浘鐗囩矘璐达紙Paste锛夊叏鍦烘櫙閫氭潃鍝嶅簲鍣?---
+  // Global paste handler for canvas image files and node clipboard data.
   useEffect(() => {
-    const handleCanvasPaste = async (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    const handleGlobalPaste = async (e) => {
+      if (isEditableShortcutTarget(e.target)) return;
 
       const clipboardData = e.clipboardData;
       if (!clipboardData) return;
 
       let targetFile = null;
-      let targetUrl = null;
 
-      // 銆愯建閬?A銆戜紭鍏堟娴嬫爣鍑嗙殑鐗╃悊 files 闆嗗悎
+      // Prefer physical image files from the clipboard.
       const files = clipboardData.files;
       if (files && files.length > 0) {
         for (let i = 0; i < files.length; i++) {
@@ -689,7 +742,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         }
       }
 
-      // 銆愯建閬?B銆戦檷绾ф壂鎻?items 瀹炰綋闂寘
+      // Fall back to clipboard items when files are unavailable.
       if (!targetFile) {
         const items = clipboardData.items || [];
         for (let i = 0; i < items.length; i++) {
@@ -700,27 +753,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         }
       }
 
-      if (!targetFile) {
-        const htmlData = clipboardData.getData('text/html');
-        const textData = clipboardData.getData('text/plain');
-
-        if (htmlData) {
-          const imgMatch = htmlData.match(/<img[^>]+src=["']([^"']+)["']/i);
-          if (imgMatch && imgMatch[1]) {
-            targetUrl = imgMatch[1];
-          }
-        }
-
-        if (!targetUrl && textData) {
-          const isRemoteUrl = textData.startsWith('http://') || textData.startsWith('https://');
-          const isBase64 = textData.startsWith('data:image/');
-          if (isRemoteUrl || isBase64) {
-            targetUrl = textData;
-          }
-        }
-      }
-
-      if (targetFile || targetUrl) {
+      if (targetFile) {
         e.preventDefault();
 
         if (!projectPath) {
@@ -733,30 +766,18 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
           y: window.innerHeight / 2,
         });
 
-        let finalImageUrl = targetUrl;
-        let imageMetadata = {};
+        let uploadResult;
 
-        // Upload file to input directory
-        if (targetFile) {
-          try {
-            const result = await uploadImageToInput(targetFile, {
-              projectPath,
-              sourceKind: 'paste',
-              filename: targetFile.name,
-              mimeType: targetFile.type,
-            });
-            finalImageUrl = result.url;
-            imageMetadata = {
-              filename: result.filename,
-              mimeType: result.mimeType,
-              width: result.width,
-              height: result.height,
-              bytes: result.bytes,
-            };
-          } catch (error) {
-            console.error('[App] Paste upload failed:', error);
-            return;
-          }
+        try {
+          uploadResult = await uploadImageToInput(targetFile, {
+            projectPath,
+            sourceKind: 'paste',
+            filename: targetFile.name,
+            mimeType: targetFile.type,
+          });
+        } catch (error) {
+          console.error('[App] Paste upload failed:', error);
+          return;
         }
 
         const newNode = {
@@ -764,25 +785,43 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
           type: 'imageInputNode',
           position: flowPos,
           data: {
-            url: finalImageUrl,
-            sourceKind: targetFile ? 'paste' : 'url',
+            url: uploadResult.url,
+            sourceKind: 'paste',
             projectPath,
-            ...imageMetadata,
+            filename: uploadResult.filename,
+            mimeType: uploadResult.mimeType,
+            width: uploadResult.width,
+            height: uploadResult.height,
+            bytes: uploadResult.bytes,
           },
         };
 
         const nextNodes = nodes.concat(newNode);
         setNodes(nextNodes);
         commitHistory(nextNodes, edges);
+        return;
+      }
+
+      const textData = clipboardData.getData('text/plain');
+      if (textData) {
+        try {
+          const parsed = JSON.parse(textData);
+          if (parsed && parsed.__isNodeCanvasClipboard) {
+            e.preventDefault();
+            pasteCanvasClipboardData(parsed);
+          }
+        } catch {
+          // Keep default paste behavior for ordinary text.
+        }
       }
     };
 
-    window.addEventListener('paste', handleCanvasPaste);
-    return () => window.removeEventListener('paste', handleCanvasPaste);
-  }, [commitHistory, edges, nodes, screenToFlowPosition, setNodes, projectPath]);
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => window.removeEventListener('paste', handleGlobalPaste);
+  }, [commitHistory, edges, nodes, pasteCanvasClipboardData, screenToFlowPosition, setNodes, projectPath]);
   
 
-  // --- 馃専 2. 澶栭儴鏂囦欢澶瑰浘鍍忔嫋鍔ㄩ噴鏀撅紙Drop锛夊搷搴斿櫒 ---
+  // Image file drop handler.
   const handleCanvasDrop = async (e) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
@@ -827,7 +866,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     }
   };
 
-  // 澶勭悊鍙屽嚮鍞よ捣鎼滅储闈㈡澘
+  // Open the search panel on double click.
   const handleContainerDoubleClick = (e) => {
     if (e.target.closest('.react-flow__node') || e.target.closest('.nodrag')) return;
     const flowPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
@@ -864,7 +903,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     setSearchMenu((prev) => ({ ...prev, show: false }));
   };
 
-  // 馃専 浠庡揩鎹锋偓娴簳鏍忥紙Dock锛夋坊鍔犺妭鐐瑰苟灞呬腑
+  // Add a node from the dock and center it in the viewport.
   const addNodeFromDock = (type) => {
     const flowPos = screenToFlowPosition({
       x: window.innerWidth / 2,
@@ -1175,13 +1214,17 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
 
   return (
     <div 
-      style={{ width: '100vw', height: '100vh' }} 
+      style={{
+        width: '100vw',
+        height: '100vh',
+        '--canvas-background-color': appSettings.canvasBackgroundColor || '#0b0b0b',
+      }}
       onDoubleClick={handleContainerDoubleClick} 
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleCanvasDrop}
-      className={`relative bg-[#0b0b0b] ${isDraggingNode ? 'is-node-dragging' : ''}`}
+      className={`relative canvas-container ${isDraggingNode ? 'is-node-dragging' : ''}`}
     >
-      {/* 鏍稿績鐢诲竷涓绘覆鏌撳尯 */}
+      {/* Main canvas render area */}
       <TopProjectBar
         projectName={projectName}
         saveStatus={saveStatus}
@@ -1301,6 +1344,22 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
                       menuClassName="nowheel nodrag animate-in fade-in zoom-in-95 absolute left-0 right-0 z-[100] mt-1.5 rounded-xl border border-white/10 bg-[#141414]/95 shadow-2xl backdrop-blur-xl duration-150 overflow-hidden"
                     />
                   </div>
+
+                  <CanvasColorSetting
+                    label={t('settings.canvasBackgroundColor')}
+                    settingKey="canvasBackgroundColor"
+                    value={appSettings.canvasBackgroundColor}
+                    fallback="#0b0b0b"
+                    onChange={updateAppSetting}
+                  />
+
+                  <CanvasColorSetting
+                    label={t('settings.canvasGridColor')}
+                    settingKey="canvasGridColor"
+                    value={appSettings.canvasGridColor}
+                    fallback="#222222"
+                    onChange={updateAppSetting}
+                  />
                 </div>
               )}
             </div>
@@ -1331,7 +1390,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         onPaneClick={handlePaneClick}
         onlyRenderVisibleElements={ONLY_RENDER_VISIBLE_ELEMENTS}
       >
-        <Background variant="dots" gap={20} size={1} color="#222" />
+        <Background variant="dots" gap={20} size={1} color={appSettings.canvasGridColor || '#222'} />
         <GroupsOverlay
           nodes={nodes}
           groups={groups}
@@ -1367,7 +1426,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         {isMiniMapCollapsed ? t('minimap.show') : t('minimap.hide')}
       </button>
 
-      {/* 3. Flora AI 鏋佺畝鏆楅粦椋庡弻鍑绘悳绱㈤潰鏉?*/}
+      {/* Search panel */}
       {searchMenu.show && (
         <div 
           style={{ top: `${searchMenu.y}px`, left: `${searchMenu.x}px` }} 
@@ -1419,7 +1478,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         />
       )}
 
-      {/* 4. Flora AI 鏋佺畝楂橀樁鎮诞搴曟爮 (Dock) */}
+      {/* Floating dock */}
       <NodeDock
         onCreateNode={addNodeFromDock}
         onRunSelected={handleRunSelected}

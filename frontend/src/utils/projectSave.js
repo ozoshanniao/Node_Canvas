@@ -89,7 +89,16 @@ export const sanitizeProjectBeforeSave = ({ nodes = [], edges = [], groups = {} 
   groups: groups || {},
 });
 
-export const saveProjectCore = async ({ projectPath, projectFilePath, projectName, nodes, edges, groups = {}, reason = 'manual' }) => {
+export const saveProjectCore = async ({
+  projectPath,
+  projectFilePath,
+  projectName,
+  nodes,
+  edges,
+  groups = {},
+  viewport,
+  reason = 'manual',
+}) => {
   if (!projectPath) {
     return { ok: false, error: 'Missing projectPath' };
   }
@@ -107,6 +116,7 @@ export const saveProjectCore = async ({ projectPath, projectFilePath, projectNam
         nodes: sanitized.nodes,
         edges: sanitized.edges,
         groups: sanitized.groups,
+        viewport,
         reason,
       }),
     });

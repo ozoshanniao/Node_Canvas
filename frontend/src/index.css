@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+.canvas-container {
+  background-color: var(--canvas-background-color, #0b0b0b);
+}
+
 html, body, #root {
   width: 100%;
   height: 100%;
@@ -31,7 +35,6 @@ html, body, #root {
   background: rgba(255, 255, 255, 0.25);
 }
 
-/* 🌟 Flora AI 专属：全局拉线端点隐形热区扩大（完美修复错位版） */
 /* 注意：千万不要再去复写 .react-flow__handle 本身的 position 属性，让它保持原生的 absolute 即可 */
 
 .react-flow__handle::before {
@@ -159,6 +162,12 @@ html, body, #root {
 
 .node-canvas-flow .react-flow__edges {
   z-index: 10 !important;
+}
+
+.node-canvas-flow .react-flow__edge-labels,
+.node-canvas-flow .react-flow__edgelabel-renderer {
+  z-index: 25 !important;
+  pointer-events: none;
 }
 
 .node-canvas-flow .react-flow__nodes {
