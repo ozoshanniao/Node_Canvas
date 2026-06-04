@@ -1,6 +1,6 @@
-import { createDefaultNodeData } from '../nodes/nodeDefinitions';
-import { normalizeImageGenerationSettings } from './imageGenerationOptions';
-import { getImageNodeAspectRatio, getImageNodeSizeByAspectRatio } from './nodeSizing';
+import { createDefaultNodeData } from '../nodes/nodeDefinitions.js';
+import { normalizeImageGenerationSettings } from './imageGenerationOptions.js';
+import { getImageNodeAspectRatio, getImageNodeSizeByAspectRatio } from './nodeSizing.js';
 
 const CELL_WIDTH = 900;
 const CELL_HEIGHT = 620;
@@ -129,6 +129,8 @@ export const buildSplitGridGenerateSets = ({
           y: anchorY + GROUP_OFFSETS.textNode.y,
         },
         data: textData,
+        width: 320,
+        height: 200,
       },
       {
         id: imageNodeId,

@@ -209,34 +209,11 @@ export function ImageNode({ id, data }) {
     }));
 
     const runtimeNodes = allNodes.map((n) => {
-      if (n.type === 'textConstruction') {
-        const resolvedText = getNodeTextOutput(n, allNodes, allEdges);
-        return {
-          id: n.id,
-          type: n.type,
-          data: { ...n.data, text: resolvedText, resolvedText },
-          position: n.position,
-          width: n.width,
-          height: n.height,
-        };
-      }
-
-      if (n.type === 'routeNode') {
-        const routedText = getNodeTextOutput(n, allNodes, allEdges);
-        return {
-          id: n.id,
-          type: n.type,
-          data: { ...n.data, text: routedText, routedText },
-          position: n.position,
-          width: n.width,
-          height: n.height,
-        };
-      }
-
+      const resolvedText = getNodeTextOutput(n, allNodes, allEdges);
       return {
         id: n.id,
         type: n.type,
-        data: n.data,
+        data: { ...n.data, text: resolvedText, resolvedText },
         position: n.position,
         width: n.width,
         height: n.height,
