@@ -348,4 +348,4 @@ npm run build
 
 ## License
 
-License information has not been specified yet.
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
