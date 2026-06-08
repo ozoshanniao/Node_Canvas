@@ -2,7 +2,7 @@
  * Resolve image URL for display
  *
  * Handles:
- * - Relative paths: input/xxx.png, generation/xxx.png
+ * - Relative paths: input/xxx.png, generation/xxx.png, generation/ease_curve/xxx.mp4
  * - API paths: /api/image/xxx, /api/input/xxx
  * - Absolute URLs: http://, https://
  * - Data URLs: data:image/...
@@ -18,6 +18,7 @@ export const resolveImageUrl = (url, projectPath = null) => {
   // Already absolute URLs - return as-is
   if (
     url.startsWith('data:image/') ||
+    url.startsWith('data:video/') ||
     url.startsWith('blob:') ||
     url.startsWith('http://') ||
     url.startsWith('https://')
@@ -48,6 +49,12 @@ export const resolveImageUrl = (url, projectPath = null) => {
   if (url.startsWith('generation/')) {
     const filename = url.substring('generation/'.length);
     const baseUrl = 'http://127.0.0.1:8000';
+    if (filename.includes('/')) {
+      if (projectPath) {
+        return `${baseUrl}/api/generation/${filename}?projectPath=${encodeURIComponent(projectPath)}`;
+      }
+      return `${baseUrl}/api/generation/${filename}`;
+    }
     if (projectPath) {
       return `${baseUrl}/api/image/${filename}?projectPath=${encodeURIComponent(projectPath)}`;
     }

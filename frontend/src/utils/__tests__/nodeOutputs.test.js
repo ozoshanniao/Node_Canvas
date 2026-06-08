@@ -82,13 +82,14 @@ const imageEdge = {
     id: 'curve-1',
     type: 'easeCurveNode',
     data: {
+      outputVideoPath: 'generation/ease_curve/ease_curve_curve-1_run-1.mp4',
       outputVideo: 'data:video/webm;base64,abc',
       bezierHandles: { x1: 0.42, y1: 0, x2: 0.58, y2: 1 },
       easingPreset: 'easeInOut',
       outputDuration: 2,
     },
   };
-  assert.deepEqual(getNodeVideoOutput(easeCurveNode), ['data:video/webm;base64,abc']);
+  assert.deepEqual(getNodeVideoOutput(easeCurveNode), ['generation/ease_curve/ease_curve_curve-1_run-1.mp4']);
   assert.deepEqual(getNodeEaseCurveOutput(easeCurveNode), {
     type: 'easeCurve',
     bezierHandles: { x1: 0.42, y1: 0, x2: 0.58, y2: 1 },

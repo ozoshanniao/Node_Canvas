@@ -28,6 +28,9 @@ const resolveMediaUrl = (url, projectPath) => {
   return resolveImageUrl(url.replace(/^\.?\//, ''), projectPath);
 };
 
+const createRunRequestId = () =>
+  globalThis.crypto?.randomUUID?.() || `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
 export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected }) {
   countRender('EaseCurveNode');
   const { t } = useI18n();
@@ -141,7 +144,16 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
     }
 
     try {
-      updateData({ status: 'running', error: null, progress: 1, outputVideoWarning: null });
+      const runRequestId = createRunRequestId();
+      const projectPath = mergedData.projectPath || data?.projectPath || window.currentProjectPath || '';
+      lastRunRequestRef.current = runRequestId;
+      updateData({
+        status: 'running',
+        error: null,
+        progress: 1,
+        runRequestId,
+        outputVideoWarning: null,
+      });
       const support = await detectSpeedCurveEncoderSupport();
       const { blob, metadata } = await applySpeedCurve({
         sourceVideo,
@@ -149,13 +161,23 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
         outputDuration: mergedData.outputDuration,
         onProgress: (progress) => updateData({ progress }),
       });
-      const persisted = await persistOutputVideo(blob);
+      const persisted = await persistOutputVideo({
+        blob,
+        nodeId: id,
+        projectPath,
+        runRequestId,
+      });
       updateData({
         status: 'done',
         error: null,
         progress: 100,
+        runRequestId,
         encoderSupported: support,
-        outputVideo: persisted.url,
+        outputVideo: null,
+        outputVideoPath: persisted.path,
+        outputVideoUrl: persisted.url,
+        videoUrl: persisted.path,
+        base64Video: null,
         outputVideoWarning: persisted.warning,
         outputMetadata: metadata,
       });
@@ -166,7 +188,7 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
         progress: 0,
       });
     }
-  }, [applySpeedCurve, incoming.sourceVideo, mergedData.bezierHandles, mergedData.outputDuration, updateData]);
+  }, [applySpeedCurve, data, id, incoming.sourceVideo, mergedData.bezierHandles, mergedData.outputDuration, mergedData.projectPath, t, updateData]);
 
   useEffect(() => {
     if (!data?.runRequestId || data.runRequestId === lastRunRequestRef.current) return;
@@ -175,8 +197,9 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
   }, [data?.runRequestId, handleApply]);
 
   const isBusy = mergedData.status === 'running';
-  const outputVideo = mergedData.outputVideo;
-  const previewVideo = outputVideo || incoming.sourceVideo;
+  const outputVideo = mergedData.outputVideoPath || mergedData.outputVideoUrl || mergedData.videoUrl || mergedData.outputVideo;
+  const resolvedOutputVideo = resolveMediaUrl(outputVideo, mergedData.projectPath || data?.projectPath);
+  const previewVideo = resolvedOutputVideo || incoming.sourceVideo;
   const panelOpen = Boolean(selected || mergedData.expanded);
 
   const activeVideoAspect = videoAspect?.src === previewVideo ? videoAspect.value : null;

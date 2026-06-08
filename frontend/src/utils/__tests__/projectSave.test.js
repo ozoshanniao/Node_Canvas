@@ -66,15 +66,42 @@ assert.equal(
   'existing node sanitization should still run'
 );
 
+await saveProjectCore({
+  ...baseProject,
+  nodes: [
+    {
+      id: 'curve-1',
+      type: 'easeCurveNode',
+      position: { x: 0, y: 0 },
+      data: {
+        outputVideo: 'data:video/webm;base64,' + 'a'.repeat(200),
+        outputVideoPath: 'generation/ease_curve/ease_curve_curve-1_run-1.mp4',
+        status: 'done',
+      },
+    },
+  ],
+});
+
+assert.equal(
+  requests[1].body.nodes[0].data.outputVideo,
+  undefined,
+  'inline Easy Curve video data should not be saved into project JSON'
+);
+assert.equal(
+  requests[1].body.nodes[0].data.outputVideoPath,
+  'generation/ease_curve/ease_curve_curve-1_run-1.mp4',
+  'Easy Curve project file path should be saved'
+);
+
 await saveProjectCore(baseProject);
 
 assert.equal(
-  Object.prototype.hasOwnProperty.call(requests[1].body, 'viewport'),
+  Object.prototype.hasOwnProperty.call(requests[2].body, 'viewport'),
   false,
   'saveProjectCore should remain compatible when viewport is omitted'
 );
 assert.deepEqual(
-  requests[1].body.groups,
+  requests[2].body.groups,
   baseProject.groups,
   'saving without viewport should preserve existing groups payload'
 );
