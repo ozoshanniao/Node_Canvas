@@ -203,6 +203,24 @@ class VideoGenerationService:
             return 100
         return 0
 
+    def _is_recoverable_query_error(self, task: VideoTask) -> bool:
+        if task.status != "error" or not task.providerTaskId:
+            return False
+        if task.localVideoUrl or task.outputs.get("videoUrl"):
+            return False
+        message = f"{task.message or ''} {task.error or ''}".lower()
+        return "query" in message or "interrupted" in message
+
+    def _interrupted_patch(self, task: VideoTask, error: Exception | str, outputs: dict[str, Any] | None = None) -> dict[str, Any]:
+        return {
+            "status": "interrupted",
+            "progress": task.progress,
+            "message": "Video task query interrupted. You can retry querying this task.",
+            "error": str(error),
+            "outputs": outputs if outputs is not None else task.outputs,
+            "updatedAt": int(time.time()),
+        }
+
     async def create_task(self, project_path: str, request: VideoGenerateRequest) -> VideoTask:
         if not project_path:
             raise ValueError("projectPath is required")
@@ -249,7 +267,9 @@ class VideoGenerationService:
         task = await get_task(project_path, task_id)
         if not task:
             raise KeyError(f"Video task not found: {task_id}")
-        if task.status in {"success", "error", "cancelled"}:
+        if task.status in {"success", "cancelled"}:
+            return task
+        if task.status == "error" and not self._is_recoverable_query_error(task):
             return task
 
         provider = self.providers.get(task.provider)
@@ -310,13 +330,11 @@ class VideoGenerationService:
                     }
                     patch["message"] = "Video generation completed."
                 except Exception as exc:
-                    patch["status"] = "error"
-                    patch["progress"] = 0
-                    patch["error"] = str(exc)
-                    patch["message"] = f"Video completed, but download failed: {exc}"
+                    patch.update(self._interrupted_patch(task, exc, patch["outputs"]))
+                    patch["remoteVideoUrl"] = remote_url or task.remoteVideoUrl
 
             last_frame_remote_url = self._extract_last_frame_remote_url(response, task.provider)
-            if status == "success" and task.provider == "seedance_official" and last_frame_remote_url:
+            if patch["status"] == "success" and task.provider == "seedance_official" and last_frame_remote_url:
                 last_frame, warning = await self._download_seedance_last_frame(
                     project_path,
                     task.providerTaskId,
@@ -327,7 +345,7 @@ class VideoGenerationService:
                     "lastFrame": last_frame,
                     **({"lastFrameWarning": warning} if warning else {}),
                 }
-            elif status == "success" and task.provider == "seedance_official":
+            elif patch["status"] == "success" and task.provider == "seedance_official":
                 patch["outputs"] = {
                     **patch["outputs"],
                     "lastFrame": None,
@@ -337,15 +355,6 @@ class VideoGenerationService:
             await upsert_task(project_path, updated)
             return updated
         except Exception as exc:
-            now = int(time.time())
-            updated = task.model_copy(
-                update={
-                    "status": "error",
-                    "progress": 0,
-                    "message": str(exc),
-                    "error": str(exc),
-                    "updatedAt": now,
-                }
-            )
+            updated = task.model_copy(update=self._interrupted_patch(task, exc))
             await upsert_task(project_path, updated)
             return updated

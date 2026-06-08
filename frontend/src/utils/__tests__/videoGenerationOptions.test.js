@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   VIDEO_GENERATION_REGISTRY,
+  buildVideoTaskQueryInterruptedPatch,
+  buildVideoTaskResumePatch,
   buildVideoQuickParamLabel,
   fetchVideoGenerationRegistry,
   getActiveVideoHandlesForMode,
   getVideoAdvancedParamEntries,
   getVideoModelConfig,
   isVideoTaskActive,
+  isVideoTaskRecoverable,
   normalizeVideoGenerationSettings,
   resolveKlingOmniElements,
   shouldShowVideoCustomParams,
@@ -23,6 +29,50 @@ for (const status of ['submitting', 'queued', 'running', 'processing', 'pending'
 for (const status of ['idle', 'success', 'error', 'cancelled', '', undefined]) {
   assert.equal(isVideoTaskActive(status), false, `${status} should be inactive`);
 }
+assert.equal(isVideoTaskActive('interrupted'), false, 'interrupted should not auto-poll forever');
+
+const recoverableTask = {
+  id: 'video_local_task',
+  status: 'interrupted',
+  providerTaskId: 'provider-task',
+  rawCreateResponse: { id: 'provider-task' },
+};
+assert.equal(isVideoTaskRecoverable(recoverableTask), true, 'interrupted task with provider id should be recoverable');
+assert.equal(
+  isVideoTaskRecoverable({ ...recoverableTask, status: 'error' }),
+  true,
+  'legacy query error task with provider id should be recoverable'
+);
+assert.equal(
+  isVideoTaskRecoverable({ ...recoverableTask, outputs: { videoUrl: '/api/video/result.mp4' } }),
+  false,
+  'task with a video output should not show resume query'
+);
+assert.equal(
+  isVideoTaskRecoverable({ ...recoverableTask, providerTaskId: '' }),
+  false,
+  'task without provider task id cannot be resumed'
+);
+
+const interruptedPatch = buildVideoTaskQueryInterruptedPatch(recoverableTask, new Error('fetch failed'));
+assert.equal(interruptedPatch.status, 'interrupted');
+assert.equal(interruptedPatch.providerTaskId, 'provider-task');
+assert.deepEqual(interruptedPatch.rawCreateResponse, { id: 'provider-task' });
+assert.equal(interruptedPatch.error, 'fetch failed');
+
+const resumePatch = buildVideoTaskResumePatch(interruptedPatch);
+assert.equal(resumePatch.status, 'running');
+assert.equal(resumePatch.providerTaskId, 'provider-task');
+assert.deepEqual(resumePatch.rawCreateResponse, { id: 'provider-task' });
+assert.equal(resumePatch.error, '');
+
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const useVideoTaskSource = fs.readFileSync(path.join(testDir, '../../hooks/useVideoTask.js'), 'utf8');
+const resumeTaskSource = useVideoTaskSource.match(/const resumeTask = useCallback\([\s\S]*?\n {2}\}, \[setTask, startPolling\]\);/)?.[0] || '';
+assert.ok(resumeTaskSource, 'useVideoTask should expose a resumeTask callback');
+assert.equal(resumeTaskSource.includes('/api/video/generate'), false, 'resumeTask must not call generate endpoint');
+assert.equal(resumeTaskSource.includes('startTask('), false, 'resumeTask must not call startTask');
+assert.equal(resumeTaskSource.includes('startPolling(nextTaskId)'), true, 'resumeTask should resume polling the existing task');
 
 const dynamicSettings = normalizeVideoGenerationSettings(
   { provider: 'yunwu', model: 'veo3.1', aspectRatio: '16:9' },

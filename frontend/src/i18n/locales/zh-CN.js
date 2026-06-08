@@ -77,6 +77,8 @@ export const zh_CN = {
   'node.video.status.queuedAt': '排队中 · #{position}',
   'node.video.status.noVideo': '视频输出将显示在这里...',
   'node.video.status.noVideoUrl': '视频生成完成，但未返回视频地址。',
+  'node.video.status.queryInterrupted': '查询中断，可重新查询',
+  'node.video.resumeQuery': '重新查询',
   'node.video.advanced': '高级参数',
   'node.video.cameraControl': '摄像机控制',
   'node.video.cameraControl.endFramePriority': '尾帧具有优先级，摄像机控制将不会发送。',

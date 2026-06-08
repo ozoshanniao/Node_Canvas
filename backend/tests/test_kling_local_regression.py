@@ -327,6 +327,7 @@ class FakeKlingProvider:
         self.provider_id = provider_id
         self.created_requests = []
         self.query_responses = []
+        self.query_calls = []
 
     async def create_task(self, request):
         self.created_requests.append(request)
@@ -338,8 +339,12 @@ class FakeKlingProvider:
         }
 
     async def query_task(self, provider_task_id):
+        self.query_calls.append(provider_task_id)
         if self.query_responses:
-            return self.query_responses.pop(0)
+            response = self.query_responses.pop(0)
+            if isinstance(response, Exception):
+                raise response
+            return response
         return {"status": "running", "message": "mock running"}
 
 
@@ -543,6 +548,38 @@ class KlingEndpointRegressionTest(unittest.TestCase):
         self.assertEqual(failed.status_code, 200)
         self.assertEqual(failed.json()["data"]["status"], "error")
         self.assertEqual(failed.json()["data"]["message"], "Kling: mock failed")
+
+    def test_video_task_query_exception_marks_interrupted_and_can_resume(self):
+        create_response = self.client.post("/api/video/generate", json={
+            "projectPath": self.project_path,
+            "provider": "kling",
+            "model": "kling-v3",
+            "videoMode": "text-to-video",
+            "prompt": "Recoverable query task",
+        })
+        self.assertEqual(create_response.status_code, 200)
+        created_task = create_response.json()["data"]
+        task_id = created_task["id"]
+        provider_task_id = created_task["providerTaskId"]
+
+        self.fake_kling.query_responses.append(TimeoutError("temporary query timeout"))
+        interrupted = self.client.get(f"/api/video/tasks/{task_id}", params={"projectPath": self.project_path})
+        interrupted_task = interrupted.json()["data"]
+
+        self.assertEqual(interrupted.status_code, 200)
+        self.assertEqual(interrupted_task["status"], "interrupted")
+        self.assertEqual(interrupted_task["providerTaskId"], provider_task_id)
+        self.assertEqual(interrupted_task["outputs"]["rawCreateResponse"], {"mock": True, "provider": "kling"})
+        self.assertIn("retry querying", interrupted_task["message"])
+        self.assertIn("temporary query timeout", interrupted_task["error"])
+
+        self.fake_kling.query_responses.append({"status": "running", "message": "resumed"})
+        resumed = self.client.get(f"/api/video/tasks/{task_id}", params={"projectPath": self.project_path})
+
+        self.assertEqual(resumed.status_code, 200)
+        self.assertEqual(resumed.json()["data"]["status"], "running")
+        self.assertEqual(resumed.json()["data"]["providerTaskId"], provider_task_id)
+        self.assertEqual(self.fake_kling.query_calls[-2:], [provider_task_id, provider_task_id])
 
     def test_yunwu_kling_task_query_mock_running_success_and_failed(self):
         create_response = self.client.post("/api/video/generate", json={

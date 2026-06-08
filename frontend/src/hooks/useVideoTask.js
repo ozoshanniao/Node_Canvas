@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { isVideoTaskActive } from '../utils/videoGenerationOptions';
+import {
+  buildVideoTaskQueryInterruptedPatch,
+  buildVideoTaskResumePatch,
+  isVideoTaskActive,
+} from '../utils/videoGenerationOptions';
 
 const readJsonBody = async (response) => {
   try {
@@ -74,11 +78,8 @@ export const useVideoTask = ({ apiBaseUrl = 'http://127.0.0.1:8000', data, updat
       }
     } catch (error) {
       clearPolling();
-      setTask({
-        status: 'error',
-        progress: 0,
-        message: error instanceof Error ? error.message : 'Video task query failed.',
-      });
+      const currentTask = latestDataRef.current?.task || {};
+      setTask(buildVideoTaskQueryInterruptedPatch(currentTask, error));
     }
   }, [apiBaseUrl, applyTaskResponse, clearPolling, setTask]);
 
@@ -132,6 +133,18 @@ export const useVideoTask = ({ apiBaseUrl = 'http://127.0.0.1:8000', data, updat
     }
   }, [apiBaseUrl, applyTaskResponse, clearPolling, setTask, startPolling]);
 
+  const resumeTask = useCallback((taskId) => {
+    const currentTask = latestDataRef.current?.task || {};
+    const nextTaskId = taskId || currentTask.id;
+    if (!nextTaskId) return;
+
+    setTask(buildVideoTaskResumePatch({
+      ...currentTask,
+      id: nextTaskId,
+    }));
+    startPolling(nextTaskId);
+  }, [setTask, startPolling]);
+
   useEffect(() => {
     const taskId = data?.task?.id;
     if (taskId && isVideoTaskActive(data?.task?.status)) {
@@ -154,6 +167,7 @@ export const useVideoTask = ({ apiBaseUrl = 'http://127.0.0.1:8000', data, updat
     applyTaskResponse,
     pollTask,
     startTask,
+    resumeTask,
     startPolling,
     clearPolling,
   };

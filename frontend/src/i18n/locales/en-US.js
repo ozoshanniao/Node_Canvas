@@ -77,6 +77,8 @@ export const en_US = {
   'node.video.status.queuedAt': 'Queued · #{position}',
   'node.video.status.noVideo': 'Video output will appear here...',
   'node.video.status.noVideoUrl': 'Video generation completed, but no video URL was returned.',
+  'node.video.status.queryInterrupted': 'Query interrupted. You can resume querying.',
+  'node.video.resumeQuery': 'Resume Query',
   'node.video.advanced': 'Advanced',
   'node.video.cameraControl': 'Camera Control',
   'node.video.cameraControl.endFramePriority': 'End frame has priority. Camera Control will not be sent.',
