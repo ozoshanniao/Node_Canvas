@@ -606,6 +606,43 @@ const VIDEO_ACTIVE_TASK_STATUSES = new Set([
 
 export const isVideoTaskActive = (status) => VIDEO_ACTIVE_TASK_STATUSES.has(String(status || '').toLowerCase());
 
+export const VIDEO_QUERY_INTERRUPTED_STATUS = 'interrupted';
+
+const VIDEO_RECOVERABLE_QUERY_STATUSES = new Set([
+  VIDEO_QUERY_INTERRUPTED_STATUS,
+  'query_error',
+]);
+
+const hasVideoTaskOutput = (task = {}) =>
+  Boolean(task.outputUrl || task.videoUrl || task.localVideoUrl || task.outputs?.videoUrl);
+
+export const isVideoTaskRecoverable = (task = {}) => {
+  if (!task.id || !task.providerTaskId || hasVideoTaskOutput(task)) return false;
+  const status = String(task.status || '').toLowerCase();
+  if (VIDEO_RECOVERABLE_QUERY_STATUSES.has(status)) return true;
+  return status === 'error';
+};
+
+export const buildVideoTaskQueryInterruptedPatch = (task = {}, error) => {
+  const errorMessage = error instanceof Error
+    ? error.message
+    : String(error || 'Video task query failed.');
+
+  return {
+    ...task,
+    status: VIDEO_QUERY_INTERRUPTED_STATUS,
+    message: 'Video task query interrupted. Please retry.',
+    error: errorMessage,
+  };
+};
+
+export const buildVideoTaskResumePatch = (task = {}) => ({
+  ...task,
+  status: 'running',
+  message: 'Resuming video task query...',
+  error: '',
+});
+
 export const resolveKlingOmniElements = (omniParamsOutput) => {
   const omniElements = Array.isArray(omniParamsOutput?.elements) ? omniParamsOutput.elements : [];
   return omniElements;

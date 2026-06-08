@@ -33,7 +33,8 @@ class VideoTask(BaseModel):
     provider: str
     model: str
     videoMode: str
-    # Canonical backend statuses are queued, running, success, error, and cancelled.
+    # Canonical backend statuses are queued, running, success, error, cancelled, and interrupted.
+    # interrupted means the local query/download chain failed while the provider task may still be running.
     # Older project files may still contain frontend transitional statuses.
     status: str
     progress: int

@@ -22,6 +22,7 @@ import {
   getVideoModelConfig,
   getVideoProvider,
   isVideoTaskActive,
+  isVideoTaskRecoverable,
   isKlingOmniModel,
   isSeedanceModel,
   normalizeVideoGenerationSettings,
@@ -363,10 +364,17 @@ export function VideoNode({ id, data }) {
     });
   };
 
-  const { setTask, startTask } = useVideoTask({
+  const { setTask, startTask, resumeTask } = useVideoTask({
     data: settings,
     updateNodeData,
   });
+
+  const handleResumeQuery = useCallback((event) => {
+    event.stopPropagation();
+    setActiveMenu(null);
+    setShowAdvanced(false);
+    resumeTask(settings.task?.id);
+  }, [resumeTask, settings.task?.id]);
 
   const collectVideoInputs = useCallback(() => {
     const allNodes = getNodes();
@@ -928,6 +936,27 @@ export function VideoNode({ id, data }) {
         ? t('node.video.status.queuedAt', { position: settings.task.queuePosition })
         : t('node.video.status.queued');
       return <div className="text-sm font-light text-white/35">{queueText}</div>;
+    }
+
+    if (isVideoTaskRecoverable(settings.task)) {
+      const interruptedMessage = settings.task.message || t('node.video.status.queryInterrupted');
+      return (
+        <div className="flex flex-col items-center gap-3 px-6 text-center">
+          <div
+            className="line-clamp-3 text-sm font-light text-amber-200/80"
+            title={interruptedMessage}
+          >
+            {t('node.video.status.queryInterrupted')}
+          </div>
+          <button
+            type="button"
+            onClick={handleResumeQuery}
+            className="nodrag rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs text-white/70 transition-colors hover:border-white/25 hover:bg-white/15 hover:text-white"
+          >
+            {t('node.video.resumeQuery')}
+          </button>
+        </div>
+      );
     }
 
     if (settings.task?.status === 'error') {

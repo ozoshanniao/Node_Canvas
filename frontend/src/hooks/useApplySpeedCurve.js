@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
 import { sampleBezier } from '../lib/easingFunctions.js';
 
-const MAX_PERSISTENT_OUTPUT_BYTES = 20 * 1024 * 1024;
 const DEFAULT_FPS = 24;
+const API_BASE_URL = 'http://127.0.0.1:8000';
 
 const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -224,22 +224,47 @@ export const applySpeedCurveAsync = async ({
   }
 };
 
-export const persistOutputVideo = async (blob) => {
-  if (blob.size > MAX_PERSISTENT_OUTPUT_BYTES) {
-    return {
-      url: URL.createObjectURL(blob),
-      warning: 'Large Easy Curve output is stored as a temporary browser blob URL. Re-run after reload if needed.',
-    };
+const extensionForBlob = (blob) => {
+  if (blob.type === 'video/webm') return 'webm';
+  if (blob.type === 'video/quicktime') return 'mov';
+  return 'mp4';
+};
+
+export const persistOutputVideo = async ({
+  blob,
+  nodeId,
+  projectPath,
+  runRequestId,
+}) => {
+  if (!projectPath) {
+    throw new Error('Easy Curve output requires an active project path.');
+  }
+  if (!nodeId) {
+    throw new Error('Easy Curve output requires a node id.');
   }
 
-  const dataUrl = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Unable to persist Easy Curve output.'));
-    reader.readAsDataURL(blob);
+  const formData = new FormData();
+  const outputExtension = extensionForBlob(blob);
+  formData.append('projectPath', projectPath);
+  formData.append('nodeId', nodeId);
+  formData.append('runRequestId', runRequestId);
+  formData.append('file', blob, `ease_curve.${outputExtension}`);
+
+  const response = await fetch(`${API_BASE_URL}/api/generation/ease-curve`, {
+    method: 'POST',
+    body: formData,
   });
 
-  return { url: dataUrl, warning: null };
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body?.detail || `Unable to persist Easy Curve output: HTTP ${response.status}`);
+  }
+
+  return {
+    path: body?.data?.path || '',
+    url: body?.data?.url || '',
+    warning: null,
+  };
 };
 
 export const useApplySpeedCurve = () =>

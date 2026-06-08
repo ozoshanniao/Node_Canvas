@@ -57,15 +57,23 @@ export const sanitizeNodesForSave = (nodes = []) =>
       delete data.url;
     }
 
-    if (node.type === 'easeCurveNode' && data.outputVideo?.startsWith?.('blob:')) {
+    if (node.type === 'easeCurveNode' && (
+      data.outputVideo?.startsWith?.('blob:') ||
+      data.outputVideo?.startsWith?.('data:video/')
+    )) {
+      const isDataVideo = data.outputVideo.startsWith('data:video/');
       console.warn('[project:save easy curve warning]', {
         nodeId: node.id,
         type: node.type,
-        reason: 'blob URL is not persistent and will not be saved as outputVideo',
+        reason: isDataVideo
+          ? 'inline video data is not saved as outputVideo'
+          : 'blob URL is not persistent and will not be saved as outputVideo',
         preview: data.outputVideo.slice(0, 80),
       });
       delete data.outputVideo;
-      data.outputVideoWarning = 'Temporary Easy Curve output is not saved. Apply the curve again after reload.';
+      data.outputVideoWarning = isDataVideo
+        ? 'Inline Easy Curve output was not saved. Apply the curve again to store it as a project file.'
+        : 'Temporary Easy Curve output is not saved. Apply the curve again after reload.';
       data.status = data.status === 'running' ? 'idle' : data.status;
     }
 

@@ -5,6 +5,7 @@ import base64
 import uuid
 import asyncio
 import mimetypes
+import re
 import tkinter as tk
 import base64
 from tkinter import filedialog
@@ -12,7 +13,7 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -29,6 +30,11 @@ from llm.skills.loader import public_soft_skills, scan_soft_skills
 from video_generation.schemas import VideoGenerateRequest
 from video_generation.service import VideoGenerationService
 from engines.specs import get_frontend_specs # 馃専 寮曞叆鑳藉姏澶ф睜瀛?
+from generation_media import (
+    guess_generation_content_type,
+    resolve_generation_path,
+    save_ease_curve_generation_file,
+)
 
 load_dotenv()
 from engines.google_engine import GoogleEngine
@@ -344,6 +350,49 @@ INPUT_MIME_FALLBACKS = {
 }
 
 
+def _parse_multipart_header_value(header: str, key: str) -> str:
+    match = re.search(rf'{key}="([^"]*)"', header)
+    return match.group(1) if match else ""
+
+
+def _parse_ease_curve_multipart(body: bytes, content_type: str) -> dict[str, Any]:
+    boundary_match = re.search(r"boundary=([^;]+)", content_type or "")
+    if not boundary_match:
+        raise ValueError("multipart boundary is required")
+
+    boundary = boundary_match.group(1).strip().strip('"').encode("utf-8")
+    fields: dict[str, Any] = {}
+    for part in body.split(b"--" + boundary):
+        part = part.strip(b"\r\n")
+        if not part or part == b"--":
+            continue
+        if part.endswith(b"--"):
+            part = part[:-2].rstrip(b"\r\n")
+        header_bytes, separator, value = part.partition(b"\r\n\r\n")
+        if not separator:
+            continue
+        headers = header_bytes.decode("utf-8", errors="replace")
+        disposition = next(
+            (line for line in headers.split("\r\n") if line.lower().startswith("content-disposition:")),
+            "",
+        )
+        name = _parse_multipart_header_value(disposition, "name")
+        if not name:
+            continue
+        if name == "file":
+            fields["file"] = value[:-2] if value.endswith(b"\r\n") else value
+            fields["filename"] = _parse_multipart_header_value(disposition, "filename")
+            content_type_header = next(
+                (line for line in headers.split("\r\n") if line.lower().startswith("content-type:")),
+                "",
+            )
+            fields["contentType"] = content_type_header.split(":", 1)[1].strip() if ":" in content_type_header else ""
+        else:
+            text_value = value[:-2] if value.endswith(b"\r\n") else value
+            fields[name] = text_value.decode("utf-8", errors="replace")
+    return fields
+
+
 def guess_input_content_type(filename: str) -> str:
     suffix = Path(filename).suffix.lower()
     if suffix in INPUT_MIME_FALLBACKS:
@@ -352,6 +401,57 @@ def guess_input_content_type(filename: str) -> str:
     if guessed:
         return guessed
     return "application/octet-stream"
+
+
+@app.get("/api/generation/{subpath:path}")
+async def get_generation_file(subpath: str, projectPath: Optional[str] = None):
+    base_path = projectPath or CURRENT_PROJECT_PATH
+    try:
+        file_path = resolve_generation_path(base_path, subpath)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Generation file not found")
+
+    response = FileResponse(file_path, media_type=guess_generation_content_type(file_path.name))
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
+    return response
+
+
+@app.post("/api/generation/ease-curve")
+async def save_ease_curve_generation(request: Request):
+    try:
+        form = _parse_ease_curve_multipart(await request.body(), request.headers.get("content-type", ""))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    projectPath = form.get("projectPath")
+    nodeId = form.get("nodeId")
+    runRequestId = form.get("runRequestId")
+    file_bytes = form.get("file")
+    if not projectPath or not nodeId or not runRequestId or not file_bytes:
+        raise HTTPException(status_code=400, detail="projectPath, nodeId, runRequestId and file are required")
+
+    try:
+        result = save_ease_curve_generation_file(
+            projectPath,
+            nodeId,
+            runRequestId,
+            form.get("filename", ""),
+            file_bytes,
+            form.get("contentType", ""),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save Easy Curve output: {e}")
+
+    return {
+        "status": "success",
+        "data": result,
+    }
 
 
 # 新增：保存图片/音频到 input 目录

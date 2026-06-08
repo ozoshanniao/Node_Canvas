@@ -134,7 +134,13 @@ export const getNodeVideoOutput = (node, sourceHandle, edge, nodes = [], edges =
   }
 
   if (node.type === 'easeCurveNode') {
-    return node.data?.outputVideo ? [node.data.outputVideo] : [];
+    const candidates = [
+      node.data?.outputVideoPath,
+      node.data?.outputVideoUrl,
+      node.data?.videoUrl,
+      node.data?.outputVideo,
+    ];
+    return candidates.filter(Boolean).slice(0, 1);
   }
 
   if (node.type === 'routeNode') {
