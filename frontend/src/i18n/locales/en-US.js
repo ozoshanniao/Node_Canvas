@@ -219,6 +219,7 @@ export const en_US = {
 
   // EaseCurveNode
   'node.easeCurve.error.noVideoInput': 'Connect a video input before applying Easy Curve.',
+  'node.easeCurve.error.outputMissing': 'Output video file not found. Please apply the curve again.',
   'node.easeCurve.label': 'Easy Curve',
   'node.easeCurve.preview': 'SPEED REMAP PREVIEW',
   'node.easeCurve.connectVideoInput': 'Connect a video input',

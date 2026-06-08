@@ -3,7 +3,12 @@ import { useI18n } from '../hooks/useI18n';
 import { Handle, Position, useEdges, useNodes, useReactFlow } from '@xyflow/react';
 import { NodeResizeCorner } from '../components/NodeResizeCorner.jsx';
 import { EaseCurveControls } from '../components/EaseCurveControls.jsx';
-import { detectSpeedCurveEncoderSupport, persistOutputVideo, useApplySpeedCurve } from '../hooks/useApplySpeedCurve.js';
+import {
+  detectSpeedCurveEncoderSupport,
+  EMPTY_EASE_CURVE_OUTPUT_FIELDS,
+  persistOutputVideo,
+  useApplySpeedCurve,
+} from '../hooks/useApplySpeedCurve.js';
 import { DEFAULT_EASE_CURVE_DATA, getEasingPresetHandles, normalizeEasingPresetId } from '../lib/easingPresets.js';
 import { normalizeBezierHandles } from '../lib/easingFunctions.js';
 import { getNodeEaseCurveOutput, getNodeVideoOutput } from '../utils/nodeOutputs.js';
@@ -39,6 +44,7 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
   const flowNodes = useNodes();
   const applySpeedCurve = useApplySpeedCurve();
   const lastRunRequestRef = useRef(data?.runRequestId);
+  const clearedMissingOutputRef = useRef(null);
   const [videoAspect, setVideoAspect] = useState(null);
 
   const mergedData = useMemo(
@@ -139,7 +145,11 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
   const handleApply = useCallback(async () => {
     const sourceVideo = incoming.sourceVideo;
     if (!sourceVideo) {
-      updateData({ status: 'error', error: t('node.easeCurve.error.noVideoInput') });
+      updateData({
+        ...EMPTY_EASE_CURVE_OUTPUT_FIELDS,
+        status: 'error',
+        error: t('node.easeCurve.error.noVideoInput'),
+      });
       return;
     }
 
@@ -148,6 +158,7 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
       const projectPath = mergedData.projectPath || data?.projectPath || window.currentProjectPath || '';
       lastRunRequestRef.current = runRequestId;
       updateData({
+        ...EMPTY_EASE_CURVE_OUTPUT_FIELDS,
         status: 'running',
         error: null,
         progress: 1,
@@ -183,6 +194,7 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
       });
     } catch (error) {
       updateData({
+        ...EMPTY_EASE_CURVE_OUTPUT_FIELDS,
         status: 'error',
         error: error?.message || String(error),
         progress: 0,
@@ -200,9 +212,18 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
   const outputVideo = mergedData.outputVideoPath || mergedData.outputVideoUrl || mergedData.videoUrl || mergedData.outputVideo;
   const resolvedOutputVideo = resolveMediaUrl(outputVideo, mergedData.projectPath || data?.projectPath);
   const previewVideo = resolvedOutputVideo || incoming.sourceVideo;
+  const isPreviewingPersistedOutput = Boolean(
+    resolvedOutputVideo &&
+    previewVideo === resolvedOutputVideo &&
+    (mergedData.outputVideoPath || mergedData.outputVideoUrl || mergedData.videoUrl)
+  );
   const panelOpen = Boolean(selected || mergedData.expanded);
 
   const activeVideoAspect = videoAspect?.src === previewVideo ? videoAspect.value : null;
+
+  useEffect(() => {
+    clearedMissingOutputRef.current = null;
+  }, [resolvedOutputVideo]);
 
   const handleLoadedMetadata = useCallback((event) => {
     const video = event.currentTarget;
@@ -210,6 +231,19 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
       setVideoAspect({ src: previewVideo, value: video.videoWidth / video.videoHeight });
     }
   }, [previewVideo]);
+
+  const handleVideoError = useCallback(() => {
+    if (!isPreviewingPersistedOutput || !previewVideo) return;
+    if (clearedMissingOutputRef.current === previewVideo) return;
+    clearedMissingOutputRef.current = previewVideo;
+    updateData({
+      ...EMPTY_EASE_CURVE_OUTPUT_FIELDS,
+      status: 'error',
+      error: t('node.easeCurve.error.outputMissing'),
+      progress: 0,
+      outputVideoWarning: null,
+    });
+  }, [isPreviewingPersistedOutput, previewVideo, t, updateData]);
 
   return (
     <div className="relative h-full min-h-[240px] w-full min-w-[320px] select-none text-white group">
@@ -233,6 +267,7 @@ export const EaseCurveNode = memo(function EaseCurveNode({ id, data, selected })
                 muted
                 playsInline
                 onLoadedMetadata={handleLoadedMetadata}
+                onError={handleVideoError}
               />
             </div>
           ) : (

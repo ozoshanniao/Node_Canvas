@@ -4,6 +4,14 @@ import { sampleBezier } from '../lib/easingFunctions.js';
 const DEFAULT_FPS = 24;
 const API_BASE_URL = 'http://127.0.0.1:8000';
 
+export const EMPTY_EASE_CURVE_OUTPUT_FIELDS = {
+  outputVideoPath: null,
+  outputVideoUrl: null,
+  videoUrl: null,
+  outputVideo: null,
+  base64Video: null,
+};
+
 const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 const loadVideo = async (url) => {

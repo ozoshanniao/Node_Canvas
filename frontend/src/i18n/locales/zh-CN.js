@@ -219,6 +219,7 @@ export const zh_CN = {
 
   // EaseCurveNode
   'node.easeCurve.error.noVideoInput': '应用 Easy Curve 前请先连接视频输入。',
+  'node.easeCurve.error.outputMissing': '输出视频文件不存在，请重新应用曲线',
   'node.easeCurve.label': '速度曲线',
   'node.easeCurve.preview': '速度映射预览',
   'node.easeCurve.connectVideoInput': '请连接视频输入',
