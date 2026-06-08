@@ -29,7 +29,7 @@ from llm.service import LLMService
 from llm.skills.loader import public_soft_skills, scan_soft_skills
 from video_generation.schemas import VideoGenerateRequest
 from video_generation.service import VideoGenerationService
-from engines.specs import get_frontend_specs # 馃専 寮曞叆鑳藉姏澶ф睜瀛?
+from engines.specs import get_frontend_specs  # Frontend engine capability specs
 from generation_media import (
     guess_generation_content_type,
     resolve_generation_path,
@@ -41,7 +41,7 @@ from engines.google_engine import GoogleEngine
 from engines.yunwu_engine import YunwuEngine
 
 
-# 瀹炰緥鍖栧紩鎿庯紝浠ュ悗瑕佹崲鎴愪腑杞晢锛屽彧闇€鍦ㄨ繖閲屾崲涓被鍚?
+# Engine instances
 engines = {
     "Google": GoogleEngine(api_key=os.getenv("GOOGLE_CLOUD_API_KEY")),
     "Yunwu": YunwuEngine(api_key=os.getenv("YUNWU_API_KEY")) 
@@ -60,24 +60,24 @@ video_generation_service = VideoGenerationService(
     yunwu_api_key=os.getenv("YUNWU_API_KEY"),
 )
 
-# --- 1. 鏁版嵁妯″瀷涓庡叏灞€閰嶇疆 ---
+# Data models and global config
 class Position(BaseModel):
     x: float
     y: float
 
 class NodeData(BaseModel):
-    model_config = ConfigDict(extra='ignore') # 馃専 鏍稿績琛ヤ竵锛氬拷鐣ュ墠绔浼犵殑鏃犲叧瀛楁
+    model_config = ConfigDict(extra='ignore')
 
     id: str
     type: str
-    position: Optional[Position] = None  # 馃専 鏍稿績锛氬繀椤诲湪杩欓噷娣诲姞 position 瀛楁
-    width: Optional[float] = None        # 馃専 蹇呴』鏈夊搴﹀瓧娈?
-    height: Optional[float] = None       # 馃専 蹇呴』鏈夐珮搴﹀瓧娈?
+    position: Optional[Position] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
     groupId: Optional[str] = None
     data: Dict[str, Any]
 
 class EdgeData(BaseModel):
-    model_config = ConfigDict(extra='ignore') # 馃専 鍚屾牱缁欒繛绾挎ā鍨嬩篃鍔犱笂
+    model_config = ConfigDict(extra='ignore')
 
     id: str
     source: str
@@ -91,7 +91,7 @@ class WorkflowPayload(BaseModel):
     nodes: List[NodeData]
     edges: List[EdgeData]
     imageInputs: Optional[List[Any]] = []
-    projectPath: Optional[str] = None # 馃専 鍏佽涓虹┖锛屽苟鍦ㄩ€昏緫涓牎楠岋紝闃叉 422
+    projectPath: Optional[str] = None
 
 class ProjectConfig(BaseModel):
     path: str
@@ -102,18 +102,14 @@ class ProjectConfig(BaseModel):
     groups: Optional[Dict[str, Any]] = {}
     viewport: Optional[Dict[str, Any]] = None
 
-# 鍏ㄥ眬鍙橀噺閿佸畾褰撳墠椤圭洰锛岀敤浜庡姩鎬佸浘鐗囪鍙?
+# Current project path used by media endpoints.
 CURRENT_PROJECT_PATH = None
 
-# --- 2. 鍒濆鍖?Gemini 瀹㈡埛绔?---
 client = genai.Client(
     vertexai=True,
     api_key=os.getenv("GOOGLE_CLOUD_API_KEY")
 )
 
-# --- 3. 鏍稿績鍔熻兘鍑芥暟 ---
-
-# --- 4. FastAPI 璺敱 ---
 app = FastAPI()
 
 app.add_middleware(
@@ -129,7 +125,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 馃専 椤圭洰鍒濆鍖栵細鍒涘缓鏂囦欢澶瑰拰 project.json
+# Initialize a project directory and project.json.
 @app.post("/api/project/init")
 async def init_project(config: ProjectConfig):
     global CURRENT_PROJECT_PATH
@@ -137,15 +133,15 @@ async def init_project(config: ProjectConfig):
         abs_path = os.path.abspath(config.path)
         os.makedirs(abs_path, exist_ok=True)
         
-        # 鍒涘缓鍥剧墖瀛樻斁瀛愮洰褰?
+        # Create generated media directory.
         gen_dir = os.path.join(abs_path, "generation")
         os.makedirs(gen_dir, exist_ok=True)
 
-        # 鍒涘缓 input 鐩綍鐢ㄤ簬鐢ㄦ埛涓婁紶鍜屾淳鐢熷浘鐗?
+        # Create input media directory.
         input_dir = os.path.join(abs_path, "input")
         os.makedirs(input_dir, exist_ok=True)
         
-        # 鍒涘缓/璇诲彇 project.json
+        # Create or read project.json.
         project_file = os.path.join(abs_path, "project.json")
         existing_data = {"projectName": os.path.basename(abs_path) or "Untitled Project", "nodes": [], "edges": [], "groups": {}, "viewport": None}
         
@@ -164,8 +160,7 @@ async def init_project(config: ProjectConfig):
 @app.get("/api/model-specs")
 async def get_specs():
     """
-    馃専 鍓嶇鍚姩鏃朵細璋冪敤姝ゆ帴鍙ｏ紝
-    鏍规嵁杩斿洖鐨勫瓧鍏稿姩鎬佺敓鎴?ImageNode 鐨勪笅鎷夎彍鍗曞拰婊戝潡銆?
+    Return frontend engine capability specs.
     """
     return get_frontend_specs()
 
@@ -249,14 +244,14 @@ async def list_llm_skills(projectPath: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 馃専 鑷姩淇濆瓨鎺ュ彛
+# Save project data.
 @app.post("/api/project/save")
 async def save_project(config: ProjectConfig):
     if not config.path: return
     project_file = config.projectFilePath or os.path.join(config.path, "project.json")
     project_dir = os.path.dirname(project_file) or config.path
     os.makedirs(project_dir, exist_ok=True)
-    # 灏嗘ā鍨嬭浆鎹负瀛楀吀淇濆瓨
+    # Convert models to dictionaries for persistence.
     data = {
         "projectName": config.projectName or Path(project_file).stem or os.path.basename(config.path) or "Untitled Project",
         "nodes": [n.model_dump() for n in config.nodes],
@@ -282,10 +277,9 @@ async def select_project_file():
     root = tk.Tk()
     root.withdraw()
     root.attributes('-topmost', True)
-    root.update() # 寮哄埗鍒锋柊锛岀‘淇濈獥鍙ｈ兘璺冲嚭鏉?
+    root.update()
     
-    # 馃専 鍏抽敭淇敼锛氫粠 askdirectory 鏀逛负 askopenfilename
-    # 杩欐牱鎵嶄細鏄剧ず鏂囦欢锛屽苟涓旀垜浠缃簡鍙湅 .json
+    # Select a project JSON file.
     file_path = filedialog.askopenfilename(
         title="oZo | Select Project JSON",
         filetypes=[("JSON files", "*.json")] 
@@ -295,20 +289,20 @@ async def select_project_file():
     if not file_path:
         return {"projectPath": None, "content": None}
 
-    # 鑷姩鑾峰彇璇?JSON 鎵€鍦ㄧ殑鏂囦欢澶硅矾寰?
+    # Use the selected JSON file's directory as the project directory.
     project_dir = os.path.dirname(file_path)
 
-    # 馃専 鍏抽敭锛氬悓姝ュ叏灞€鍙橀噺锛屽惁鍒欏悗缁浘鐗囨棤娉曟樉绀?
+    # Keep media endpoints aligned with the loaded project.
     global CURRENT_PROJECT_PATH
     CURRENT_PROJECT_PATH = project_dir
     
-    # 璇诲彇璇?JSON 鐨勫唴瀹圭洿鎺ヤ紶缁欏墠绔?
+    # Return project JSON content to the frontend.
     with open(file_path, "r", encoding="utf-8") as f:
         content = json.load(f)
 
     return {"projectPath": project_dir, "projectFilePath": file_path, "content": content}
 
-# 馃専 鍔ㄦ€佸浘鐗囦唬鐞嗭細璇诲彇椤圭洰璺緞涓嬬殑鐢熸垚鍥剧墖
+# Serve generated images from the current project.
 @app.get("/api/image/{filename}")
 async def get_image(filename: str, projectPath: Optional[str] = None):
     base_path = projectPath or CURRENT_PROJECT_PATH
