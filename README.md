@@ -1,350 +1,284 @@
+<p align="center">
+  <a href="./README.zh-CN.md">简体中文</a> · <strong>English</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
+  <img src="https://img.shields.io/badge/React_Flow-FF0072?style=for-the-badge&logo=react&logoColor=white" alt="React Flow" />
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License" />
+</p>
+
 # Node-AI-Canvas
 
-[中文说明](./README.zh-CN.md)
+## Hero Introduction
 
-Node-AI-Canvas is a node-based AI workflow canvas for composing text, image, and video generation pipelines. It provides an intuitive visual interface to link various AI models and services together, enabling users to prototype, experiment, and run complex generative workflows seamlessly.
+Node-AI-Canvas is a multimodal AI node canvas for building creative workflows across text, image, video, annotation, spatial preview, and motion control. It provides an intuitive visual interface to link various AI models and services together, enabling users to prototype, experiment, and run complex generative workflows seamlessly.
 
----
+## Feature Highlights
 
-## Features
+### Canvas Workflow
+Drag, drop, and connect nodes to define custom pipelines. Save and load projects locally.
 
-The platform currently supports the following core capabilities:
-- **Node-Based Visual Workflow Canvas**: Drag, drop, and connect nodes to define custom pipelines.
-- **Rich Multi-Modal Nodes**: Includes nodes for text input, image input, image processing, and video generation.
-- **LLM Processor Node**: An advanced node for processing language tasks, with flexible configuration parameters.
-- **DeepSeek Official Support**: Integration with official DeepSeek endpoints for reliable LLM services.
-- **Local Soft Skills**: Enhance prompts dynamically using prompt-injection modules defined in local `SKILL.md` files (exclusively supported by DeepSeek Official).
-- **Kling / Yunwu Kling Video Generation**: Powerful video generation support using both the official Kling API and Yunwu services.
-- **Image-to-Video and Multi-Frame Workflows**: Build complex video tasks including image-to-video, first-frame, and end-frame (tail frame) pipelines.
-- **Local Project Save/Load**: Save your workflow canvas locally as standard JSON files and load them back at any time.
-- **Decoupled Architecture**: Built on a modular Python FastAPI backend and a responsive React/Vite frontend.
+### Text & LLM
+Advanced LLM nodes for processing language tasks with flexible configuration, prompt enhancement, and official DeepSeek support.
 
----
+### Image & Annotation
+Nodes for image input, generation, and annotation.
 
-## Project Structure
+### Video Generation
+Support for video generation including text-to-video, image-to-video, and multi-frame workflows (start frame, end frame).
 
-The project is structured into three main parts:
+### Spatial & Motion
+Spatial preview and motion control with specialized nodes like AR720, Panorama360, and EaseCurve.
 
-```text
-Node-AI-Canvas/
-├── backend/            # Python API Service (FastAPI / Engines)
-│   ├── llm/            # LLM-specific logic and integration
-│   ├── video_generation/# Video generation providers & payload engines
-│   └── tests/          # Python backend unit tests
-├── frontend/           # React + Vite canvas UI
-│   └── src/            # Core React codebase & custom nodes
-├── skills/             # Global directory for Local Soft Skills
-└── README.md           # Root documentation (this file)
-```
+### Settings & Security
+Manage provider API keys securely with user settings and environment variables, backed by a strict security model.
 
-- **`frontend/`**: A React/Vite-based canvas UI built using modern React Flow (`@xyflow/react`) for highly interactive node editing.
-- **`backend/`**: A Python backend service handling API orchestration, authentication, schema validation, and communication with AI providers.
-- **`skills/`**: A central registry for prompt-injection module definitions (Local Soft Skills).
+## Screenshots / Demo Placeholder
 
----
+> Screenshot / demo GIF coming soon.
 
-## Requirements
+## Quick Start
 
-Before setting up the project, make sure you have the following prerequisites installed:
-- **Node.js**: Recommended version 18.x or 20.x
-- **npm**: Package manager included with Node.js
-- **Python**: Version 3.10 or higher
-- **pip**: Python package installer
-
----
+Ensure you have Node.js 18 / 20 LTS, Python 3.10+, and npm installed. The platform works on Windows, macOS, and Linux.
 
 ## Installation
 
-### 1. Frontend
-Navigate to the frontend directory and install the required npm dependencies:
+### Environment Requirements
+- Node.js 18 / 20 LTS
+- Python 3.10+
+- npm
+- Windows / macOS / Linux
+
+### Get the Code
 ```bash
-cd frontend
-npm install
+git clone https://github.com/ozoshanniao/Node_Canvas.git
+cd Node-AI-Canvas
 ```
 
-### 2. Backend
-Navigate to the root or backend directory and install the Python dependencies listed in the root `requirements.txt`:
+### Backend Installation
+
+Navigate to the backend directory and set up the Python virtual environment:
+```bash
+cd backend
+python -m venv .venv
+```
+
+Activate the virtual environment:
+
+**Windows PowerShell:**
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+**macOS / Linux:**
+```bash
+source .venv/bin/activate
+```
+
+Install the dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
----
+### Frontend Installation
 
-## Environment Variables
-
-To configure backend services, create a `.env` file inside the `backend` directory. Do not commit this file to version control.
-
-```text
-backend/.env
-```
-
-You can use the following variables as a template (refer to `backend/.env.example` for details):
-
-```env
-# Google Cloud / Vertex AI (Google GenAI)
-GOOGLE_CLOUD_API_KEY=your_google_cloud_api_key
-GOOGLE_CLOUD_PROJECT=your_project_id
-GOOGLE_CLOUD_LOCATION=us-central1
-
-# Yunwu AI API
-YUNWU_API_KEY=your_yunwu_api_key
-YUNWU_BASE_URL=https://yunwu.ai
-YUNWU_KLING_PATH_PREFIX=/kling
-
-# DeepSeek Official API
-DEEPSEEK_API_KEY=your_deepseek_api_key
-
-# Official Kling API
-KLING_ACCESS_KEY=your_kling_access_key
-KLING_SECRET_KEY=your_kling_secret_key
-KLING_API_BASE=https://api-beijing.klingai.com
-```
-
-> [!WARNING]
-> Keep your API keys private. Never commit the `.env` file or expose actual credentials in public repositories.
-
----
-
-## Running Locally
-
-### All-in-One Dev Start (Recommended)
-You can start both the frontend Vite dev server and the backend Python service concurrently using a single command from the `frontend` folder:
+Navigate to the frontend directory and install dependencies:
 ```bash
-cd frontend
-npm run dev
+cd ../frontend
+npm install
 ```
-By default, the Vite frontend will run on the port outputted by Vite (typically `http://localhost:5174` or `http://localhost:5173`).
 
----
+## Running the App
 
-### Manual / Separate Startup
-
-If you prefer to run the services in separate terminals:
-
-**Backend Service:**
-```bash
-cd backend
-python main.py
-```
-*(Runs the Python backend server, by default listening on `http://127.0.0.1:8000`)*
-
-**Frontend App:**
+### Recommended Way
+Start both frontend and backend concurrently from the frontend directory:
 ```bash
 cd frontend
 npm run dev
 ```
 
----
+### Manual Way
+You can run the backend and frontend separately.
 
-## Local Soft Skills
-
-Local Soft Skills are prompt-injection based modules loaded from `SKILL.md` files at runtime. They allow users to quickly refine or format prompts without hardcoded configurations.
-
-### Directory Resolution
-The application searches for local soft skills in two locations:
-1. **Global Skills**: Under `skills/<skill-id>/SKILL.md` in the project root.
-2. **Project-Specific Skills**: Under `<projectPath>/.node-canvas/skills/<skill-id>/SKILL.md` within your active project workspace.
-
-### Naming Conventions (Skill ID Rules)
-To ensure compatibility, skill directory names (which determine their ID) must follow these rules:
-- Must contain only **lowercase letters**, **numbers**, **hyphens** (`-`), and **underscores** (`_`).
-- **No spaces** allowed.
-- **No Chinese characters** or special punctuation allowed in folder names.
-
-*Example Directory Structure:*
-```text
-skills/
-└── prompt-refiner/
-    └── SKILL.md
-```
-
-### `SKILL.md` Template Example
-The file should begin with a top-level Heading 1 for the skill's name, followed by its prompt context:
-```markdown
-# Prompt Refiner
-
-Rewrite rough user input into a clean, concise prompt while preserving the user intent.
-```
-
-### Key Notes
-* **Override Logic**: Project-level skills override global skills with the exact same ID.
-* **DeepSeek Exclusive**: Currently, **only DeepSeek Official** supports Local Soft Skills prompt injections.
-* **Stateless Projects**: Enabled skill IDs are stored within `project.json` for reference, but the contents of `SKILL.md` are **never** copied or written into project files.
-* **Soft Injection**: These are prompt-based templates and **do not** run any code or perform tool/agent function execution.
-
----
-
-## DeepSeek Official
-
-Integration with official DeepSeek models:
-- **Authentication**: Uses `DEEPSEEK_API_KEY` for request authentication.
-- **Supported Capabilities**: Focuses on high-quality text generation tasks.
-- **Thinking Control**: Supports optional thinking/reasoning control configurations if provided in the node details.
-- **Local Skills**: Fully compatible with the Local Soft Skills prompt framework.
-- **Limitation**: Image input capabilities are not supported for DeepSeek Official in this application.
-
----
-
-## Kling Video Generation
-
-Advanced video generation powered by Kling AI:
-- **Authentication**: Official Kling uses JSON Web Token (JWT) authentication, computed securely from `KLING_ACCESS_KEY` and `KLING_SECRET_KEY`.
-- **Workflows Supported**:
-  - **Text-to-Video**: Standard text prompt generation.
-  - **Image-to-Video**: Seed generations from a starting image.
-  - **Tail-Frame Workflow**: Supports both start frame (`image`) and end frame (`image_tail`) tasks.
-- **Pro Mode Requirements**: For Kling V2.6, utilizing the tail frame (`image_tail` / end frame) requires **Pro Mode** to be active.
-- **Adaptive Preview**: The `VideoNode` UI dynamically adapts its layout and display size according to video metadata or the input image's aspect ratio.
-
----
-
-## Public Asset Storage (R2 / TOS Configuration)
-
-The platform supports uploading local media assets to a publicly accessible object storage service (Cloudflare R2 or Volcengine TOS). This enables external services like the official Seedance API to read and fetch input assets. This feature acts as a temporary public transit point and is not intended for "permanent public" storage.
-
-### 1. Background & Mechanism
-When the official Seedance API cannot directly read local private files, Node-AI-Canvas will upload the assets to a public object storage bucket first, and then pass the generated public URL to Seedance.
-
-### 2. Complete Data & Configuration Flow
-```text
-Settings UI
-→ appSettings.publicAssetStorage
-→ VideoNode payload.publicAssetStorage
-→ backend VideoGenerateRequest.publicAssetStorage
-→ VideoGenerationService
-→ SeedanceOfficialProvider
-→ seedance_official/assets.py
-→ PublicAssetService.ensure_public_url(..., storage_provider=...)
-→ R2PublicAssetBackend / TOSPublicAssetBackend
-→ Publicly Accessible Asset URL
-→ Seedance Official API
-```
-
-### 3. Frontend Settings
-The Frontend Settings UI offers three public asset storage configurations:
-- **Backend .env Default**: Does not override backend configurations; uses the default `PUBLIC_ASSET_STORAGE` specified in `backend/.env`.
-- **Cloudflare R2**: Forces the current video generation task to use Cloudflare R2 for asset storage.
-- **Volcengine TOS**: Forces the current video generation task to use Volcengine TOS for asset storage.
-
-> [!IMPORTANT]
-> **Security by Design**: The frontend never saves, displays, or transmits any cloud storage credentials (such as Access Keys, Secret Keys, Tokens, etc.). All credentials (Access Key ID, Secret Access Key, Bucket, Endpoint, and Public Domain) must be configured securely on the backend in `backend/.env`.
-
-### 4. Optimized Transmission & Scope of Impact
-- **Scope of Impact**: The `publicAssetStorage` setting only affects assets that must be resolved to a public URL. It **does not affect** the following existing flows:
-  - Small images optimized using the `Base64-first` rule.
-  - Small audio files optimized using the `Base64-first` rule.
-  - Last-frame (`lastFrame`) download logic.
-  - Existing Kling or Yunwu Kling generation flows.
-
-- **Base64-first Rules**:
-  - **Images**: If a single original image is `<= 10MB` and the total size of all input images is `<= 40MB`, the system will prioritize converting them into Base64 strings embedded directly in the API payload, avoiding any cloud storage uploads.
-  - **Audio**: If the audio is in `wav`/`mp3` format and the file size is `<= 15MB`, it will be converted into a Base64 string directly inside the payload.
-  - **Video Reference**: Since video references are typically large and do not support Base64 transmission, they **will always trigger public asset storage** (R2 or TOS) to obtain a public URL.
-
-### 5. Cloud Storage Parameters & Permission Requirements
-
-#### Volcengine TOS Parameter Details
-- **`VOLCENGINE_TOS_ENDPOINT`**: Used for backend S3-compatible PUT uploads. Recommended for Beijing region: `tos-s3-cn-beijing.volces.com`.
-- **`VOLCENGINE_TOS_PUBLIC_DOMAIN`**: Used to build the public URL passed to Seedance. You can use the Bucket public domain, e.g., `https://node-canvas-seedance.tos-cn-beijing.volces.com`.
-  > [!WARNING]
-  > **Note**: Do not call the Bucket public domain a CDN domain unless a CDN or custom acceleration domain is explicitly bound in the Volcengine console.
-
-#### Permission Requirements
-- The Bucket **must be configured as "Public-Read" (Public Read)**, otherwise external services like Seedance will not be able to download the assets.
-- **"Public-Read-Write" is strictly prohibited** for security reasons to prevent unauthorized write access or resource exhaustion.
-- **Recommended Permission Model**: Public Read / Private Write.
-
-#### Lifecycle Rules Recommendations
-It is highly recommended to configure a lifecycle rule in your cloud console (TOS / R2) to automatically clean up expired assets and avoid unnecessary costs:
-- **Prefix Filter**: Limit the rule strictly to `node-canvas/seedance-input/`.
-- **Cleanup Rule**: Automatically delete files `5` days after their last modified date.
-  > [!CAUTION]
-  > Do not configure a global deletion rule on the entire Bucket to avoid accidentally deleting other persistent files.
-
-### 6. Backend Configuration Example (`backend/.env`)
-
-#### Cloudflare R2 Configuration Example
-```env
-PUBLIC_ASSET_STORAGE=r2
-PUBLIC_ASSET_PREFIX=node-canvas/seedance-input/
-PUBLIC_ASSET_RETENTION_DAYS=5
-PUBLIC_ASSET_CACHE_TTL_DAYS=4
-
-CLOUDFLARE_R2_ACCOUNT_ID=your-account-id
-CLOUDFLARE_R2_ACCESS_KEY_ID=your-access-key-id
-CLOUDFLARE_R2_SECRET_ACCESS_KEY=your-secret-access-key
-CLOUDFLARE_R2_BUCKET_NAME=node-canvas-seedance
-CLOUDFLARE_R2_PUBLIC_DOMAIN=https://your-public-domain.example.com
-CLOUDFLARE_R2_ENDPOINT=
-```
-
-#### Volcengine TOS Configuration Example
-```env
-PUBLIC_ASSET_STORAGE=tos
-PUBLIC_ASSET_PREFIX=node-canvas/seedance-input/
-PUBLIC_ASSET_RETENTION_DAYS=5
-PUBLIC_ASSET_CACHE_TTL_DAYS=4
-
-VOLCENGINE_TOS_ACCESS_KEY_ID=your-access-key-id
-VOLCENGINE_TOS_SECRET_ACCESS_KEY=your-secret-access-key
-VOLCENGINE_TOS_BUCKET_NAME=node-canvas-seedance
-VOLCENGINE_TOS_REGION=cn-beijing
-VOLCENGINE_TOS_ENDPOINT=tos-s3-cn-beijing.volces.com
-VOLCENGINE_TOS_PUBLIC_DOMAIN=https://node-canvas-seedance.tos-cn-beijing.volces.com
-```
-
-### 7. Recommended Testing Sequence & Smoke Test Guide
-
-To ensure a smooth integration launch, please follow these progressive testing steps:
-
-1. **Local Regression Tests**:
-   Run the local backend unit tests to ensure that the core existing workflows function without any regressions. No actual assets will be uploaded.
-2. **Object Storage Smoke Test**:
-   Upload a very small local `.txt` file using the storage backend. Verify that the public URL is correctly generated and returns `HTTP 200` with the correct content when queried via a browser or GET request tool.
-3. **Seedance Service Smoke Test**:
-   Once storage uploads are verified, perform a real Seedance generation test.
-   * **Recommended Parameters**:
-     * **Model**: Fast
-     * **Resolution**: 480p
-     * **Duration**: 4s
-     * **Trigger**: Attach a video reference or upload an image `> 10MB` in the `VideoNode` to force the workflow through `PublicAssetService`.
-
----
-
-## Testing
-
-Keep the codebase robust by running tests before committing changes.
-
-### Backend Tests
-Discover backend unit tests or run Kling smoke verification:
+**Backend:**
 ```bash
 cd backend
-python -m unittest discover -s tests -p "test_*.py"
-python kling_smoke_test.py
+python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-### Frontend Verification
-Run frontend tests, check styles and syntax via ESLint, and verify successful production bundling:
+**Frontend:**
 ```bash
 cd frontend
-npm test
-npx eslint src/nodes src/utils
-npm run build
+npm run dev
 ```
 
-> [!TIP]
-> If the Vite production build fails in a restricted terminal sandbox with a `spawn EPERM` error, please run the build command in a standard, unrestricted local terminal.
+**Ports:**
+- `8000` = backend API
+- `5173` = frontend app (or `5174` depending on Vite output)
 
----
+## First Project
 
-## Development Notes
+Open the frontend app in your browser. Drag and drop nodes to build your first workflow. Check the Workflow Examples section for ideas.
 
-- **Modularity**: Always keep provider-specific payloads and logic isolated within their respective directories (e.g., `backend/video_generation/providers/`).
-- **Clean Workspace**: Never commit `.env` configuration files or temporary generated media outputs to Git.
-- **Environment Templates**: Update `backend/.env.example` if you introduce any new environment variables to keep other developers aligned.
-- **Soft Prompting vs. Tool Execution**: Local Soft Skills are exclusively designed for soft prompt engineering. Hard tools or `AgentNode` execution capabilities are not supported in the current implementation.
+## Provider & API Key Configuration
 
----
+Node-AI-Canvas supports configuring API keys and provider settings in two ways:
+
+- **Recommended:** Settings -> Providers (via the UI)
+- **Advanced:** `backend/.env`
+
+**Priority:**
+`.env` > user settings > none
+
+**User Settings Storage Path:**
+- Windows: `%APPDATA%/Node-AI-Canvas/settings.json`
+- macOS/Linux: `~/.node-ai-canvas/settings.json`
+
+**Security Boundary:**
+- API keys are not written to `project.json`.
+- API keys are not written to `localStorage`.
+- API keys are not returned to the frontend.
+- API keys are not passed from the frontend through request headers.
+
+## Provider Runtime Support Matrix
+
+Settings can save provider keys, and some runtimes already use these settings keys. However, some runtimes still require `.env`. This is a staged capability boundary.
+
+| Provider | Use case | Settings fields | `.env` variables | Runtime settings support | Notes |
+|---|---|---|---|---|---|
+| DeepSeek | Text generation | API Key | `DEEPSEEK_API_KEY` | Yes | - |
+| Yunwu | Text / Image / Video | API Key | `YUNWU_API_KEY`, `YUNWU_BASE_URL` | Yes | Base URL remains `.env`-only. |
+| Google / Gemini / Veo | Multi-modal | API Key | `GOOGLE_CLOUD_API_KEY`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` | No | May require project / location. |
+| Kling | Video generation | Access Key, Secret Key | `KLING_ACCESS_KEY`, `KLING_SECRET_KEY` | No | Requires access key + secret key. |
+| Seedance | Video generation | API Key | `SEEDANCE_API_KEY`, `ARK_API_KEY` | No | Public asset URL usually relies on R2 or other public storage. |
+| Cloudflare R2 | Public asset storage | Access Key, Secret Key | `CLOUDFLARE_R2_ACCESS_KEY_ID`, `CLOUDFLARE_R2_SECRET_ACCESS_KEY`, etc. | No | Needs bucket, public domain, endpoint, or account id. |
+
+## Core Node System
+
+| Node | Category | Purpose |
+|---|---|---|
+| `TextNode` | Input | Text input and multi-line editing |
+| `TextConstructionNode` | Utility | Combine and format multiple text inputs |
+| `LLMProcessorNode` | Processing | Process text using LLM providers |
+| `ImageInputNode` | Input | Load images from local files |
+| `ImageNode` | Processing | Process and generate images |
+| `AnnotateNode` | Image Annotate | Add annotations or masks to images |
+| `ImageCompareNode` | Utility | Compare two images side-by-side |
+| `SplitGridNode` | Utility | Split images into grids |
+| `VideoNode` | Processing | Generate and playback video |
+| `OutputNode` | Output | Display final text or visual output |
+| `RouteNode` | Utility | Route signals or data across the canvas |
+| `AR720Node` | Spatial | Preview images in 720 AR space |
+| `Panorama360Node` | Spatial | Preview 360 panoramic images |
+| `EaseCurveNode` | Motion | Control motion easing curves |
+| `ShotListNode` | Motion | Manage sequences and shot lists |
+| `OmniComposerNode` | Advanced | Complex multi-modal composition |
+| `AudioInputNode` | Input | Load audio files |
+| `VideoInputNode` | Input | Load video files |
+
+## Workflow Examples
+
+**Text workflow:**
+```text
+TextNode -> LLMProcessorNode -> TextConstructionNode
+```
+*Requires: DeepSeek or Yunwu LLM API Key.*
+
+**Image workflow:**
+```text
+ImageInputNode -> ImageNode -> OutputNode
+```
+*Requires: Yunwu Image API Key.*
+
+**Video workflow:**
+```text
+TextNode -> VideoNode
+ImageInputNode -> VideoNode
+```
+*Requires: Kling, Yunwu Video, or Seedance API Key.*
+
+## Local Workspace & Project Save
+
+**Workspace Structure:**
+```text
+Workspace/
+├── project.json
+├── input/
+└── generation/
+```
+
+**Save Mechanism:**
+- `project.json` saves nodes, connections, parameters, and relative paths.
+- `project.json` does not save API Keys.
+- `project.json` does not save large base64 strings.
+- `input/` saves user input assets.
+- `generation/` saves generation results.
+
+## Security Model
+
+- **.env priority:** Environment variables in `backend/.env` take precedence over UI settings.
+- **user settings storage:** Settings are stored securely with 0o600 file permission protection in the user profile directory (`~/.node-ai-canvas/settings.json`), outside of the project workspace.
+- **project save sanitization:** Sensitive data is stripped before saving to `project.json`.
+- **no frontend key echo:** The backend does not send API keys to the frontend.
+- **no localStorage key persistence:** The frontend does not store keys in `localStorage`.
+
+## Project Structure
+
+```text
+Node-AI-Canvas/
+├── backend/            # Python API Service (FastAPI)
+├── frontend/           # React + Vite canvas UI
+├── skills/             # Local Soft Skills
+└── README.md           # Root documentation
+```
+
+## FAQ
+
+<details>
+<summary>Why does http://127.0.0.1:8000 show 404?</summary>
+Port 8000 is the backend API. It does not serve an HTML page by default. Open the frontend port (usually 5173).
+</details>
+
+<details>
+<summary>Which URL should I open?</summary>
+Open the frontend URL, typically `http://localhost:5173` or `http://localhost:5174`, depending on what Vite outputs in the terminal.
+</details>
+
+<details>
+<summary>Why does Settings show configured via .env?</summary>
+Because variables defined in the `backend/.env` file have a higher priority and override the settings configured in the UI.
+</details>
+
+<details>
+<summary>Can I share project.json safely?</summary>
+Yes, `project.json` is sanitized and does not contain API keys or large base64 payloads. However, media paths are relative, so sharing the entire workspace folder is recommended for full functionality.
+</details>
+
+<details>
+<summary>Why does a provider still require .env after saving a key in Settings?</summary>
+This is a staged capability boundary. Some providers (like Google, Kling, Seedance) have not yet been migrated to use runtime settings resolution and still read directly from `.env`.
+</details>
+
+<details>
+<summary>What should I do on Windows path issues?</summary>
+Ensure you are running commands in PowerShell or a standard command prompt. Paths in Python and Vite should handle Windows slashes automatically.
+</details>
+
+<details>
+<summary>Can I run it on a headless server?</summary>
+Yes, you can run the backend and frontend separately and access the frontend remotely, but ensure your API endpoints are correctly routed and secured.
+</details>
+
+## Roadmap
+
+- Expand runtime settings resolver to Google / Kling / Seedance / R2
+- Add more workflow templates
+- Improve docs and examples
+- Improve video provider smoke testing
+- Enhance node reference documentation
 
 ## License
 
