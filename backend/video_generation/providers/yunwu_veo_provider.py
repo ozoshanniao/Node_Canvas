@@ -5,6 +5,7 @@ from urllib.parse import unquote, urlparse
 import httpx
 
 from engines.image_utils import encode_base64, infer_mime_type, prepare_provider_image_input
+from settings_resolver import resolve_provider_secret
 from video_generation.providers.base import BaseVideoProvider
 from video_generation.schemas import VideoGenerateRequest
 
@@ -15,15 +16,22 @@ YUNWU_QUERY_URL = "https://yunwu.ai/v1/video/query"
 
 class YunwuVeoProvider(BaseVideoProvider):
     def __init__(self, api_key: str | None = None):
-        self.api_key = api_key or os.getenv("YUNWU_API_KEY")
+        self.api_key = api_key
+
+    def _resolve_api_key(self) -> str:
+        api_key = resolve_provider_secret("yunwu", "apiKey", "YUNWU_API_KEY") or self.api_key
+        if not api_key:
+            raise ValueError(
+                "Yunwu credentials are not configured. Please configure them in Settings -> Providers."
+            )
+        return api_key
 
     def _headers(self) -> dict[str, str]:
-        if not self.api_key:
-            raise ValueError("YUNWU_API_KEY is not configured")
+        api_key = self._resolve_api_key()
         return {
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
         }
 
     def _response_payload(self, response: httpx.Response) -> dict:
@@ -113,6 +121,7 @@ class YunwuVeoProvider(BaseVideoProvider):
         raise ValueError(f"Unsupported video mode: {request.videoMode}")
 
     async def create_task(self, request: VideoGenerateRequest) -> dict:
+        headers = self._headers()
         payload = self._base_payload(request)
 
         if request.videoMode == "image-to-video":
@@ -134,7 +143,7 @@ class YunwuVeoProvider(BaseVideoProvider):
             raise ValueError(f"Unsupported video mode: {request.videoMode}")
 
         async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(YUNWU_CREATE_URL, headers=self._headers(), json=payload)
+            response = await client.post(YUNWU_CREATE_URL, headers=headers, json=payload)
             if response.is_error:
                 payload = self._response_payload(response)
                 raise ValueError(f"Yunwu create failed: {payload}")

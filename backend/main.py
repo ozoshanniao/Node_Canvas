@@ -45,21 +45,17 @@ from engines.yunwu_engine import YunwuEngine
 # Engine instances
 engines = {
     "Google": GoogleEngine(api_key=os.getenv("GOOGLE_CLOUD_API_KEY")),
-    "Yunwu": YunwuEngine(api_key=os.getenv("YUNWU_API_KEY")) 
+    "Yunwu": YunwuEngine(),
 }
 
 image_generation_service = ImageGenerationService(engines)
 
 llm_service = LLMService(
-    yunwu_api_key=os.getenv("YUNWU_API_KEY"),
     google_api_key=os.getenv("GOOGLE_CLOUD_API_KEY"),
-    deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),
     deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL"),
 )
 
-video_generation_service = VideoGenerationService(
-    yunwu_api_key=os.getenv("YUNWU_API_KEY"),
-)
+video_generation_service = VideoGenerationService()
 
 # Data models and global config
 class Position(BaseModel):
@@ -554,16 +550,19 @@ async def run_workflow(payload: WorkflowPayload):
 
     image_inputs = payload.imageInputs or []
 
-    result = await image_generation_service.generate(
-        ImageGenerationRequest(
-            provider=provider,
-            model=config.get("model"),
-            prompt=prompt,
-            config=config,
-            project_path=payload.projectPath,
-            image_inputs=image_inputs,
+    try:
+        result = await image_generation_service.generate(
+            ImageGenerationRequest(
+                provider=provider,
+                model=config.get("model"),
+                prompt=prompt,
+                config=config,
+                project_path=payload.projectPath,
+                image_inputs=image_inputs,
+            )
         )
-    )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     if not result:
         return {"status": "error", "message": "AI Generation failed"}

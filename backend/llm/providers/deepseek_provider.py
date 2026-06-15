@@ -2,6 +2,8 @@ import os
 
 import httpx
 
+from settings_resolver import resolve_provider_secret
+
 from .base import BaseLLMProvider, LLMProviderError
 from ..schemas import LLMGenerateRequest
 
@@ -16,17 +18,24 @@ class DeepSeekLLMProvider(BaseLLMProvider):
         base_url: str | None = None,
         client=None,
     ):
-        self.api_key = api_key if api_key is not None else os.getenv("DEEPSEEK_API_KEY")
+        self.api_key = api_key
         self.base_url = (base_url or os.getenv("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").rstrip("/")
         self.client = client
 
+    def _resolve_api_key(self) -> str:
+        api_key = resolve_provider_secret("deepseek", "apiKey", "DEEPSEEK_API_KEY") or self.api_key
+        if not api_key:
+            raise LLMProviderError(
+                "DeepSeek credentials are not configured. Please configure them in Settings -> Providers."
+            )
+        return api_key
+
     def _headers(self) -> dict[str, str]:
-        if not self.api_key:
-            raise LLMProviderError("DEEPSEEK_API_KEY is not configured")
+        api_key = self._resolve_api_key()
         return {
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
         }
 
     def _thinking_type(self, request: LLMGenerateRequest) -> str:

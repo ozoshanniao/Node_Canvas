@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from unittest.mock import patch
 
 from llm.providers.base import LLMProviderError
 from llm.providers.deepseek_provider import DeepSeekLLMProvider
@@ -59,6 +60,16 @@ class FakeProvider:
 
 
 class DeepSeekLLMProviderTest(unittest.TestCase):
+    def setUp(self):
+        self.resolver_patch = patch(
+            "llm.providers.deepseek_provider.resolve_provider_secret",
+            return_value=None,
+        )
+        self.resolver_patch.start()
+
+    def tearDown(self):
+        self.resolver_patch.stop()
+
     def test_request_body_flash_defaults(self):
         client = FakeDeepSeekClient()
         provider = DeepSeekLLMProvider(api_key="test-key", client=client)
@@ -149,7 +160,7 @@ class DeepSeekLLMProviderTest(unittest.TestCase):
         client = FakeDeepSeekClient()
         provider = DeepSeekLLMProvider(api_key="", client=client)
 
-        with self.assertRaisesRegex(LLMProviderError, "DEEPSEEK_API_KEY is not configured"):
+        with self.assertRaisesRegex(LLMProviderError, "DeepSeek credentials are not configured"):
             run(provider.generate(LLMGenerateRequest(
                 provider="deepseek",
                 model="deepseek-v4-flash",
