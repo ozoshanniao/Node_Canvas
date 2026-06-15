@@ -1,5 +1,7 @@
 import httpx
 
+from settings_resolver import resolve_provider_secret
+
 from .base import BaseLLMProvider, LLMProviderError
 from ..image_inputs import prepare_llm_image_inputs
 from ..schemas import LLMGenerateRequest
@@ -44,14 +46,28 @@ def _safe_content_for_log(content):
 
 
 class YunwuLLMProvider(BaseLLMProvider):
-    def __init__(self, api_key: str | None, base_url: str = "https://yunwu.ai"):
+    def __init__(self, api_key: str | None = None, base_url: str = "https://yunwu.ai"):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
 
-    async def generate(self, request: LLMGenerateRequest) -> str:
-        if not self.api_key:
-            raise LLMProviderError("YUNWU_API_KEY is not configured")
+    def _resolve_api_key(self) -> str:
+        api_key = resolve_provider_secret("yunwu", "apiKey", "YUNWU_API_KEY") or self.api_key
+        if not api_key:
+            raise LLMProviderError(
+                "Yunwu credentials are not configured. Please configure them in Settings -> Providers."
+            )
+        return api_key
 
+    def _headers(self) -> dict[str, str]:
+        api_key = self._resolve_api_key()
+        return {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+
+    async def generate(self, request: LLMGenerateRequest) -> str:
+        headers = self._headers()
         endpoint = "/v1/chat/completions"
         api_url = f"{self.base_url}{endpoint}"
         prepared_images = await prepare_llm_image_inputs(
@@ -94,12 +110,6 @@ class YunwuLLMProvider(BaseLLMProvider):
             "max_tokens": request.maxTokens if request.maxTokens is not None else 8192,
             "stream": False,
         }
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
-        }
-
         print(
             "[Yunwu LLM request]",
             {

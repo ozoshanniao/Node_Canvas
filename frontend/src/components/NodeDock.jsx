@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { DOCK_CATEGORIES, getDockCategoryNodes } from '../utils/nodeCategories';
-import { NODE_DEFINITIONS } from '../nodes/nodeDefinitions';
+import { NODE_DEFINITIONS, getNodeDefinitionText } from '../nodes/nodeDefinitions';
 import { useI18n } from '../hooks/useI18n';
 
 const CATEGORY_DOTS = {
@@ -36,7 +36,7 @@ const NodeItem = ({ definition, onCreateNode, t }) => (
   >
     <div className="min-w-0">
       <div className="truncate text-sm font-light text-white/75 group-hover:text-white">
-        {t(`nodeDef.${definition.type}.label`) || definition.label}
+        {getNodeDefinitionText(t, definition)}
       </div>
     </div>
     <span className="text-xs text-white/20 transition-colors group-hover:text-white/45">&gt;</span>

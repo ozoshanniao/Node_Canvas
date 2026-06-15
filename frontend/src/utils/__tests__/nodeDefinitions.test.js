@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { NODE_DEFINITIONS, getNodeDefinition } from '../../nodes/nodeDefinitions.js';
+import { NODE_DEFINITIONS, getNodeDefinition, getNodeDefinitionText } from '../../nodes/nodeDefinitions.js';
 import { getDockCategoryNodes, DOCK_CATEGORIES } from '../nodeCategories.js';
 import { getCompatibleTargetHandle } from '../nodeCompatibility.js';
 
@@ -44,5 +44,19 @@ assert.equal(videoNodes.includes('easeCurveNode'), false);
 const toolsCategory = DOCK_CATEGORIES.find((category) => category.id === 'Tools');
 const toolsNodes = getDockCategoryNodes(toolsCategory, NODE_DEFINITIONS).map((definition) => definition.type);
 assert.equal(toolsNodes.includes('easeCurveNode'), true);
+
+const annotateDefinition = getNodeDefinition('annotateNode');
+assert.equal(annotateDefinition.label, 'Image Annotate');
+assert.deepEqual(annotateDefinition.inputs, [{ id: 'image:in', kind: 'image' }]);
+assert.deepEqual(annotateDefinition.outputs, [{ id: 'image:out', kind: 'image' }]);
+assert.equal(annotateDefinition.defaultData.brushSize, 12);
+assert.equal(annotateDefinition.defaultData.eraserMode, 'local');
+assert.equal(annotateDefinition.defaultData.eraserSize, 24);
+assert.equal(getCompatibleTargetHandle('annotateNode', 'image:out'), 'image:in');
+const imageCategory = DOCK_CATEGORIES.find((category) => category.id === 'Image');
+const imageNodes = getDockCategoryNodes(imageCategory, NODE_DEFINITIONS).map((definition) => definition.type);
+assert.equal(imageNodes.includes('annotateNode'), true);
+assert.equal(imageNodes.includes('splitGridNode'), true);
+assert.equal(getNodeDefinitionText((key) => key, annotateDefinition), 'Image Annotate');
 
 console.log('nodeDefinitions tests passed');

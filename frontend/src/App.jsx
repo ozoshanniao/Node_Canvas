@@ -17,7 +17,7 @@ import { TopProjectBar } from './components/TopProjectBar';
 import { ConnectionNodeMenu } from './components/ConnectionNodeMenu';
 import { NodeDock } from './components/NodeDock';
 import { GroupsOverlay } from './components/GroupsOverlay';
-import CustomSelect from './components/CustomSelect';
+import { SettingsModal } from './components/settings/SettingsModal';
 
 import { TextNode } from './nodes/TextNode';
 import { TextConstructionNode } from './nodes/TextConstructionNode';
@@ -33,10 +33,11 @@ import { ImageInputNode } from './nodes/ImageInputNode';
 import { OutputNode } from './nodes/OutputNode';
 import { SplitGridNode } from './nodes/SplitGridNode';
 import { ImageCompareNode } from './nodes/ImageCompareNode';
+import { AnnotateNode } from './nodes/AnnotateNode';
 import { RouteNode } from './nodes/RouteNode';
 import { AR720Node } from './nodes/AR720Node';
 import { Panorama360Node } from './nodes/Panorama360Node';
-import { NODE_DEFINITIONS, createDefaultNodeData, getNodeDefinition } from './nodes/nodeDefinitions';
+import { NODE_DEFINITIONS, createDefaultNodeData, getNodeDefinition, getNodeDefinitionText } from './nodes/nodeDefinitions';
 import { DEFAULT_EASE_CURVE_DATA, normalizeEasingPresetId } from './lib/easingPresets';
 import { normalizeBezierHandles } from './lib/easingFunctions';
 import {
@@ -68,12 +69,7 @@ import { RUNNABLE_NODE_TYPES } from './utils/nodeCategories';
 import { DISABLE_MINIMAP, ONLY_RENDER_VISIBLE_ELEMENTS } from './utils/perfDebug';
 import { normalizeImageInputEdgeLabels } from './utils/edgeLabels';
 import { uploadImageToInput } from './utils/uploadToInput';
-import {
-  getColorPickerValue,
-  getHexColorInputValue,
-  updateHexColorAppSetting,
-  useAppSettings,
-} from './utils/appSettings';
+import { useAppSettings } from './utils/appSettings';
 import { useI18n } from './hooks/useI18n';
 //import { ButtonEdge } from './edges/ButtonEdge';
 
@@ -91,6 +87,7 @@ const nodeTypes = {
   outputNode: OutputNode,
   splitGridNode: SplitGridNode,
   imageCompareNode: ImageCompareNode,
+  annotateNode: AnnotateNode,
   ar720Node: AR720Node,
   panorama360Node: Panorama360Node,
   routeNode: RouteNode,
@@ -99,45 +96,6 @@ const nodeTypes = {
 
 const edgeTypes = {
   default: ImageEdge, //default: ButtonEdge, 
-};
-
-const CanvasColorSetting = ({ label, settingKey, value, fallback, onChange }) => {
-  const normalizedValue = value || fallback;
-  const colorPickerValue = getColorPickerValue(normalizedValue, fallback);
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-      <div className="text-sm font-light text-white/80">{label}</div>
-      <div className="mt-3 flex items-center overflow-hidden rounded-xl border border-white/10 bg-black/35 text-xs text-white/75 transition-colors focus-within:border-white/35 hover:border-white/20">
-        <label
-          className="relative flex h-10 w-11 shrink-0 cursor-pointer items-center justify-center border-r border-white/10"
-          title={label}
-        >
-          <span
-            className="h-5 w-5 rounded-md border border-white/20 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
-            style={{ backgroundColor: colorPickerValue }}
-          />
-          <input
-            type="color"
-            aria-label={label}
-            value={colorPickerValue}
-            onChange={(event) => updateHexColorAppSetting(onChange, settingKey, event.target.value)}
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-          />
-        </label>
-        <span className="px-3 text-white/35">#</span>
-        <input
-          type="text"
-          value={getHexColorInputValue(normalizedValue, fallback)}
-          onChange={(event) => updateHexColorAppSetting(onChange, settingKey, event.target.value)}
-          spellCheck={false}
-          maxLength={6}
-          inputMode="text"
-          className="min-w-0 flex-1 bg-transparent px-0 py-2.5 font-mono text-xs lowercase text-white/75 outline-none placeholder:text-white/20"
-        />
-      </div>
-    </div>
-  );
 };
 
 const normalizeEdges = (edges = []) =>
@@ -385,9 +343,9 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
   const [isMiniMapCollapsed, setIsMiniMapCollapsed] = useState(false);
   const [isDraggingNode, setIsDraggingNode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState('general');
   const [appSettings, updateAppSetting] = useAppSettings();
   const { t } = useI18n();
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const isSavingRef = useRef(false);
   const latestCanvasRef = useRef({ nodes: [], edges: [], groups: {} });
   const latestProjectRef = useRef({ projectPath, projectFilePath, projectName });
@@ -706,11 +664,11 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
 
   const availableNodes = NODE_DEFINITIONS;
   const getNodeDisplayLabel = useCallback(
-    (node) => t(`nodeDef.${node.type}.label`) || node.label,
+    (node) => getNodeDefinitionText(t, node, 'label'),
     [t]
   );
   const getNodeDisplayDescription = useCallback(
-    (node) => t(`nodeDef.${node.type}.description`) || node.description || '',
+    (node) => getNodeDefinitionText(t, node, 'description'),
     [t]
   );
 
@@ -1240,7 +1198,7 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
       >
         <button
           type="button"
-          onClick={() => setSettingsOpen((value) => !value)}
+          onClick={() => setSettingsOpen(true)}
           className={`flex h-10 w-10 items-center justify-center rounded-full border text-white/60 shadow-[0_18px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl transition-all hover:border-white/20 hover:bg-[#181818]/90 hover:text-white/85 ${
             settingsOpen ? 'border-white/25 bg-[#181818]/90 text-white' : 'border-white/10 bg-[#121212]/75'
           }`}
@@ -1253,119 +1211,14 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
           </svg>
         </button>
 
-        {settingsOpen && (
-          <div className="absolute right-0 mt-3 w-[360px] min-h-[330px] overflow-visible rounded-[22px] border border-white/10 bg-[#141414]/90 shadow-[0_28px_70px_rgba(0,0,0,0.58)] backdrop-blur-2xl">
-            <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
-              <div className="text-sm font-light tracking-[0.08em] text-white/80">{t('settings.title')}</div>
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(false)}
-                className="rounded-full px-2 py-1 text-xs text-white/35 transition-colors hover:bg-white/5 hover:text-white/70"
-              >
-                Esc
-              </button>
-            </div>
-
-            <div className="flex gap-1 border-b border-white/5 px-3 py-2">
-              {[
-                { id: 'general', label: t('settings.tab.general') },
-                { id: 'developer', label: t('settings.tab.developer') },
-              ].map((tab) => (
-                <button
-                  type="button"
-                  key={tab.id}
-                  onClick={() => setSettingsTab(tab.id)}
-                  className={`rounded-full px-3 py-1.5 text-xs transition-colors ${
-                    settingsTab === tab.id
-                      ? 'bg-white/10 text-white/85'
-                      : 'text-white/35 hover:bg-white/5 hover:text-white/65'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="p-4">
-              {settingsTab === 'developer' ? (
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="flex items-start justify-between gap-4">
-                      <div>
-                      <div className="text-sm font-light text-white/80">{t('settings.showRawCustomParams')}</div>
-                      <div className="mt-1 text-xs leading-5 text-white/35">
-                        {t('settings.showRawCustomParams.desc')}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => updateAppSetting('showRawCustomParams', !appSettings.showRawCustomParams)}
-                      className={`mt-0.5 h-7 w-12 shrink-0 rounded-full border p-0.5 transition-colors ${
-                        appSettings.showRawCustomParams ? 'border-white/55 bg-white/85' : 'border-white/10 bg-black/30'
-                      }`}
-                      aria-pressed={appSettings.showRawCustomParams}
-                    >
-                      <span
-                        className={`block h-5 w-5 rounded-full transition-transform ${
-                          appSettings.showRawCustomParams ? 'translate-x-5 bg-black' : 'translate-x-0 bg-white/35'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid gap-3">
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-sm font-light text-white/80">{t('settings.language')}</div>
-                    <CustomSelect
-                      value={appSettings.language || 'zh-CN'}
-                      onChange={(value) => updateAppSetting('language', value)}
-                      options={[
-                        { value: 'zh-CN', label: t('settings.language.zhCN') },
-                        { value: 'en-US', label: t('settings.language.enUS') },
-                      ]}
-                      className="relative mt-3 w-full nodrag"
-                      buttonClassName="flex w-full items-center justify-between rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 text-xs text-white/75 outline-none transition-colors hover:border-white/20 focus:border-white/35"
-                      menuClassName="nowheel nodrag animate-in fade-in zoom-in-95 absolute left-0 right-0 z-[100] mt-1.5 rounded-xl border border-white/10 bg-[#141414]/95 shadow-2xl backdrop-blur-xl duration-150 overflow-hidden"
-                    />
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-sm font-light text-white/80">{t('settings.publicAssetStorage')}</div>
-                    <CustomSelect
-                      value={appSettings.publicAssetStorage || ''}
-                      onChange={(value) => updateAppSetting('publicAssetStorage', value)}
-                      options={[
-                        { value: '', label: t('settings.storage.envDefault') },
-                        { value: 'r2', label: t('settings.storage.r2') },
-                        { value: 'tos', label: t('settings.storage.tos') },
-                      ]}
-                      className="relative mt-3 w-full nodrag"
-                      buttonClassName="flex w-full items-center justify-between rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 text-xs text-white/75 outline-none transition-colors hover:border-white/20 focus:border-white/35"
-                      menuClassName="nowheel nodrag animate-in fade-in zoom-in-95 absolute left-0 right-0 z-[100] mt-1.5 rounded-xl border border-white/10 bg-[#141414]/95 shadow-2xl backdrop-blur-xl duration-150 overflow-hidden"
-                    />
-                  </div>
-
-                  <CanvasColorSetting
-                    label={t('settings.canvasBackgroundColor')}
-                    settingKey="canvasBackgroundColor"
-                    value={appSettings.canvasBackgroundColor}
-                    fallback="#0b0b0b"
-                    onChange={updateAppSetting}
-                  />
-
-                  <CanvasColorSetting
-                    label={t('settings.canvasGridColor')}
-                    settingKey="canvasGridColor"
-                    value={appSettings.canvasGridColor}
-                    fallback="#222222"
-                    onChange={updateAppSetting}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
+
+      <SettingsModal
+        open={settingsOpen}
+        settings={appSettings}
+        onSettingChange={updateAppSetting}
+        onClose={closeSettings}
+      />
 
       <ReactFlow 
         className="node-canvas-flow"

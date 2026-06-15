@@ -220,6 +220,28 @@ export const NODE_DEFINITIONS = [
     defaultSize: { width: 420, height: 300 },
   },
   {
+    type: 'annotateNode',
+    label: 'Image Annotate',
+    description: 'Annotate an image and output a composited image',
+    category: 'Image',
+    order: 23,
+    showInConnectionMenu: true,
+    inputs: [{ id: 'image:in', kind: 'image' }],
+    outputs: [{ id: 'image:out', kind: 'image' }],
+    defaultData: {
+      annotations: [],
+      annotatedImagePath: '',
+      imageSize: { width: 0, height: 0 },
+      sourceImageKey: '',
+      brushColor: '#ff3b30',
+      brushSize: 12,
+      eraserMode: 'local',
+      eraserSize: 24,
+      updatedAt: null,
+    },
+    defaultSize: { width: 360, height: 260 },
+  },
+  {
     type: 'ar720Node',
     label: 'AR720°',
     description: 'Full spherical panorama / HDRI preview',
@@ -313,6 +335,12 @@ export const NODE_DEFINITIONS = [
 ];
 
 export const getNodeDefinition = (type) => NODE_DEFINITIONS.find((definition) => definition.type === type);
+
+export const getNodeDefinitionText = (translate, definition, field = 'label') => {
+  const key = `nodeDef.${definition?.type}.${field}`;
+  const translated = translate?.(key);
+  return translated && translated !== key ? translated : definition?.[field] || '';
+};
 
 const cloneDefaultData = (data = {}) => {
   if (typeof structuredClone === 'function') return structuredClone(data);

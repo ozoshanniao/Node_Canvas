@@ -68,10 +68,49 @@ for (const key of enKeys) {
   assert.ok(zh_CN[key] !== undefined, `Key "${key}" exists in en-US but is missing in zh-CN`);
 }
 
+const requiredSettingsKeys = [
+  'settings.title',
+  'settings.tab.general',
+  'settings.tab.canvas',
+  'settings.tab.storage',
+  'settings.tab.providers',
+  'settings.tab.about',
+  'settings.language',
+  'settings.developerMode',
+  'settings.showRawCustomParams',
+  'settings.canvasBackgroundColor',
+  'settings.canvasGridColor',
+  'settings.publicAssetStorage',
+  'settings.close',
+  'settings.providers.loading',
+  'settings.providers.loadFailed',
+  'settings.providers.configuredViaEnv',
+  'settings.providers.configuredViaSettings',
+  'settings.providers.notConfigured',
+  'settings.providers.source',
+  'settings.providers.source.env',
+  'settings.providers.source.settings',
+  'settings.providers.source.none',
+  'settings.providers.requiredEnv',
+  'settings.providers.missingEnv',
+  'settings.providers.apiKey',
+  'settings.providers.save',
+  'settings.providers.clear',
+  'settings.providers.saved',
+  'settings.providers.cleared',
+];
+
+for (const key of requiredSettingsKeys) {
+  assert.notEqual(translateWithLanguage('zh-CN', key), key, `Settings key "${key}" should exist in zh-CN`);
+  assert.notEqual(translateWithLanguage('en-US', key), key, `Settings key "${key}" should exist in en-US`);
+}
+
 if (originalLocalStorage === undefined) {
   delete globalThis.localStorage;
 } else {
   globalThis.localStorage = originalLocalStorage;
 }
+
+assert.equal(translateWithLanguage('en-US', 'nodeDef.annotateNode.label'), 'Image Annotate');
 
 console.log('i18n tests passed');

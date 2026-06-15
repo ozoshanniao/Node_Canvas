@@ -1,4 +1,5 @@
 import { useI18n } from '../hooks/useI18n';
+import { getNodeDefinitionText } from '../nodes/nodeDefinitions';
 
 export function ConnectionNodeMenu({ x, y, groupedItems = {}, onSelect, onClose }) {
   const { t } = useI18n();
@@ -38,7 +39,7 @@ export function ConnectionNodeMenu({ x, y, groupedItems = {}, onSelect, onClose 
                     onClick={() => onSelect(item.type)}
                     className="flex w-full items-center justify-between rounded-[10px] px-3 py-2.5 text-left text-sm font-light text-white/55 transition-colors hover:bg-white/5 hover:text-white"
                   >
-                    <span>{t(`nodeDef.${item.type}.label`) || item.label}</span>
+                    <span>{getNodeDefinitionText(t, item)}</span>
                     <span className="text-[10px] text-white/20">&gt;</span>
                   </button>
                 ))}
