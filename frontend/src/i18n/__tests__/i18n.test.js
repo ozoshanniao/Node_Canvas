@@ -82,6 +82,22 @@ const requiredSettingsKeys = [
   'settings.canvasGridColor',
   'settings.publicAssetStorage',
   'settings.close',
+  'settings.providers.loading',
+  'settings.providers.loadFailed',
+  'settings.providers.configuredViaEnv',
+  'settings.providers.configuredViaSettings',
+  'settings.providers.notConfigured',
+  'settings.providers.source',
+  'settings.providers.source.env',
+  'settings.providers.source.settings',
+  'settings.providers.source.none',
+  'settings.providers.requiredEnv',
+  'settings.providers.missingEnv',
+  'settings.providers.apiKey',
+  'settings.providers.save',
+  'settings.providers.clear',
+  'settings.providers.saved',
+  'settings.providers.cleared',
 ];
 
 for (const key of requiredSettingsKeys) {

@@ -35,6 +35,7 @@ from generation_media import (
     resolve_generation_path,
     save_ease_curve_generation_file,
 )
+from settings_router import router as settings_router
 
 load_dotenv()
 from engines.google_engine import GoogleEngine
@@ -111,6 +112,7 @@ client = genai.Client(
 )
 
 app = FastAPI()
+app.include_router(settings_router)
 
 app.add_middleware(
     CORSMiddleware,

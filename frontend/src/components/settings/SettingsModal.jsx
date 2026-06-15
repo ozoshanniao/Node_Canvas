@@ -48,7 +48,7 @@ export function SettingsModal({ open, settings, onSettingChange, onClose }) {
 
   return (
     <div
-      className="nodrag nopan nowheel fixed inset-0 z-[10000] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm"
+      className="nodrag nopan nowheel fixed inset-0 z-[10000] flex items-center justify-center bg-black/65 p-[3vw] backdrop-blur-sm"
       onClick={onClose}
       onMouseDown={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
@@ -60,13 +60,13 @@ export function SettingsModal({ open, settings, onSettingChange, onClose }) {
         aria-modal="true"
         aria-labelledby="settings-modal-title"
         tabIndex={-1}
-        className="flex h-[min(640px,calc(100vh-32px))] w-full max-w-[920px] flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#141414] text-white shadow-[0_30px_100px_rgba(0,0,0,0.8)] outline-none md:flex-row"
+        className="flex h-[min(760px,88vh)] w-[min(1180px,94vw)] flex-col overflow-hidden rounded-[26px] border border-white/10 bg-[#141414] text-white shadow-[0_30px_100px_rgba(0,0,0,0.8)] outline-none md:h-[min(760px,84vh)] md:w-[min(1180px,86vw)] md:flex-row"
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => event.stopPropagation()}
       >
         <SettingsSidebar tabs={tabs} activeTab={activeTab} onChange={setActiveTab} label={t('settings.categories')} />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="flex shrink-0 items-center justify-between border-b border-white/5 px-5 py-4 sm:px-7">
+          <header className="flex shrink-0 items-center justify-between border-b border-white/5 px-5 py-4 sm:px-8 sm:py-5">
             <div>
               <div id="settings-modal-title" className="text-sm font-light tracking-[0.08em] text-white/90">
                 {t('settings.title')}
@@ -85,7 +85,7 @@ export function SettingsModal({ open, settings, onSettingChange, onClose }) {
               X
             </button>
           </header>
-          <main className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-7">{content[activeTab]}</main>
+          <main className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-8 lg:p-9">{content[activeTab]}</main>
         </div>
       </div>
     </div>

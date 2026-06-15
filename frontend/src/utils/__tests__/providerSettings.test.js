@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import {
+  clearProviderSettings,
+  fetchProviderSettings,
+  normalizeProviderStatus,
+  saveProviderSettings,
+} from '../providerSettings.js';
+
+assert.deepEqual(
+  normalizeProviderStatus({
+    id: 'kling',
+    name: 'Kling',
+    configured: true,
+    source: 'settings',
+    supportsSettings: true,
+    requiredEnv: ['KLING_ACCESS_KEY', 'KLING_SECRET_KEY'],
+    missingEnv: ['KLING_ACCESS_KEY', 'KLING_SECRET_KEY'],
+    missingDependencyEnv: [],
+    requiredSettings: ['accessKey', 'secretKey'],
+    missingSettings: [],
+    accessKey: 'must-not-be-preserved',
+  }),
+  {
+    id: 'kling',
+    name: 'Kling',
+    configured: true,
+    source: 'settings',
+    supportsSettings: true,
+    requiredEnv: ['KLING_ACCESS_KEY', 'KLING_SECRET_KEY'],
+    missingEnv: ['KLING_ACCESS_KEY', 'KLING_SECRET_KEY'],
+    missingDependencyEnv: [],
+    requiredSettings: ['accessKey', 'secretKey'],
+    missingSettings: [],
+  },
+  'provider status normalization should preserve status metadata only'
+);
+
+const providers = await fetchProviderSettings(async () => ({
+  ok: true,
+  json: async () => ({
+    status: 'success',
+    providers: [{ id: 'deepseek', name: 'DeepSeek', configured: false, source: 'none' }],
+  }),
+}));
+assert.equal(providers[0].configured, false);
+
+let saveRequest;
+const saved = await saveProviderSettings('deepseek', { apiKey: 'fake-key' }, async (url, options) => {
+  saveRequest = { url, options };
+  return {
+    ok: true,
+    json: async () => ({
+      status: 'success',
+      provider: { id: 'deepseek', name: 'DeepSeek', configured: true, source: 'settings' },
+    }),
+  };
+});
+assert.equal(saveRequest.options.method, 'POST');
+assert.equal(JSON.parse(saveRequest.options.body).apiKey, 'fake-key');
+assert.equal(saved.source, 'settings');
+
+let clearRequest;
+const cleared = await clearProviderSettings('deepseek', async (url, options) => {
+  clearRequest = { url, options };
+  return {
+    ok: true,
+    json: async () => ({
+      status: 'success',
+      provider: { id: 'deepseek', name: 'DeepSeek', configured: false, source: 'none' },
+    }),
+  };
+});
+assert.equal(clearRequest.options.method, 'DELETE');
+assert.equal(cleared.source, 'none');
+
+await assert.rejects(
+  fetchProviderSettings(async () => ({ ok: false })),
+  /Failed to load provider settings/
+);
+await assert.rejects(
+  saveProviderSettings('deepseek', { apiKey: 'fake-key' }, async () => ({ ok: false })),
+  /Failed to save provider settings/
+);
+
+console.log('providerSettings tests passed');
