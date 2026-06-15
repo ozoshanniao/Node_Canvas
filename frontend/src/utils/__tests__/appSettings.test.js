@@ -29,6 +29,18 @@ const createLocalStorageMock = (initial = {}) => {
 
 const originalLocalStorage = globalThis.localStorage;
 
+assert.deepEqual(
+  APP_SETTINGS_STORAGE_KEYS,
+  {
+    showRawCustomParams: 'nodeCanvas.settings.showRawCustomParams',
+    publicAssetStorage: 'nodeCanvas.settings.publicAssetStorage',
+    language: 'nodeCanvas.settings.language',
+    canvasBackgroundColor: 'nodeCanvas.settings.canvasBackgroundColor',
+    canvasGridColor: 'nodeCanvas.settings.canvasGridColor',
+  },
+  'Settings UI migrations must preserve the existing localStorage keys'
+);
+
 globalThis.localStorage = createLocalStorageMock();
 assert.deepEqual(
   getAppSettings(),

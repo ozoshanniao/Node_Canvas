@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
 import { getNodeAudioOutput, getNodeEaseCurveOutput, getNodeImageOutput, getNodeOmniParamsOutput, getNodeVideoInputOutput, getNodeVideoOutput } from '../nodeOutputs.js';
+import {
+  createLocalEraserShape,
+  eraseAnnotationObjectsAtPoint,
+  exportAnnotatedImage,
+  isAnnotationShapeHit,
+  pushAnnotationHistory,
+  renderAnnotationLayer,
+} from '../annotationUtils.js';
 import { normalizeImageInputEdgeLabels } from '../edgeLabels.js';
 
 const makeOmniNode = (data) => ({
@@ -420,6 +428,153 @@ import { getNodeTextOutput } from '../nodeOutputs.js';
   assert.equal(output[0].filePath, 'generation/seedance_task_last_frame.png');
   assert.equal(output[0].sourceType, 'generated');
   assert.equal(output[0].mimeType, 'image/png');
+}
+
+// AnnotateNode outputs its saved composite only while the upstream source key is current.
+{
+  const imageInputNode = {
+    id: 'image-input',
+    type: 'imageInputNode',
+    data: { url: 'input/source.png' },
+  };
+  const annotateNode = {
+    id: 'annotate',
+    type: 'annotateNode',
+    data: {
+      annotatedImagePath: 'input/annotated.png',
+      sourceImageKey: 'input/source.png|1024x768',
+      currentSourceImageKey: 'input/source.png|1024x768',
+    },
+  };
+  const edges = [{
+    id: 'annotate-input',
+    source: 'image-input',
+    sourceHandle: 'image:out',
+    target: 'annotate',
+    targetHandle: 'image:in',
+  }];
+  const nodes = [imageInputNode, annotateNode];
+
+  assert.deepEqual(getNodeImageOutput(annotateNode, 'image:out', null, nodes, edges), ['input/annotated.png']);
+
+  imageInputNode.data.url = 'input/replacement.png';
+  assert.deepEqual(getNodeImageOutput(annotateNode, 'image:out', null, nodes, edges), ['input/replacement.png']);
+
+  imageInputNode.data.url = 'input/source.png';
+  annotateNode.data.currentSourceImageKey = 'input/source.png|800x600';
+  assert.deepEqual(getNodeImageOutput(annotateNode, 'image:out', null, nodes, edges), ['input/source.png']);
+}
+
+// Annotate eraser hit testing supports brush paths and shape bounding boxes.
+{
+  const brush = { type: 'brush', points: [10, 10, 100, 10], strokeWidth: 4 };
+  const rect = { type: 'rect', x: 20, y: 20, width: 40, height: 30, strokeWidth: 2 };
+  const ellipse = { type: 'ellipse', x: 80, y: 80, width: -30, height: -20, strokeWidth: 2 };
+  const eraser = { type: 'eraser', points: [10, 50, 100, 50], strokeWidth: 10 };
+  assert.equal(isAnnotationShapeHit(brush, { x: 50, y: 14 }, 4), true);
+  assert.equal(isAnnotationShapeHit(brush, { x: 50, y: 40 }, 4), false);
+  assert.equal(isAnnotationShapeHit(rect, { x: 30, y: 30 }, 4), true);
+  assert.equal(isAnnotationShapeHit(ellipse, { x: 60, y: 70 }, 4), true);
+  assert.equal(isAnnotationShapeHit(eraser, { x: 50, y: 52 }, 4), true);
+  assert.deepEqual(eraseAnnotationObjectsAtPoint([brush, rect], { x: 50, y: 10 }, 4), [rect]);
+}
+
+// Local eraser is persisted as one annotation and uses destination-out on the annotation layer.
+{
+  const localEraser = createLocalEraserShape([10, 10, 20, 20], 24);
+  assert.equal(localEraser.type, 'eraser');
+  assert.deepEqual(localEraser.points, [10, 10, 20, 20]);
+  assert.equal(localEraser.strokeWidth, 24);
+
+  const operations = [];
+  const context = {
+    canvas: { width: 100, height: 100 },
+    globalCompositeOperation: 'source-over',
+    save() { operations.push(['save', this.globalCompositeOperation]); },
+    restore() { operations.push(['restore', this.globalCompositeOperation]); this.globalCompositeOperation = 'source-over'; },
+    clearRect() { operations.push(['clear']); },
+    beginPath() { operations.push(['begin', this.globalCompositeOperation]); },
+    moveTo() {},
+    lineTo() {},
+    stroke() { operations.push(['stroke', this.globalCompositeOperation]); },
+    strokeRect() {},
+    ellipse() {},
+  };
+  renderAnnotationLayer(context, [
+    { type: 'brush', points: [0, 0, 30, 30], strokeWidth: 5, color: '#fff' },
+    localEraser,
+  ]);
+  assert.deepEqual(
+    operations.filter(([operation]) => operation === 'stroke').map(([, composite]) => composite),
+    ['source-over', 'destination-out']
+  );
+  assert.equal(context.globalCompositeOperation, 'source-over');
+}
+
+// Undo/redo snapshots preserve both Local Eraser additions and Object Eraser deletions.
+{
+  const brush = { id: 'brush', type: 'brush', points: [0, 0, 30, 30], strokeWidth: 5 };
+  const eraser = { id: 'eraser', type: 'eraser', points: [10, 10, 20, 20], strokeWidth: 12 };
+  const localResult = pushAnnotationHistory([[brush]], 0, [brush, eraser]);
+  assert.deepEqual(localResult.history[0], [brush]);
+  assert.deepEqual(localResult.history[1], [brush, eraser]);
+
+  const objectResult = pushAnnotationHistory(localResult.history, localResult.historyIndex, [eraser]);
+  assert.deepEqual(objectResult.history[1], [brush, eraser]);
+  assert.deepEqual(objectResult.history[2], [eraser]);
+}
+
+// Export erases only the annotation layer, then composites that layer over the untouched source image.
+{
+  const originalDocument = globalThis.document;
+  const contexts = [];
+  const createContext = () => {
+    const operations = [];
+    const context = {
+      canvas: null,
+      globalCompositeOperation: 'source-over',
+      operations,
+      save() {},
+      restore() { this.globalCompositeOperation = 'source-over'; },
+      clearRect() {},
+      drawImage(source) { operations.push(['drawImage', source]); },
+      scale() {},
+      beginPath() { operations.push(['begin', this.globalCompositeOperation]); },
+      moveTo() {},
+      lineTo() {},
+      stroke() { operations.push(['stroke', this.globalCompositeOperation]); },
+      strokeRect() {},
+      ellipse() {},
+    };
+    contexts.push(context);
+    return context;
+  };
+  globalThis.document = {
+    createElement() {
+      const context = createContext();
+      const canvas = {
+        width: 0,
+        height: 0,
+        getContext: () => context,
+        toDataURL: () => 'data:image/png;base64,test',
+      };
+      context.canvas = canvas;
+      return canvas;
+    },
+  };
+
+  const image = { naturalWidth: 100, naturalHeight: 80 };
+  const result = exportAnnotatedImage(image, [
+    { type: 'brush', points: [0, 0, 20, 20], strokeWidth: 5 },
+    { type: 'eraser', points: [5, 5, 10, 10], strokeWidth: 8 },
+  ]);
+  assert.equal(result, 'data:image/png;base64,test');
+  assert.equal(contexts[0].operations.some((operation) => operation[1] === 'destination-out'), false);
+  assert.equal(contexts[1].operations.some((operation) => operation[1] === 'destination-out'), true);
+  assert.equal(contexts[0].operations.filter(([operation]) => operation === 'drawImage').length, 2);
+
+  if (originalDocument === undefined) delete globalThis.document;
+  else globalThis.document = originalDocument;
 }
 
 console.log('nodeOutputs tests passed');

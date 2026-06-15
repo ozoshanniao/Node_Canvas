@@ -21,6 +21,13 @@ const baseProject = {
   projectPath: 'Z:/tmp/node-canvas-project',
   projectFilePath: 'Z:/tmp/node-canvas-project/project.json',
   projectName: 'Viewport Test',
+  appSettings: {
+    language: 'en-US',
+    showRawCustomParams: true,
+    publicAssetStorage: 'r2',
+    canvasBackgroundColor: '#123456',
+    canvasGridColor: '#abcdef',
+  },
   nodes: [
     {
       id: 'node-1',
@@ -64,6 +71,11 @@ assert.equal(
   requests[0].body.nodes[0].data.flowing,
   undefined,
   'existing node sanitization should still run'
+);
+assert.equal(
+  Object.prototype.hasOwnProperty.call(requests[0].body, 'appSettings'),
+  false,
+  'app settings must never be included in the project save payload'
 );
 
 await saveProjectCore({

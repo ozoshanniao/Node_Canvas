@@ -7,7 +7,7 @@ export const DOCK_CATEGORIES = [
   {
     id: 'Image',
     label: 'Image',
-    nodeTypes: ['imageInputNode', 'imageNode', 'outputNode', 'imageCompareNode'],
+    nodeTypes: ['imageInputNode', 'imageNode', 'outputNode', 'imageCompareNode', 'splitGridNode', 'annotateNode'],
   },
   {
     id: 'Video',
@@ -22,7 +22,7 @@ export const DOCK_CATEGORIES = [
   {
     id: 'Tools',
     label: 'Tools',
-    nodeTypes: ['splitGridNode', 'routeNode', 'ar720Node', 'panorama360Node', 'easeCurveNode'],
+    nodeTypes: ['routeNode', 'ar720Node', 'panorama360Node', 'easeCurveNode'],
   },
 ];
 

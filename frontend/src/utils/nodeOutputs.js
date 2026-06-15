@@ -2,8 +2,11 @@ import { getTextConstructionOutput, getTextNodeOutput } from './textVariables.js
 import { normalizeBezierHandles } from '../lib/easingFunctions.js';
 import { normalizeEasingPresetId } from '../lib/easingPresets.js';
 import { resolveImageUrl } from './resolveImageUrl.js';
+import { isAnnotationSourceCurrent } from './annotationUtils.js';
 
 const videoFileObjectUrlCache = new WeakMap();
+const getImageOutputUrl = (image) =>
+  typeof image === 'string' ? image : image?.url || image?.src || image?.imageUrl || '';
 
 export const getNodeTextOutput = (node, nodes = [], edges = [], visited = new Set()) => {
   if (!node) return '';
@@ -85,6 +88,37 @@ export const getNodeImageOutput = (node, sourceHandle, edge, nodes = [], edges =
   if (node.type === 'outputNode') {
     const images = Array.isArray(node.data?.images) ? node.data.images : [];
     return images.map((item) => (typeof item === 'string' ? item : item?.url)).filter(Boolean);
+  }
+
+  if (node.type === 'annotateNode') {
+    const nextVisited = new Set(visited);
+    nextVisited.add(node.id);
+    const nodeMap = new Map(nodes.map((item) => [item.id, item]));
+    const inputEdge = edges.find(
+      (item) => item.target === node.id && (item.targetHandle ?? item.targetHandleId) === 'image:in'
+    );
+    if (!inputEdge) return [];
+
+    const upstreamImages = getNodeImageOutput(
+      nodeMap.get(inputEdge.source),
+      inputEdge.sourceHandle,
+      inputEdge,
+      nodes,
+      edges,
+      nextVisited
+    );
+    const upstreamImage = getImageOutputUrl(upstreamImages.find(Boolean));
+    if (
+      node.data?.annotatedImagePath &&
+      isAnnotationSourceCurrent(node.data?.sourceImageKey, upstreamImage) &&
+      (
+        !node.data?.currentSourceImageKey ||
+        node.data.currentSourceImageKey === node.data.sourceImageKey
+      )
+    ) {
+      return [node.data.annotatedImagePath];
+    }
+    return upstreamImages;
   }
 
   if (node.type === 'videoNode') {
