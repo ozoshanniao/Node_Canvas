@@ -8,13 +8,13 @@ from video_generation.adapters.errors import VideoProviderAdapterNotFound
 
 
 LEGACY_VIDEO_ADAPTER_IDS: dict[str, str] = {
-    "kling": "legacy:kling",
     "yunwu-kling": "legacy:yunwu-kling",
     "seedance_official": "legacy:seedance",
 }
 VIDEO_ADAPTER_IDS: dict[str, str] = {
     "yunwu": "yunwu:veo",
     "google": "google:veo",
+    "kling": "kling:official",
     **LEGACY_VIDEO_ADAPTER_IDS,
 }
 
@@ -84,12 +84,15 @@ def _register_default_legacy_adapters() -> None:
 
 def _register_default_adapters() -> None:
     from video_generation.adapters.google_veo import GoogleVeoVideoAdapter
+    from video_generation.adapters.kling import KlingVideoAdapter
     from video_generation.adapters.yunwu import YunwuVideoAdapter
 
     if "yunwu" not in _ADAPTERS_BY_PROVIDER:
         register_video_adapter(YunwuVideoAdapter())
     if "google" not in _ADAPTERS_BY_PROVIDER:
         register_video_adapter(GoogleVeoVideoAdapter())
+    if "kling" not in _ADAPTERS_BY_PROVIDER:
+        register_video_adapter(KlingVideoAdapter())
 
 
 _register_default_adapters()

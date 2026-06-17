@@ -227,11 +227,11 @@ The adapter registry exposes:
 - `resolve_adapter_for_capability(capability)`
 - `register_legacy_video_adapter(provider, adapter_id)`
 
-The registry is local metadata only. Importing it must not make network calls and must not read real API keys. Current providers are registered as legacy placeholders:
+The registry is local metadata only. Importing it must not make network calls and must not read real API keys. Phase 5.3a provider registrations are:
 
-- `yunwu` -> `legacy:yunwu-veo`
-- `google` -> `legacy:google-veo`
-- `kling` -> `legacy:kling`
+- `yunwu` -> `yunwu:veo`
+- `google` -> `google:veo`
+- `kling` -> `kling:official`
 - `yunwu-kling` -> `legacy:yunwu-kling`
 - `seedance_official` -> `legacy:seedance`
 
@@ -240,8 +240,8 @@ Capabilities connect to adapters through non-sensitive `adapterHints`:
 ```json
 {
   "adapterHints": {
-    "adapterId": "legacy:kling",
-    "runtime": "legacy"
+    "adapterId": "kling:official",
+    "runtime": "adapter"
   }
 }
 ```
@@ -276,7 +276,7 @@ The service layer routes only Yunwu create/query through `get_video_adapter("yun
 
 ## Phase 5.2 Google Veo Adapter
 
-Phase 5.2 migrates only `provider: google` video generation to the adapter registry. Google Veo models now resolve to `adapterHints.adapterId = "google:veo"` and `adapterHints.runtime = "adapter"`. Yunwu remains on the Phase 5.1 adapter. Kling, Yunwu-Kling, and Seedance remain on the legacy runtime path.
+Phase 5.2 migrates only `provider: google` video generation to the adapter registry. Google Veo models now resolve to `adapterHints.adapterId = "google:veo"` and `adapterHints.runtime = "adapter"`. Yunwu remains on the Phase 5.1 adapter. At the end of Phase 5.2, Kling, Yunwu-Kling, and Seedance remain on the legacy runtime path.
 
 `GoogleVeoVideoAdapter` reuses the existing `GoogleVeoProvider` SDK create/query implementation. The legacy provider owns the source/config builder, so Google SDK behavior, operation names, task id extraction, error messages, file saving, and public API response shape remain compatible with the pre-migration runtime.
 
@@ -299,3 +299,37 @@ The compatibility contract preserves the current source/config behavior for:
 The service layer routes only Google create/query through `get_video_adapter("google")`. It still feeds the adapter raw response into the existing status/message normalization, task persistence, video byte saving, remote download flow, and frontend polling contract. No frontend UI, project save structure, `/api/video/model-specs` bridge, or legacy VideoNode bridge handle changes are included in Phase 5.2.
 
 `adapterHints` remains adapter-only metadata and is still excluded from `schemaSnapshot` and `project.json`. Phase 5.3+ will migrate Kling and Yunwu-Kling, with Seedance after that.
+
+## Phase 5.3a Kling Official Adapter
+
+Phase 5.3a migrates only official `provider: kling` video generation to the adapter registry. Kling official models now resolve to `adapterHints.adapterId = "kling:official"` and `adapterHints.runtime = "adapter"`.
+
+This phase does not migrate `provider: yunwu-kling` or `provider: seedance_official`. Yunwu remains on the Phase 5.1 `YunwuVideoAdapter`, Google remains on the Phase 5.2 `GoogleVeoVideoAdapter`, Yunwu-Kling remains on the legacy Kling provider path, and Seedance remains on its legacy runtime path.
+
+`KlingVideoAdapter` reuses the existing official `KlingVideoProvider` create/query implementation. The legacy provider still owns endpoint selection, JWT/API key lookup timing, HTTP client construction, payload field names, task id parsing, status/message mapping, and result URL extraction. Adapter import and registry initialization must not read real AK/SK values, create JWTs, or perform network requests.
+
+The official Kling payload compatibility contract preserves the current legacy behavior for:
+
+- `model_name`
+- `prompt`
+- `negative_prompt`
+- `image`
+- `image_tail`
+- `image_list`
+- `video_list`
+- `element_list`
+- `multi_shot`
+- `shot_type`
+- `multi_prompt`
+- `sound`
+- `mode`
+- `aspect_ratio`
+- `duration`
+- `watermark_info`
+- `camera_control`
+- `callback_url`
+- `external_task_id`
+
+The service layer routes only `provider == "kling"` create/query through `get_video_adapter("kling")`. It still feeds the adapter raw response into the existing provider task id extraction, status/message normalization, task persistence, video download flow, and frontend polling contract. Public API response shape, project save structure, frontend VideoNode UI, `/api/video/model-specs`, and legacy bridge handles are unchanged.
+
+`adapterHints` remains adapter-only metadata and is still excluded from `schemaSnapshot` and `project.json`. Yunwu-Kling is reserved for Phase 5.3b, and Seedance is reserved for Phase 5.4.

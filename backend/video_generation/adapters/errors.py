@@ -44,15 +44,15 @@ class VideoProviderAdapterNotFound(VideoProviderError):
 
 
 ERROR_CATEGORY_KEYWORDS: tuple[tuple[VideoProviderErrorCategory, tuple[str, ...], bool], ...] = (
-    ("auth_error", ("unauthorized", "unauthenticated", "api key", "apikey", "authorization", "credentials", "401"), False),
-    ("permission_error", ("permission", "forbidden", "project", "region", "403"), False),
-    ("quota_error", ("quota", "insufficient credits", "billing"), False),
+    ("auth_error", ("unauthorized", "unauthenticated", "api key", "apikey", "authorization", "credentials", "401", "kling code 1000", "kling code 1001", "kling code 1002", "kling code 1003", "kling code 1004"), False),
+    ("permission_error", ("permission", "forbidden", "project", "region", "403", "kling code 1103"), False),
+    ("quota_error", ("quota", "insufficient credits", "billing", "kling code 1101", "kling code 1102", "kling code 1302", "kling code 1303"), False),
     ("rate_limited", ("rate limit", "rate_limited", "too many requests", "429"), True),
-    ("validation_error", ("invalid", "validation", "bad request", "400"), False),
-    ("safety_error", ("safety", "policy", "blocked", "moderation"), False),
+    ("validation_error", ("invalid", "validation", "bad request", "400", "kling code 1200", "kling code 1201"), False),
+    ("safety_error", ("safety", "policy", "blocked", "moderation", "kling code 1300", "kling code 1301"), False),
     ("network_error", ("network", "connection", "dns", "socket", "unreachable"), True),
-    ("timeout", ("timeout", "timed out", "deadline"), True),
-    ("provider_error", ("provider", "upstream", "server error", "500", "502", "503", "504"), True),
+    ("timeout", ("timeout", "timed out", "deadline", "kling code 5002"), True),
+    ("provider_error", ("provider", "upstream", "server error", "500", "502", "503", "504", "kling code 5000", "kling code 5001"), True),
 )
 
 
