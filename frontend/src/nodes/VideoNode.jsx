@@ -16,7 +16,6 @@ import {
   VIDEO_GENERATION_REGISTRY,
   VIDEO_MODE_OPTIONS,
   fetchVideoGenerationRegistry,
-  getActiveVideoHandlesForMode,
   getKlingShotMode,
   getVideoAdvancedParamEntries,
   getVideoModelConfig,
@@ -27,10 +26,15 @@ import {
   isSeedanceModel,
   normalizeVideoGenerationSettings,
   resolveKlingOmniElements,
-  shouldShowVideoNegativePrompt,
   supportsKlingCameraControl,
   supportsKlingMultiShot,
 } from '../utils/videoGenerationOptions';
+import {
+  getHandleState,
+  getParameterSchema,
+  getStableVideoHandles,
+  getVideoCapability,
+} from '../utils/videoCapabilities';
 import { shouldShowRawCustomParams, useAppSettings } from '../utils/appSettings';
 import { countRender } from '../utils/perfDebug';
 import { useI18n } from '../hooks/useI18n';
@@ -52,6 +56,13 @@ const OUTPUT_HANDLE_LABELS = {
   'video:out': 'video:out',
   'image:lastFrame': 'last',
 };
+
+const LEGACY_BRIDGE_INPUT_HANDLES = [
+  { id: 'multiPrompt:in', top: '32%' },
+  { id: 'image:images', top: '50%' },
+  { id: 'image:end', top: '50%' },
+];
+const LEGACY_BRIDGE_OUTPUT_HANDLES = [{ id: 'image:lastFrame', top: '50%' }];
 
 const TOOLBAR_PARAM_KEYS = ['videoMode', 'aspectRatio', 'duration', 'resolution', 'qualityMode', 'enableUpsample'];
 const VIDEO_NODE_MAX_WIDTH = 640;
@@ -187,7 +198,7 @@ const CapsuleDropdown = ({ id, activeMenu, label, minWidth = 84, onOpen, onSelec
 
 export function VideoNode({ id, data }) {
   countRender('VideoNode');
-  const { getEdges, getNodes, setNodes, setEdges } = useReactFlow();
+  const { getEdges, getNodes, setNodes } = useReactFlow();
   const flowEdges = useEdges();
   const flowNodes = useNodes();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -201,7 +212,6 @@ export function VideoNode({ id, data }) {
   const { t } = useI18n();
   const toolbarRef = useRef(null);
   const lastHandledRunRequestRef = useRef(data?.runRequestId);
-  const lastHandleSignatureRef = useRef('');
   const lastAutoSizeSourceRef = useRef(null);
 
   const activeRegistry = registry || VIDEO_GENERATION_REGISTRY;
@@ -212,13 +222,24 @@ export function VideoNode({ id, data }) {
     () => getVideoModelConfig(settings.provider, settings.model, registry) || {},
     [registry, settings.provider, settings.model]
   );
+  const selectedCapability = useMemo(
+    () => getVideoCapability(activeRegistry.capabilities, settings.provider, settings.model, settings.videoMode),
+    [activeRegistry.capabilities, settings.model, settings.provider, settings.videoMode]
+  );
+  const stableVideoHandles = useMemo(() => getStableVideoHandles(), []);
+  const inputHandleStates = useMemo(
+    () => stableVideoHandles.inputs.map((handleId) => getHandleState(selectedCapability, handleId)),
+    [selectedCapability, stableVideoHandles.inputs]
+  );
+  const outputHandleStates = useMemo(
+    () => stableVideoHandles.outputs.map((handleId) => getHandleState(selectedCapability, handleId)),
+    [selectedCapability, stableVideoHandles.outputs]
+  );
   const isOmniModel = isKlingOmniModel(modelConfig) || isKlingOmniModel(settings);
   const isSeedance = isSeedanceModel(modelConfig) || isSeedanceModel(settings);
-  const activeInputHandles = getActiveVideoHandlesForMode(settings.videoMode, modelConfig, settings);
-  const activeOutputHandles = isSeedance ? ['video:out', 'image:lastFrame'] : ['video:out'];
   const supportsCameraControl = supportsKlingCameraControl(modelConfig);
   const hasEndImageEdge = flowEdges.some(
-    (edge) => edge.target === id && (edge.targetHandle ?? edge.targetHandleId) === 'image:end'
+    (edge) => edge.target === id && ['image:end', 'image:lastFrame'].includes(edge.targetHandle ?? edge.targetHandleId)
   );
   const toolbarParamKeys = useMemo(() => {
     const quickParams = Array.isArray(modelConfig.quickParams) ? modelConfig.quickParams : [];
@@ -252,48 +273,29 @@ export function VideoNode({ id, data }) {
     requestAnimationFrame(() => updateNodeInternals(id));
   }, [id, updateNodeInternals]);
 
-  const pruneInvalidInputEdges = useCallback((nextSettings, nextModelConfig = modelConfig) => {
-    const validHandles = new Set(
-      getActiveVideoHandlesForMode(nextSettings.videoMode, nextModelConfig, nextSettings)
-    );
-    setEdges((eds) =>
-      eds.filter((edge) => {
-        if (edge.target !== id) return true;
-        const targetHandle = edge.targetHandle ?? edge.targetHandleId;
-        return validHandles.has(targetHandle);
-      })
-    );
-  }, [id, modelConfig, setEdges]);
-
-  const applySettings = useCallback((patch, options = {}) => {
+  const applySettings = useCallback((patch) => {
     const nextSettings = normalizeVideoGenerationSettings({
       ...settings,
       ...patch,
     }, registry);
-    const nextModelConfig = getVideoModelConfig(nextSettings.provider, nextSettings.model, registry) || {};
-
-    if (options.pruneModeEdges || nextSettings.videoMode !== settings.videoMode || nextSettings.qualityMode !== settings.qualityMode) {
-      pruneInvalidInputEdges(nextSettings, nextModelConfig);
-    }
 
     updateNodeData(nextSettings);
     refreshHandles();
-  }, [pruneInvalidInputEdges, refreshHandles, registry, settings, updateNodeData]);
+  }, [refreshHandles, registry, settings, updateNodeData]);
 
   const handleProviderSelect = (providerId) => {
     const provider = getVideoProvider(providerId, registry);
     const nextModel = provider?.models?.[0]?.id;
     const nextModelConfig = getVideoModelConfig(providerId, nextModel, registry);
     applySettings(
-      { provider: providerId, model: nextModel, customParams: { ...(nextModelConfig?.customParams || {}) } },
-      { pruneModeEdges: true }
+      { provider: providerId, model: nextModel, customParams: { ...(nextModelConfig?.customParams || {}) } }
     );
     setActiveMenu(null);
   };
 
   const handleModelSelect = (modelId) => {
     const nextModelConfig = getVideoModelConfig(settings.provider, modelId, registry);
-    applySettings({ model: modelId, customParams: { ...(nextModelConfig?.customParams || {}) } }, { pruneModeEdges: true });
+    applySettings({ model: modelId, customParams: { ...(nextModelConfig?.customParams || {}) } });
     setActiveMenu(null);
   };
 
@@ -321,13 +323,26 @@ export function VideoNode({ id, data }) {
       setActiveMenu(null);
       return;
     }
-    applySettings({ [key]: value }, { pruneModeEdges: key === 'videoMode' });
+    applySettings({ [key]: value });
     setActiveMenu(null);
   };
 
   const getHandleLabel = (handleId) => {
-    if (handleId === 'image:images' && settings.videoMode === 'image-to-video') return 'image';
     return HANDLE_LABELS[handleId] || handleId;
+  };
+
+  const getHandleClasses = (state, side) => {
+    const base =
+      side === 'left'
+        ? '!left-[-4px] !h-2 !w-2 !rounded-full !border transition-colors'
+        : '!right-[-4px] !h-2 !w-2 !rounded-full !border transition-colors';
+    if (state.status === 'unsupported') {
+      return `${base} !border-white/15 !bg-[#101010] !opacity-35 grayscale`;
+    }
+    if (state.status === 'required') {
+      return `${base} !border-white/80 !bg-white shadow-[0_0_8px_rgba(255,255,255,0.35)]`;
+    }
+    return `${base} !border-white/40 !bg-[#121212] group-hover:!border-white`;
   };
 
   const handleMenuOpen = useCallback((menuId) => {
@@ -482,8 +497,14 @@ export function VideoNode({ id, data }) {
         .filter(Boolean);
 
     const maxImages = Number(modelConfig.inputCapabilities?.maxImages) || Number.POSITIVE_INFINITY;
-    const imageInputs = collectLegacyImagesForHandle('image:images');
-    const endImages = collectLegacyImagesForHandle('image:end');
+    const imageInputs = [
+      ...collectLegacyImagesForHandle('image:firstFrame'),
+      ...collectLegacyImagesForHandle('image:images'),
+    ];
+    const endImages = [
+      ...collectLegacyImagesForHandle('image:lastFrame'),
+      ...collectLegacyImagesForHandle('image:end'),
+    ];
 
     let images = [];
     let endImage = null;
@@ -814,14 +835,6 @@ export function VideoNode({ id, data }) {
     handleRun();
   }, [data?.runRequestId, handleRun]);
 
-  useEffect(() => {
-    const handleSignature = activeInputHandles.join('|');
-    if (lastHandleSignatureRef.current === handleSignature) return;
-    lastHandleSignatureRef.current = handleSignature;
-    pruneInvalidInputEdges(settings, modelConfig);
-    refreshHandles();
-  }, [activeInputHandles, modelConfig, pruneInvalidInputEdges, refreshHandles, settings]);
-
   const renderParamControl = (key, config) => {
     const customValue = config.customParamPath
       ? getNestedValue(settings.customParams, config.customParamPath) ?? settings[key]
@@ -983,11 +996,15 @@ export function VideoNode({ id, data }) {
   };
 
   const modelOptions = providerConfig?.models || [];
-  const advancedParams = useMemo(
-    () => getVideoAdvancedParamEntries(modelConfig),
-    [modelConfig]
-  );
-  const showNegativePromptInput = shouldShowVideoNegativePrompt(modelConfig, settings);
+  const advancedParams = useMemo(() => {
+    if (selectedCapability?.advancedParams?.length) {
+      return selectedCapability.advancedParams
+        .map((key) => [key, modelConfig.params?.[key] || selectedCapability.parameters?.[key]])
+        .filter(([, config]) => config);
+    }
+    return getVideoAdvancedParamEntries(modelConfig);
+  }, [modelConfig, selectedCapability]);
+  const showNegativePromptInput = Boolean(getParameterSchema(selectedCapability, 'negativePrompt'));
   const showCustomParamsInput = shouldShowRawCustomParams(appSettings);
   const customParamsValue =
     typeof settings.customParamsText === 'string'
@@ -1229,7 +1246,10 @@ export function VideoNode({ id, data }) {
       </div>
 
       <div className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-full border border-white/5 bg-[#121212]/60 px-3 py-1.5 text-[11px] font-light text-white/50 backdrop-blur-md">
-        <span className="h-2 w-2 rounded-full bg-white/35" />
+        <span
+          className={`h-2 w-2 rounded-full ${selectedCapability ? 'bg-white/35' : 'bg-amber-300/60'}`}
+          title={selectedCapability ? undefined : 'Capability schema missing; using conservative handle states.'}
+        />
         <span>{t('node.video.label')}</span>
       </div>
 
@@ -1237,40 +1257,70 @@ export function VideoNode({ id, data }) {
         {renderPreview()}
       </div>
 
-      {activeInputHandles.map((handleId, index) => (
+      {LEGACY_BRIDGE_INPUT_HANDLES.map((handle) => (
+        <Handle
+          key={handle.id}
+          type="target"
+          id={handle.id}
+          position={Position.Left}
+          className="!left-[-4px] !h-2 !w-2 !rounded-full !border-0 !bg-transparent !opacity-0"
+          style={{ top: handle.top, pointerEvents: 'none' }}
+        />
+      ))}
+
+      {inputHandleStates.map((handleState, index) => (
         <div
-          key={handleId}
-          className="absolute left-0 z-20 flex items-center"
+          key={handleState.handleId}
+          className={`absolute left-0 z-20 flex items-center ${handleState.status === 'unsupported' ? 'opacity-60' : ''}`}
           style={{ top: `${32 + index * 18}%` }}
+          title={handleState.status === 'unsupported' ? 'Unsupported by selected model' : `${handleState.label} (${handleState.status})`}
         >
           <Handle
             type="target"
-            id={handleId}
+            id={handleState.handleId}
             position={Position.Left}
-            className="!left-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] transition-colors group-hover:!border-white"
+            className={getHandleClasses(handleState, 'left')}
           />
-          <span className="pointer-events-none absolute left-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
-            {getHandleLabel(handleId)}
+          <span
+            className={`pointer-events-none absolute left-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light opacity-0 transition-opacity group-hover:opacity-100 ${
+              handleState.status === 'unsupported' ? 'text-white/20' : 'text-white/40'
+            }`}
+          >
+            {getHandleLabel(handleState.handleId)}
+            {handleState.required ? ' *' : ''}
           </span>
         </div>
       ))}
 
-      {activeOutputHandles.map((handleId, index) => (
+      {outputHandleStates.map((handleState, index) => (
         <div
-          key={handleId}
+          key={handleState.handleId}
           className="absolute right-0 z-20 flex items-center"
-          style={{ top: `${50 + (index - (activeOutputHandles.length - 1) / 2) * 18}%` }}
+          style={{ top: `${50 + (index - (outputHandleStates.length - 1) / 2) * 18}%` }}
+          title={`${handleState.label} (${handleState.status})`}
         >
           <span className="pointer-events-none absolute right-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
-            {OUTPUT_HANDLE_LABELS[handleId] || handleId}
+            {OUTPUT_HANDLE_LABELS[handleState.handleId] || handleState.handleId}
+            {handleState.required ? ' *' : ''}
           </span>
           <Handle
             type="source"
-            id={handleId}
+            id={handleState.handleId}
             position={Position.Right}
-            className="!right-[-4px] !h-2 !w-2 !rounded-full !border !border-white/40 !bg-[#121212] shadow-[0_0_8px_rgba(255,255,255,0.2)] transition-colors group-hover:!border-white"
+            className={getHandleClasses(handleState, 'right')}
           />
         </div>
+      ))}
+
+      {LEGACY_BRIDGE_OUTPUT_HANDLES.map((handle) => (
+        <Handle
+          key={handle.id}
+          type="source"
+          id={handle.id}
+          position={Position.Right}
+          className="!right-[-4px] !h-2 !w-2 !rounded-full !border-0 !bg-transparent !opacity-0"
+          style={{ top: handle.top, pointerEvents: 'none' }}
+        />
       ))}
 
       <NodeResizeCorner minWidth={120} minHeight={90} />

@@ -103,3 +103,23 @@ Do not save API keys, Authorization headers, bearer tokens, raw provider payload
 `capabilities` is the new canonical Capability Schema v1 list. `providers` and `models` are temporary bridge fields for the current frontend and should be removed in Phase 2/3 after VideoNode consumes capabilities directly.
 
 Phase 1 does not change the provider runtime behavior, API key settings logic, real create/query request chain, or VideoNode UI.
+
+## Phase 2 VideoNode Behavior
+
+VideoNode reads `capabilities` from `GET /api/video/model-specs` and resolves the selected capability by `provider + model`, with `taskType` used as an optional refinement when a later schema version exposes task-specific records. The Phase 1 bridge fields `providers` and `models` remain in the response for current selector compatibility.
+
+The visible VideoNode input ports are now the stable handle set:
+
+- `text:prompt`
+- `image:firstFrame`
+- `image:lastFrame`
+- `image:references`
+- `video:references`
+- `audio:references`
+- `omniParams:in`
+
+The stable output port is `video:out`.
+
+Unsupported ports stay rendered and are visually dimmed. Required ports show `*` next to the hover label. Optional ports use the normal handle style. Missing capability data falls back to conservative handle states and shows a lightweight node status hint instead of throwing.
+
+VideoNode no longer prunes existing edges when provider, model, task type, quality mode, or other parameters change. Connection validation and runtime payload behavior are unchanged in Phase 2. Legacy input handles such as `image:images`, `image:end`, and `multiPrompt:in`, plus the legacy `image:lastFrame` output, are kept as temporary invisible bridge handles so existing projects and multi-shot inputs keep their edge anchors while new visible UI moves to stable handles.

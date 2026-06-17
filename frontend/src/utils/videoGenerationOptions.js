@@ -649,7 +649,7 @@ export const resolveKlingOmniElements = (omniParamsOutput) => {
 };
 
 export const fetchVideoGenerationRegistry = async () => {
-  const response = await fetch('http://127.0.0.1:8000/api/video/specs');
+  const response = await fetch('http://127.0.0.1:8000/api/video/model-specs');
   const registry = await response.json();
   if (!response.ok) {
     throw new Error(registry?.detail || `Video specs fetch failed: ${response.status}`);
