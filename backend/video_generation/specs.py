@@ -1,3 +1,6 @@
+from copy import deepcopy
+
+
 COMMON_SEED_PARAM = {
     "type": "number",
     "label": "Seed",
@@ -615,4 +618,20 @@ VIDEO_GENERATION_REGISTRY = {
 
 
 def get_video_model_specs():
-    return VIDEO_GENERATION_REGISTRY
+    from video_generation.capabilities import list_video_model_capabilities
+
+    legacy_registry = deepcopy(VIDEO_GENERATION_REGISTRY)
+    capabilities = list_video_model_capabilities(legacy_registry)
+    # Phase 1 temporary bridge: providers/models preserves the current frontend
+    # contract. Phase 2/3 should remove legacy fields after VideoNode consumes
+    # capabilities directly.
+    return {
+        "schemaVersion": 1,
+        "providers": legacy_registry["providers"],
+        "models": legacy_registry["providers"],
+        "capabilities": capabilities,
+    }
+
+
+def get_legacy_video_model_specs():
+    return deepcopy(VIDEO_GENERATION_REGISTRY)
