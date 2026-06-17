@@ -184,3 +184,11 @@ The saved `schemaSnapshot` includes only:
 It must not include full `parameters`, `adapterHints`, `hiddenParams`, full `uiHints`, raw schemas, API keys, or raw provider payloads.
 
 Project save sanitization removes API keys, authorization headers, bearer tokens, access keys, secret keys, private keys, raw provider responses, raw/OpenAPI schemas, base64 media, blob URLs, local absolute paths, transient task state, polling state, `Error` instances, and `File`/`Blob` objects. It preserves relative generated media paths and API proxy URLs needed to reopen project-local outputs.
+
+## Phase 4 Dynamic Advanced Parameters
+
+VideoNode keeps the core controls custom and stable: provider, model, task type/mode, aspect ratio, duration, resolution, audio generation, and seed remain first-class UI controls. Advanced controls are rendered from Capability Schema v1 by reading `parameters` entries whose `group` is `advanced`, ordered by `advancedParams` when present.
+
+Hidden parameters, `hiddenParams`, `adapterHints`, and raw provider schemas are never rendered. Deprecated parameters are hidden unless the current node already has a saved value for that parameter. Provider-specific advanced parameters can keep a temporary custom UI when needed, but their visibility is still gated by the capability schema. `cameraControl` currently uses the existing Kling UI bridge only when `parameters.cameraControl` or the legacy model capability marks it supported.
+
+Dynamic advanced text, number, slider, object, and textarea controls keep local edit state and commit to `data.params[paramName]` on blur or Enter. Select and boolean controls commit immediately. Phase 4 does not change the real create/query payload builders, backend video services, provider adapters, API key settings, legacy bridge handles, or the `/api/video/model-specs` bridge.

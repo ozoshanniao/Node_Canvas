@@ -118,3 +118,13 @@ export const isHandleSupported = (capability, handleId) =>
 
 export const isHandleRequired = (capability, handleId) =>
   getHandleState(capability, handleId).required;
+
+export {
+  coerceParameterValue,
+  getAdvancedParameters,
+  getBasicParameters,
+  getParameterDefaultValue,
+  getParametersByGroup,
+  isParameterHidden,
+  isParameterVisible,
+} from './videoParameterSchema.js';

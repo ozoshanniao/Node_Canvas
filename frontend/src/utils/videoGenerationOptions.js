@@ -724,9 +724,9 @@ export const normalizeVideoGenerationSettings = (settings = {}, registry) => {
   // Temporary Phase 3 runtime bridge only. Do not persist to project.json.
   // New saved VideoNode data stores user settings in data.params and taskType.
   const sourceSettings = {
-    ...(settings.params || {}),
     ...settings,
-    videoMode: settings.videoMode || settings.taskType || settings.params?.videoMode,
+    ...(settings.params || {}),
+    videoMode: settings.params?.videoMode || settings.taskType || settings.videoMode,
     outputs: settings.outputs?.video || settings.outputs?.lastFrame
       ? {
           ...settings.outputs,

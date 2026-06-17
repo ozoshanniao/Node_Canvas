@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, useEdges, useNodes, useReactFlow, useUpdateNodeInternals } from '@xyflow/react';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import CustomSelect from '../components/CustomSelect';
+import { DynamicAdvancedParams } from '../components/DynamicAdvancedParams';
+import { ParameterInput } from '../components/ParameterInput';
 import { useVideoTask } from '../hooks/useVideoTask';
 import { setLastNodeDefaults } from '../utils/nodeDefaults';
 import {
@@ -17,7 +19,6 @@ import {
   VIDEO_MODE_OPTIONS,
   fetchVideoGenerationRegistry,
   getKlingShotMode,
-  getVideoAdvancedParamEntries,
   getVideoModelConfig,
   getVideoProvider,
   isVideoTaskActive,
@@ -26,7 +27,6 @@ import {
   isSeedanceModel,
   normalizeVideoGenerationSettings,
   resolveKlingOmniElements,
-  supportsKlingCameraControl,
   supportsKlingMultiShot,
 } from '../utils/videoGenerationOptions';
 import {
@@ -74,6 +74,7 @@ const LEGACY_BRIDGE_OUTPUT_HANDLES = [
 ];
 
 const TOOLBAR_PARAM_KEYS = ['videoMode', 'aspectRatio', 'duration', 'resolution', 'qualityMode', 'enableUpsample'];
+const CORE_ADVANCED_PARAM_KEYS = ['generateAudio', 'seed'];
 const VIDEO_NODE_MAX_WIDTH = 640;
 const VIDEO_NODE_MAX_HEIGHT = 568;
 const VIDEO_NODE_MIN_WIDTH = 320;
@@ -129,9 +130,6 @@ const resolveVideoUrl = (url) => {
   if (url.startsWith('/')) return `http://127.0.0.1:8000${url}`;
   return url;
 };
-
-const getNestedValue = (source, path = []) =>
-  path.reduce((current, key) => (current && typeof current === 'object' ? current[key] : undefined), source);
 
 const setNestedValue = (source, path = [], value) => {
   if (!path.length) return source;
@@ -246,7 +244,10 @@ export function VideoNode({ id, data }) {
   );
   const isOmniModel = isKlingOmniModel(modelConfig) || isKlingOmniModel(settings);
   const isSeedance = isSeedanceModel(modelConfig) || isSeedanceModel(settings);
-  const supportsCameraControl = supportsKlingCameraControl(modelConfig);
+  const supportsCameraControl = Boolean(
+    getParameterSchema(selectedCapability, 'cameraControl') ||
+    modelConfig?.capabilities?.cameraControl?.supported
+  );
   const hasEndImageEdge = flowEdges.some(
     (edge) => edge.target === id && ['image:end', 'image:lastFrame'].includes(edge.targetHandle ?? edge.targetHandleId)
   );
@@ -260,6 +261,11 @@ export function VideoNode({ id, data }) {
     if (modelConfig.params?.qualityMode && !keys.includes('qualityMode')) keys.push('qualityMode');
     return keys;
   }, [modelConfig, settings]);
+  const coreAdvancedParams = useMemo(() => (
+    CORE_ADVANCED_PARAM_KEYS
+      .map((key) => [key, getParameterSchema(selectedCapability, key) || modelConfig.params?.[key]])
+      .filter(([, config]) => config && config.group !== 'hidden' && config.ui !== 'hidden')
+  ), [modelConfig.params, selectedCapability]);
 
   const updateNodeData = useCallback((patch) => {
     setLastNodeDefaults('videoGeneration', patch);
@@ -368,21 +374,37 @@ export function VideoNode({ id, data }) {
     }
   };
 
+  const updateAdvancedParam = useCallback((key, value) => {
+    updateNodeData({
+      params: {
+        ...(settings.params || {}),
+        [key]: value,
+      },
+    });
+  }, [settings.params, updateNodeData]);
+
   const updateKlingCameraControl = (patch) => {
-    const currentCameraControl = settings.customParams?.kling?.cameraControl || {
+    const currentCameraControl = settings.params?.cameraControl || settings.customParams?.kling?.cameraControl || {
       type: 'none',
       axis: 'pan',
       value: 0,
     };
+    const nextCameraControl = {
+      ...currentCameraControl,
+      ...patch,
+    };
     updateNodeData({
+      params: {
+        ...(settings.params || {}),
+        cameraControl: nextCameraControl,
+      },
+      // Temporary provider-specific parameter UI. Phase 5 Provider Adapter /
+      // dynamic params cleanup will isolate or remove this runtime bridge.
       customParams: {
         ...(settings.customParams || {}),
         kling: {
           ...(settings.customParams?.kling || {}),
-          cameraControl: {
-            ...currentCameraControl,
-            ...patch,
-          },
+          cameraControl: nextCameraControl,
         },
       },
     });
@@ -654,8 +676,12 @@ export function VideoNode({ id, data }) {
     const omniElements = resolveKlingOmniElements(omniParamsOutput);
     const klingParams = settings.customParams?.kling || {};
     const videoNodeKlingParams = {
-      ...(klingParams.cfgScale !== undefined ? { cfgScale: klingParams.cfgScale } : {}),
-      ...(klingParams.cameraControl ? { cameraControl: klingParams.cameraControl } : {}),
+      ...(klingParams.cfgScale !== undefined || settings.cfgScale !== undefined
+        ? { cfgScale: klingParams.cfgScale ?? settings.cfgScale }
+        : {}),
+      ...(klingParams.cameraControl || settings.cameraControl
+        ? { cameraControl: klingParams.cameraControl || settings.cameraControl }
+        : {}),
     };
 
     const payload = {
@@ -857,75 +883,6 @@ export function VideoNode({ id, data }) {
     handleRun();
   }, [data?.runRequestId, handleRun]);
 
-  const renderParamControl = (key, config) => {
-    const customValue = config.customParamPath
-      ? getNestedValue(settings.customParams, config.customParamPath) ?? settings[key]
-      : undefined;
-    const value = customValue ?? settings[key] ?? config.default;
-    if (config.type === 'select') {
-      return (
-        <CustomSelect
-          value={value}
-          onChange={(nextVal) => handleParamChange(key, nextVal)}
-          options={config.options || []}
-        />
-      );
-    }
-
-    if (config.type === 'boolean') {
-      return (
-        <button
-          type="button"
-          onClick={() => handleParamChange(key, !value)}
-          className={`nodrag h-7 w-12 rounded-full border p-0.5 transition-colors ${
-            value ? 'border-white/50 bg-white/80' : 'border-white/10 bg-black/25'
-          }`}
-        >
-          <span
-            className={`block h-5 w-5 rounded-full transition-transform ${
-              value ? 'translate-x-5 bg-black' : 'translate-x-0 bg-white/35'
-            }`}
-          />
-        </button>
-      );
-    }
-
-    if (config.type === 'number') {
-      if (config.control === 'slider') {
-        const numberValue = Number(value);
-        return (
-          <div className="nodrag nowheel flex items-center gap-2">
-            <input
-              type="range"
-              value={Number.isFinite(numberValue) ? numberValue : config.default}
-              min={config.min}
-              max={config.max}
-              step={config.step || 0.05}
-              onChange={(event) => handleParamChange(key, Number(event.target.value))}
-              className="nodrag nowheel h-6 flex-1 accent-white"
-            />
-            <span className="w-9 text-right text-[11px] text-white/45">
-              {(Number.isFinite(numberValue) ? numberValue : config.default).toFixed(2)}
-            </span>
-          </div>
-        );
-      }
-      return (
-        <input
-          type="number"
-          value={value}
-          min={config.min}
-          max={config.max}
-          step={config.step || 1}
-          onChange={(event) => handleParamChange(key, Number(event.target.value))}
-          className="nodrag w-full rounded-lg border border-white/10 bg-black/25 px-2 py-1.5 text-xs text-white/80 outline-none transition-colors hover:border-white/20"
-        />
-      );
-    }
-
-    return null;
-  };
-
   const renderPreview = () => {
     if (settings.outputs?.videoUrl) {
       return (
@@ -1018,27 +975,13 @@ export function VideoNode({ id, data }) {
   };
 
   const modelOptions = providerConfig?.models || [];
-  const advancedParams = useMemo(() => {
-    const isGenericAdvancedParam = ([key, config]) =>
-      key !== 'negativePrompt' &&
-      config?.ui !== 'provider-specific' &&
-      config?.ui !== 'hidden' &&
-      ['select', 'boolean', 'number'].includes(config?.type);
-    if (selectedCapability?.advancedParams?.length) {
-      return selectedCapability.advancedParams
-        .map((key) => [key, modelConfig.params?.[key] || selectedCapability.parameters?.[key]])
-        .filter(isGenericAdvancedParam);
-    }
-    return getVideoAdvancedParamEntries(modelConfig).filter(isGenericAdvancedParam);
-  }, [modelConfig, selectedCapability]);
-  const showNegativePromptInput = Boolean(getParameterSchema(selectedCapability, 'negativePrompt'));
   const showCustomParamsInput = shouldShowRawCustomParams(appSettings);
   const customParamsValue =
     typeof settings.customParamsText === 'string'
       ? settings.customParamsText
       : JSON.stringify(settings.customParams || {}, null, 2);
   const isTaskActive = isVideoTaskActive(settings.task?.status);
-  const cameraControl = settings.customParams?.kling?.cameraControl || {
+  const cameraControl = settings.params?.cameraControl || settings.customParams?.kling?.cameraControl || {
     type: 'none',
     axis: 'pan',
     value: 0,
@@ -1068,14 +1011,29 @@ export function VideoNode({ id, data }) {
           </div>
 
           <div className="nowheel min-h-0 overflow-y-auto pr-2 mr-0.5">
-            <div className="grid grid-cols-2 gap-2.5">
-              {advancedParams.map(([key, config]) => (
-                <label key={key} className="nodrag nowheel grid gap-1.5">
-                  <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">{config.label || key}</span>
-                  {renderParamControl(key, config)}
-                </label>
-              ))}
-            </div>
+            {coreAdvancedParams.length > 0 && (
+              <div className="mb-2.5 grid grid-cols-2 gap-2.5">
+                {coreAdvancedParams.map(([key, config]) => (
+                  <label key={key} className="nodrag nowheel grid gap-1.5">
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">
+                      {config.label || key}
+                    </span>
+                    <ParameterInput
+                      name={key}
+                      parameter={config}
+                      value={settings[key] ?? settings.params?.[key]}
+                      onChange={handleParamChange}
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <DynamicAdvancedParams
+              capability={selectedCapability}
+              params={settings.params || {}}
+              onParamChange={updateAdvancedParam}
+            />
 
             {supportsCameraControl && (
               <div className="nodrag nowheel mt-2.5 rounded-xl border border-white/10 bg-black/15">
@@ -1142,20 +1100,6 @@ export function VideoNode({ id, data }) {
                   </div>
                 )}
               </div>
-            )}
-
-            {showNegativePromptInput && (
-              <label className="nodrag nowheel mt-2.5 grid gap-1.5">
-                <span className="text-[10px] uppercase tracking-[0.14em] text-white/30">Negative Prompt</span>
-                <div className="nodrag nowheel overflow-hidden rounded-xl border border-white/10 bg-black/25 transition-colors hover:border-white/20">
-                  <textarea
-                    value={settings.negativePrompt || ''}
-                    onChange={(event) => updateNodeData({ negativePrompt: event.target.value })}
-                    className="nodrag nowheel block h-20 w-full resize-none bg-transparent px-3 py-2 text-xs text-white/75 outline-none overflow-y-auto overflow-x-hidden"
-                    placeholder={t('node.video.negativePlaceholder')}
-                  />
-                </div>
-              </label>
             )}
 
             {showCustomParamsInput && (
