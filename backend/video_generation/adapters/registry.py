@@ -100,5 +100,13 @@ def _register_default_adapters() -> None:
         register_video_adapter(SeedanceOfficialVideoAdapter())
 
 
+def _restore_default_video_adapters_for_tests() -> None:
+    """Test-only helper: reset the process-local adapter registry to defaults."""
+    _ADAPTERS_BY_PROVIDER.clear()
+    _ADAPTERS_BY_ID.clear()
+    _register_default_adapters()
+    _register_default_legacy_adapters()
+
+
 _register_default_adapters()
 _register_default_legacy_adapters()

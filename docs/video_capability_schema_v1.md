@@ -396,3 +396,30 @@ The R2/public asset flow remains owned by the existing Seedance provider and `Pu
 The service layer routes only `provider == "seedance_official"` create/query through `get_video_adapter("seedance_official")`. The adapter raw response still flows through the existing task id extraction, status/message normalization, task persistence, remote video download, return-last-frame download, and frontend polling contract. Public API response shape remains compatible with the pre-migration runtime.
 
 `adapterHints` remains adapter-only metadata and is still excluded from `schemaSnapshot` and `project.json`.
+
+## Phase 5.5 Provider Adapter Cleanup
+
+Phase 5.5 closes the migration of existing video providers to the backend adapter registry. The current default adapter map is:
+
+- `yunwu` -> `yunwu:veo`
+- `google` -> `google:veo`
+- `kling` -> `kling:official`
+- `yunwu-kling` -> `yunwu-kling:kling`
+- `seedance_official` -> `seedance:official`
+
+The cleanup scope is test and architecture hardening only. It does not change real provider payloads, create/query public API response shapes, frontend VideoNode UI, project save structure, `/api/video/model-specs`, or legacy bridge handles.
+
+Adapter internals normalize provider task status into the Phase 5 adapter status set:
+
+- `queued`
+- `running`
+- `succeeded`
+- `failed`
+- `canceled`
+- `unknown`
+
+The service layer still converts adapter raw responses through the existing legacy normalization paths so frontend polling behavior remains compatible.
+
+Registry and import-time safety tests verify that importing adapter modules and initializing the default registry do not create external provider clients, generate Kling JWTs, send network requests, upload R2/TOS objects, or write project files. Provider clients, credentials, public asset uploads, and SDK calls remain deferred until real create/query/build operations.
+
+`adapterHints` remains backend-only adapter routing metadata. It is still excluded from `schemaSnapshot` and must not be persisted to `project.json`; frontend code continues to consume the trimmed capability schema and saved project data shape. New providers and model discovery are reserved for Phase 6.

@@ -20,18 +20,24 @@ class GoogleVeoVideoAdapter:
     adapter_id = "google:veo"
 
     def __init__(self, legacy_provider: GoogleVeoProvider | None = None):
-        self._legacy_provider = legacy_provider or GoogleVeoProvider()
+        self._legacy_provider = legacy_provider
+
+    @property
+    def legacy_provider(self) -> GoogleVeoProvider:
+        if self._legacy_provider is None:
+            self._legacy_provider = GoogleVeoProvider()
+        return self._legacy_provider
 
     def supports(self, capability: Mapping[str, Any]) -> bool:
         hints = capability.get("adapterHints") if isinstance(capability.get("adapterHints"), Mapping) else {}
         return capability.get("provider") == self.provider or hints.get("adapterId") == self.adapter_id
 
     async def build_create_payload(self, request: VideoCreateRequest, capability: Mapping[str, Any]) -> Mapping[str, Any]:
-        return await self._legacy_provider.build_create_payload(self._to_legacy_request(request))
+        return await self.legacy_provider.build_create_payload(self._to_legacy_request(request))
 
     async def create(self, request: VideoCreateRequest, capability: Mapping[str, Any]) -> VideoCreateResult:
         try:
-            response = await self._legacy_provider.create_task(self._to_legacy_request(request))
+            response = await self.legacy_provider.create_task(self._to_legacy_request(request))
         except Exception as exc:
             raise self._provider_error(exc, "Google Veo create failed") from exc
 
@@ -49,7 +55,7 @@ class GoogleVeoVideoAdapter:
 
     async def query(self, request: VideoQueryRequest, capability: Mapping[str, Any]) -> VideoQueryResult:
         try:
-            response = await self._legacy_provider.query_task(request.task_id)
+            response = await self.legacy_provider.query_task(request.task_id)
         except Exception as exc:
             raise self._provider_error(exc, "Google Veo query failed") from exc
 

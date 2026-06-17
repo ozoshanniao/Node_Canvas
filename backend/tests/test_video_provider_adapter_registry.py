@@ -14,6 +14,7 @@ from video_generation.adapters.registry import (
     register_video_adapter,
     resolve_adapter_for_capability,
     temporary_video_adapter_registry,
+    _restore_default_video_adapters_for_tests,
 )
 from video_generation.adapters.google_veo import GoogleVeoVideoAdapter
 from video_generation.adapters.kling import KlingVideoAdapter
@@ -62,6 +63,9 @@ class DummyVideoAdapter:
 
 
 class VideoProviderAdapterRegistryTest(unittest.TestCase):
+    def tearDown(self):
+        _restore_default_video_adapters_for_tests()
+
     def test_registry_can_register_and_get_adapter(self):
         with temporary_video_adapter_registry():
             adapter = register_video_adapter(DummyVideoAdapter())
@@ -83,6 +87,10 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
 
         self.assertTrue(adapters)
         self.assertTrue(all(getattr(adapter, "provider", None) for adapter in adapters))
+        self.assertEqual(
+            {adapter.provider for adapter in adapters},
+            {"yunwu", "google", "kling", "yunwu-kling", "seedance_official"},
+        )
 
     def test_resolve_adapter_for_capability_uses_adapter_hints(self):
         capability = {
@@ -155,10 +163,31 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
 
     def test_status_mapping_helper_normalizes_provider_status(self):
         self.assertEqual(normalize_video_adapter_status("pending"), "queued")
+        self.assertEqual(normalize_video_adapter_status("queued"), "queued")
+        self.assertEqual(normalize_video_adapter_status("submitted"), "queued")
+        self.assertEqual(normalize_video_adapter_status("processing"), "running")
         self.assertEqual(normalize_video_adapter_status("video_generating"), "running")
+        self.assertEqual(normalize_video_adapter_status("running"), "running")
+        self.assertEqual(normalize_video_adapter_status("success"), "succeeded")
         self.assertEqual(normalize_video_adapter_status("completed"), "succeeded")
+        self.assertEqual(normalize_video_adapter_status("succeeded"), "succeeded")
+        self.assertEqual(normalize_video_adapter_status("error"), "failed")
         self.assertEqual(normalize_video_adapter_status("failed"), "failed")
+        self.assertEqual(normalize_video_adapter_status("cancelled"), "canceled")
+        self.assertEqual(normalize_video_adapter_status("canceled"), "canceled")
         self.assertEqual(normalize_video_adapter_status("unexpected"), "unknown")
+
+    def test_temporary_registry_restores_default_registry_after_fake_adapter(self):
+        with temporary_video_adapter_registry():
+            register_video_adapter(DummyVideoAdapter())
+            self.assertIs(get_video_adapter("phase5_dummy").__class__, DummyVideoAdapter)
+
+        self.assertFalse(has_video_adapter("phase5_dummy"))
+        self.assertIsInstance(get_video_adapter("yunwu"), YunwuVideoAdapter)
+        self.assertIsInstance(get_video_adapter("google"), GoogleVeoVideoAdapter)
+        self.assertIsInstance(get_video_adapter("kling"), KlingVideoAdapter)
+        self.assertIsInstance(get_video_adapter("yunwu-kling"), YunwuKlingVideoAdapter)
+        self.assertIsInstance(get_video_adapter("seedance_official"), SeedanceOfficialVideoAdapter)
 
     def test_error_classification_helper(self):
         self.assertEqual(classify_video_provider_error("Invalid API key")[0], "auth_error")
