@@ -41,6 +41,11 @@ const capability = {
     },
   },
   parameters: {
+    negativePrompt: {
+      type: 'text',
+      group: 'advanced',
+      default: '',
+    },
     duration: {
       type: 'select',
       group: 'basic',
@@ -96,6 +101,7 @@ assert.equal(getHandleState(null, 'video:out').status, 'required');
 assert.equal(isHandleSupported(capability, 'image:firstFrame'), true);
 assert.equal(isHandleSupported(capability, 'image:lastFrame'), false);
 assert.equal(isHandleRequired(capability, 'text:prompt'), true);
+assert.equal(getParameterSchema(capability, 'negativePrompt').group, 'advanced');
 assert.deepEqual(getParameterSchema(capability, 'duration').options, ['5s', '10s']);
 assert.equal(getParameterSchema(capability, 'seed').group, 'advanced');
 assert.equal(getParameterSchema(capability, 'missing'), null);

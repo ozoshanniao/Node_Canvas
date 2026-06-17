@@ -4,6 +4,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 from video_generation.capabilities import (
+    ALLOWED_PARAMETER_GROUPS,
     STABLE_VIDEO_INPUT_HANDLES,
     build_model_schema_snapshot,
     list_video_model_capabilities,
@@ -48,6 +49,43 @@ class VideoCapabilitySchemaTest(unittest.TestCase):
                 self.assertLessEqual(set(capability["quickParams"]), params)
                 self.assertLessEqual(set(capability["advancedParams"]), params)
 
+    def test_parameter_groups_are_limited_to_schema_groups(self):
+        for capability in self.capabilities:
+            for key, parameter in capability["parameters"].items():
+                with self.subTest(provider=capability["provider"], model=capability["model"], parameter=key):
+                    self.assertIn(parameter["group"], ALLOWED_PARAMETER_GROUPS)
+
+    def test_negative_prompt_policy_is_encoded(self):
+        for capability in self.capabilities:
+            params = capability["parameters"]
+            family = capability["family"]
+            provider = capability["provider"]
+            with self.subTest(provider=provider, model=capability["model"]):
+                if provider == "google" and family == "veo":
+                    self.assertIn("negativePrompt", params)
+                    self.assertEqual(params["negativePrompt"]["group"], "advanced")
+                elif provider == "yunwu" and family == "veo":
+                    self.assertIn("negativePrompt", params)
+                    self.assertEqual(params["negativePrompt"]["group"], "advanced")
+                elif family == "kling":
+                    self.assertIn("negativePrompt", params)
+                    self.assertEqual(params["negativePrompt"]["group"], "advanced")
+                elif provider == "seedance_official":
+                    self.assertNotIn("negativePrompt", params)
+
+    def test_key_audio_and_last_frame_parameters_are_encoded(self):
+        for capability in self.capabilities:
+            params = capability["parameters"]
+            family = capability["family"]
+            provider = capability["provider"]
+            with self.subTest(provider=provider, model=capability["model"]):
+                if provider == "google" and family == "veo":
+                    self.assertIn("generateAudio", params)
+                if family in {"seedance", "kling"}:
+                    self.assertIn("generateAudio", params)
+                if provider == "seedance_official":
+                    self.assertIn("returnLastFrame", params)
+
     def test_snapshot_excludes_adapter_and_sensitive_fields(self):
         blocked_tokens = (
             "adapterHints",
@@ -67,6 +105,19 @@ class VideoCapabilitySchemaTest(unittest.TestCase):
                 self.assertNotIn("hiddenParams", snapshot)
                 for token in blocked_tokens:
                     self.assertNotIn(token.lower(), serialized.lower())
+
+    def test_snapshot_parameter_summary_includes_key_parameters(self):
+        for capability in self.capabilities:
+            snapshot = build_model_schema_snapshot(capability)
+            parameter_summary = snapshot["parameterSummary"]
+            with self.subTest(provider=capability["provider"], model=capability["model"]):
+                for key in ("aspectRatio", "duration", "resolution", "generateAudio", "seed"):
+                    if key in capability["parameters"]:
+                        self.assertIn(key, parameter_summary)
+                if capability["provider"] == "google":
+                    self.assertIn("negativePrompt", parameter_summary)
+                self.assertNotIn("adapterHints", parameter_summary)
+                self.assertNotIn("hiddenParams", parameter_summary)
 
     def test_model_specs_return_capability_schema_v1(self):
         specs = get_video_model_specs()

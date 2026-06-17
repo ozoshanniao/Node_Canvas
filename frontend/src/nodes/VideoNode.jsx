@@ -58,11 +58,19 @@ const OUTPUT_HANDLE_LABELS = {
 };
 
 const LEGACY_BRIDGE_INPUT_HANDLES = [
+  // Temporary Phase 2 bridge handle. Kept only to avoid breaking current
+  // in-session edges until Phase 3/4 moves node.data/project.json to the final
+  // schema-driven structure.
   { id: 'multiPrompt:in', top: '32%' },
+  // Temporary Phase 2 bridge handle. Remove after final stable image:firstFrame migration.
   { id: 'image:images', top: '50%' },
+  // Temporary Phase 2 bridge handle. Remove after final stable image:lastFrame migration.
   { id: 'image:end', top: '50%' },
 ];
-const LEGACY_BRIDGE_OUTPUT_HANDLES = [{ id: 'image:lastFrame', top: '50%' }];
+const LEGACY_BRIDGE_OUTPUT_HANDLES = [
+  // Temporary Phase 2 bridge handle. Remove after Phase 3/4 finalizes output snapshots.
+  { id: 'image:lastFrame', top: '50%' },
+];
 
 const TOOLBAR_PARAM_KEYS = ['videoMode', 'aspectRatio', 'duration', 'resolution', 'qualityMode', 'enableUpsample'];
 const VIDEO_NODE_MAX_WIDTH = 640;
@@ -997,12 +1005,17 @@ export function VideoNode({ id, data }) {
 
   const modelOptions = providerConfig?.models || [];
   const advancedParams = useMemo(() => {
+    const isGenericAdvancedParam = ([key, config]) =>
+      key !== 'negativePrompt' &&
+      config?.ui !== 'provider-specific' &&
+      config?.ui !== 'hidden' &&
+      ['select', 'boolean', 'number'].includes(config?.type);
     if (selectedCapability?.advancedParams?.length) {
       return selectedCapability.advancedParams
         .map((key) => [key, modelConfig.params?.[key] || selectedCapability.parameters?.[key]])
-        .filter(([, config]) => config);
+        .filter(isGenericAdvancedParam);
     }
-    return getVideoAdvancedParamEntries(modelConfig);
+    return getVideoAdvancedParamEntries(modelConfig).filter(isGenericAdvancedParam);
   }, [modelConfig, selectedCapability]);
   const showNegativePromptInput = Boolean(getParameterSchema(selectedCapability, 'negativePrompt'));
   const showCustomParamsInput = shouldShowRawCustomParams(appSettings);

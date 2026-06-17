@@ -55,6 +55,17 @@ BASIC_PARAMETER_KEYS = {
     "enableUpsample",
     "qualityMode",
 }
+ADVANCED_PARAMETER_KEYS = {
+    "negativePrompt",
+    "returnLastFrame",
+    "watermark",
+    "enhancePrompt",
+    "enableUpsample",
+    "numberOfVideos",
+    "cameraControl",
+    "cfgScale",
+    "serviceTier",
+}
 
 
 def _handle_capability(
@@ -149,6 +160,8 @@ def _output_capabilities_for_model() -> dict[str, dict[str, Any]]:
 
 
 def _parameter_group(key: str, config: dict[str, Any], quick_params: set[str]) -> str:
+    if key in ADVANCED_PARAMETER_KEYS:
+        return "advanced"
     if key in quick_params or key in BASIC_PARAMETER_KEYS:
         return "basic"
     return str(config.get("group") or "advanced")
@@ -182,7 +195,79 @@ def _canonical_parameters(model: dict[str, Any]) -> dict[str, dict[str, Any]]:
             if optional_key in raw_config:
                 parameter[optional_key] = deepcopy(raw_config[optional_key])
         parameters[key] = parameter
+    parameters.update(_supplemental_parameters(model, parameters))
     return parameters
+
+
+def _supplemental_parameters(model: dict[str, Any], parameters: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    model_id = str(model.get("id") or "")
+    family = str(model.get("family") or "")
+    adapter_key = str(model.get("adapterKey") or "")
+    capabilities = model.get("capabilities") or {}
+    supplemental: dict[str, dict[str, Any]] = {}
+
+    def add(key: str, config: dict[str, Any]) -> None:
+        if key not in parameters:
+            supplemental[key] = config
+
+    if family in {"veo", "kling"}:
+        add("negativePrompt", {
+            "type": "text",
+            "label": "Negative Prompt",
+            "default": "",
+            "group": "advanced",
+            "ui": "textarea",
+        })
+
+    if adapter_key.startswith("yunwu_veo"):
+        add("enhancePrompt", {
+            "type": "boolean",
+            "label": "Enhance Prompt",
+            "default": True,
+            "group": "advanced",
+            "ui": "toggle",
+            "customParamPath": ["enhancePrompt"],
+        })
+
+    if family == "kling" and capabilities.get("cameraControl", {}).get("supported"):
+        add("cameraControl", {
+            "type": "object",
+            "label": "Camera Control",
+            "default": {"type": "none", "axis": "pan", "value": 0},
+            "group": "advanced",
+            "ui": "provider-specific",
+            "customParamPath": ["kling", "cameraControl"],
+        })
+
+    if family == "kling":
+        add("watermark", {
+            "type": "boolean",
+            "label": "Watermark",
+            "default": False,
+            "group": "hidden",
+            "ui": "hidden",
+        })
+
+    if family == "seedance":
+        add("watermark", {
+            "type": "boolean",
+            "label": "Watermark",
+            "default": False,
+            "group": "hidden",
+            "ui": "hidden",
+        })
+
+    if model_id.startswith("veo-3.1"):
+        add("serviceTier", {
+            "type": "select",
+            "label": "Service Tier",
+            "options": ["standard"],
+            "default": "standard",
+            "group": "hidden",
+            "ui": "hidden",
+        })
+
+    return supplemental
 
 
 def _advanced_params(parameters: dict[str, dict[str, Any]], quick_params: list[str]) -> list[str]:

@@ -104,6 +104,17 @@ Do not save API keys, Authorization headers, bearer tokens, raw provider payload
 
 Phase 1 does not change the provider runtime behavior, API key settings logic, real create/query request chain, or VideoNode UI.
 
+## Key Parameter Policy
+
+Capability Schema v1 includes parameter metadata only where the current runtime path already supports or consumes that setting. The current policy is:
+
+- Google Veo: exposes `negativePrompt`, `generateAudio`, `aspectRatio`, `duration`, `resolution`, `seed`, and `numberOfVideos`.
+- Yunwu Veo: exposes `negativePrompt` because the provider payload maps it to `negative_prompt`; exposes `enableUpsample` and `enhancePrompt`.
+- Kling: exposes `negativePrompt`, `generateAudio`, `cfgScale` where present, and `cameraControl` as provider-specific metadata where the existing UI/runtime supports it.
+- Seedance: exposes `generateAudio`, `returnLastFrame`, `aspectRatio`, `duration`, `resolution`, and `seed`; it does not expose `negativePrompt` by default.
+
+Parameter groups remain limited to `basic`, `advanced`, and `hidden`. Hidden parameters are adapter defaults or fixed runtime hints and are not intended for frontend display.
+
 ## Phase 2 VideoNode Behavior
 
 VideoNode reads `capabilities` from `GET /api/video/model-specs` and resolves the selected capability by `provider + model`, with `taskType` used as an optional refinement when a later schema version exposes task-specific records. The Phase 1 bridge fields `providers` and `models` remain in the response for current selector compatibility.
@@ -123,3 +134,14 @@ The stable output port is `video:out`.
 Unsupported ports stay rendered and are visually dimmed. Required ports show `*` next to the hover label. Optional ports use the normal handle style. Missing capability data falls back to conservative handle states and shows a lightweight node status hint instead of throwing.
 
 VideoNode no longer prunes existing edges when provider, model, task type, quality mode, or other parameters change. Connection validation and runtime payload behavior are unchanged in Phase 2. Legacy input handles such as `image:images`, `image:end`, and `multiPrompt:in`, plus the legacy `image:lastFrame` output, are kept as temporary invisible bridge handles so existing projects and multi-shot inputs keep their edge anchors while new visible UI moves to stable handles.
+
+These legacy bridge handles are not the final architecture. They are kept only to avoid breaking current in-session edges while the new schema-driven VideoNode data contract is unfinished. They must be removed after Phase 3/4 when `project.json` and `node.data` move to the final clean structure. The final stable handle set remains only:
+
+- `text:prompt`
+- `image:firstFrame`
+- `image:lastFrame`
+- `image:references`
+- `video:references`
+- `audio:references`
+- `omniParams:in`
+- `video:out`
