@@ -273,3 +273,29 @@ Phase 5.1 migrates only `provider: yunwu` video generation to the adapter regist
 The service layer routes only Yunwu create/query through `get_video_adapter("yunwu")`. It still feeds the adapter raw response into the existing task id extraction, status/message normalization, task persistence, and output download flow. Public backend API responses, frontend polling behavior, API key resolution, project save shape, `/api/video/model-specs`, and legacy VideoNode bridge handles are unchanged.
 
 `adapterHints` remains adapter-only metadata and is still excluded from `schemaSnapshot` and `project.json`. Phase 5.2+ will migrate the remaining providers one at a time.
+
+## Phase 5.2 Google Veo Adapter
+
+Phase 5.2 migrates only `provider: google` video generation to the adapter registry. Google Veo models now resolve to `adapterHints.adapterId = "google:veo"` and `adapterHints.runtime = "adapter"`. Yunwu remains on the Phase 5.1 adapter. Kling, Yunwu-Kling, and Seedance remain on the legacy runtime path.
+
+`GoogleVeoVideoAdapter` reuses the existing `GoogleVeoProvider` SDK create/query implementation. The legacy provider owns the source/config builder, so Google SDK behavior, operation names, task id extraction, error messages, file saving, and public API response shape remain compatible with the pre-migration runtime.
+
+The compatibility contract preserves the current source/config behavior for:
+
+- `model`
+- `prompt`
+- `image`
+- `lastFrame`
+- `referenceImages`
+- `aspectRatio`
+- `durationSeconds`
+- `personGeneration`
+- `resolution`
+- `generateAudio`
+- `seed`
+- `numberOfVideos`
+- `negativePrompt`
+
+The service layer routes only Google create/query through `get_video_adapter("google")`. It still feeds the adapter raw response into the existing status/message normalization, task persistence, video byte saving, remote download flow, and frontend polling contract. No frontend UI, project save structure, `/api/video/model-specs` bridge, or legacy VideoNode bridge handle changes are included in Phase 5.2.
+
+`adapterHints` remains adapter-only metadata and is still excluded from `schemaSnapshot` and `project.json`. Phase 5.3+ will migrate Kling and Yunwu-Kling, with Seedance after that.

@@ -44,8 +44,8 @@ class VideoProviderAdapterNotFound(VideoProviderError):
 
 
 ERROR_CATEGORY_KEYWORDS: tuple[tuple[VideoProviderErrorCategory, tuple[str, ...], bool], ...] = (
-    ("auth_error", ("unauthorized", "unauthenticated", "api key", "apikey", "authorization", "401"), False),
-    ("permission_error", ("permission", "forbidden", "403"), False),
+    ("auth_error", ("unauthorized", "unauthenticated", "api key", "apikey", "authorization", "credentials", "401"), False),
+    ("permission_error", ("permission", "forbidden", "project", "region", "403"), False),
     ("quota_error", ("quota", "insufficient credits", "billing"), False),
     ("rate_limited", ("rate limit", "rate_limited", "too many requests", "429"), True),
     ("validation_error", ("invalid", "validation", "bad request", "400"), False),

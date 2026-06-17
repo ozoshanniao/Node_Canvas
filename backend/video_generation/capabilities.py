@@ -314,7 +314,7 @@ def build_model_capability(provider: dict[str, Any], model: dict[str, Any]) -> d
         },
         "adapterHints": {
             "adapterId": legacy_adapter_id_for_provider(provider_id),
-            "runtime": "adapter" if provider_id == "yunwu" else "legacy",
+            "runtime": "adapter" if provider_id in {"yunwu", "google"} else "legacy",
             "adapterKey": adapter_key,
             "legacyModelId": model_id,
             "constraints": deepcopy(model.get("constraints") or {}),

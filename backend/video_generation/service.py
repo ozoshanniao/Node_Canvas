@@ -5,6 +5,7 @@ from typing import Any
 
 from video_generation.adapters.registry import get_video_adapter, register_video_adapter
 from video_generation.adapters.types import VideoCreateRequest, VideoInputAsset, VideoQueryRequest
+from video_generation.adapters.google_veo import GoogleVeoVideoAdapter
 from video_generation.adapters.yunwu import YunwuVideoAdapter
 from video_generation.providers.yunwu_veo_provider import YunwuVeoProvider
 from video_generation.providers.google_veo_provider import GoogleVeoProvider
@@ -42,6 +43,7 @@ class VideoGenerationService:
             "yunwu-kling": KlingVideoProvider(provider_type="yunwu-kling"),
         }
         register_video_adapter(YunwuVideoAdapter(self.providers["yunwu"]))
+        register_video_adapter(GoogleVeoVideoAdapter(self.providers["google"]))
 
     def get_model_specs(self) -> dict:
         return get_video_model_specs()
@@ -104,6 +106,41 @@ class VideoGenerationService:
                 "enhancePrompt": request.customParams.get("enhancePrompt"),
                 "veoFlClose": request.customParams.get("veoFlClose"),
                 "customParams": dict(request.customParams or {}),
+            },
+            inputs=inputs,
+            project_dir=request.projectPath,
+        )
+
+    def _google_create_request(self, request: VideoGenerateRequest) -> VideoCreateRequest:
+        inputs: dict[str, list[VideoInputAsset]] = {}
+        if request.videoMode == "reference-video":
+            inputs["image:references"] = [
+                VideoInputAsset(kind="image", role="reference", url=image, handle_id="image:references")
+                for image in request.images
+            ]
+        elif request.images:
+            inputs["image:firstFrame"] = [
+                VideoInputAsset(kind="image", role="first_frame", url=request.images[0], handle_id="image:firstFrame")
+            ]
+        if request.endImage:
+            inputs["image:lastFrame"] = [
+                VideoInputAsset(kind="image", role="last_frame", url=request.endImage, handle_id="image:lastFrame")
+            ]
+
+        return VideoCreateRequest(
+            provider=request.provider,
+            model=request.model,
+            task_type=request.videoMode,
+            prompt=request.prompt,
+            params={
+                "negativePrompt": request.negativePrompt,
+                "aspectRatio": request.aspectRatio,
+                "duration": request.duration,
+                "durationSeconds": request.durationSeconds,
+                "resolution": request.resolution,
+                "generateAudio": request.generateAudio,
+                "seed": request.seed,
+                "numberOfVideos": request.numberOfVideos,
             },
             inputs=inputs,
             project_dir=request.projectPath,
@@ -275,6 +312,10 @@ class VideoGenerationService:
             adapter = get_video_adapter("yunwu")
             adapter_result = await adapter.create(self._yunwu_create_request(request), self._find_model(request.provider, request.model) or {})
             provider_response = adapter_result.raw_response or {}
+        elif request.provider == "google":
+            adapter = get_video_adapter("google")
+            adapter_result = await adapter.create(self._google_create_request(request), self._find_model(request.provider, request.model) or {})
+            provider_response = adapter_result.raw_response or {}
         else:
             provider_response = await provider.create_task(request)
         provider_task_id = self._extract_provider_task_id(provider_response)
@@ -321,6 +362,18 @@ class VideoGenerationService:
         try:
             if task.provider == "yunwu":
                 adapter = get_video_adapter("yunwu")
+                adapter_result = await adapter.query(
+                    VideoQueryRequest(
+                        provider=task.provider,
+                        model=task.model,
+                        task_id=task.providerTaskId,
+                        project_dir=project_path,
+                    ),
+                    self._find_model(task.provider, task.model) or {},
+                )
+                response = adapter_result.raw_response or {}
+            elif task.provider == "google":
+                adapter = get_video_adapter("google")
                 adapter_result = await adapter.query(
                     VideoQueryRequest(
                         provider=task.provider,

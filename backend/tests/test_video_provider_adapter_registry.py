@@ -15,6 +15,7 @@ from video_generation.adapters.registry import (
     resolve_adapter_for_capability,
     temporary_video_adapter_registry,
 )
+from video_generation.adapters.google_veo import GoogleVeoVideoAdapter
 from video_generation.adapters.yunwu import YunwuVideoAdapter
 from video_generation.adapters.types import (
     VideoCreateRequest,
@@ -105,6 +106,12 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
         self.assertIsInstance(adapter, YunwuVideoAdapter)
         self.assertEqual(adapter.adapter_id, "yunwu:veo")
 
+    def test_google_adapter_is_real_adapter(self):
+        adapter = get_video_adapter("google")
+
+        self.assertIsInstance(adapter, GoogleVeoVideoAdapter)
+        self.assertEqual(adapter.adapter_id, "google:veo")
+
     def test_capability_adapter_hints_are_non_sensitive(self):
         sensitive_tokens = ("apikey", "authorization", "bearer", "secret", "accesskey", "privatekey")
 
@@ -113,7 +120,7 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
             serialized = str(hints).replace("_", "").replace("-", "").lower()
             with self.subTest(provider=capability["provider"], model=capability["model"]):
                 self.assertIn("adapterId", hints)
-                expected_runtime = "adapter" if capability["provider"] == "yunwu" else "legacy"
+                expected_runtime = "adapter" if capability["provider"] in {"yunwu", "google"} else "legacy"
                 self.assertEqual(hints.get("runtime"), expected_runtime)
                 for token in sensitive_tokens:
                     self.assertNotIn(token, serialized)
@@ -134,6 +141,7 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
 
     def test_error_classification_helper(self):
         self.assertEqual(classify_video_provider_error("Invalid API key")[0], "auth_error")
+        self.assertEqual(classify_video_provider_error("Google credentials missing")[0], "auth_error")
         self.assertEqual(classify_video_provider_error("quota exceeded")[0], "quota_error")
         self.assertEqual(classify_video_provider_error("too many requests")[0], "rate_limited")
         self.assertEqual(classify_video_provider_error("bad request validation failed")[0], "validation_error")
