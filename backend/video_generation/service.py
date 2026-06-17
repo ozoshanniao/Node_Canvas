@@ -8,6 +8,7 @@ from video_generation.adapters.types import VideoCreateRequest, VideoInputAsset,
 from video_generation.adapters.google_veo import GoogleVeoVideoAdapter
 from video_generation.adapters.kling import KlingVideoAdapter
 from video_generation.adapters.yunwu import YunwuVideoAdapter
+from video_generation.adapters.yunwu_kling import YunwuKlingVideoAdapter
 from video_generation.providers.yunwu_veo_provider import YunwuVeoProvider
 from video_generation.providers.google_veo_provider import GoogleVeoProvider
 from video_generation.providers.kling import KlingVideoProvider
@@ -46,6 +47,7 @@ class VideoGenerationService:
         register_video_adapter(YunwuVideoAdapter(self.providers["yunwu"]))
         register_video_adapter(GoogleVeoVideoAdapter(self.providers["google"]))
         register_video_adapter(KlingVideoAdapter(self.providers["kling"]))
+        register_video_adapter(YunwuKlingVideoAdapter(self.providers["yunwu-kling"]))
 
     def get_model_specs(self) -> dict:
         return get_video_model_specs()
@@ -357,6 +359,11 @@ class VideoGenerationService:
             adapter = get_video_adapter("kling")
             adapter_result = await adapter.create(self._kling_create_request(request), self._find_model(request.provider, request.model) or {})
             provider_response = adapter_result.raw_response or {}
+        elif request.provider == "yunwu-kling":
+            register_video_adapter(YunwuKlingVideoAdapter(provider))
+            adapter = get_video_adapter("yunwu-kling")
+            adapter_result = await adapter.create(self._kling_create_request(request), self._find_model(request.provider, request.model) or {})
+            provider_response = adapter_result.raw_response or {}
         else:
             provider_response = await provider.create_task(request)
         provider_task_id = self._extract_provider_task_id(provider_response)
@@ -428,6 +435,19 @@ class VideoGenerationService:
             elif task.provider == "kling":
                 register_video_adapter(KlingVideoAdapter(provider))
                 adapter = get_video_adapter("kling")
+                adapter_result = await adapter.query(
+                    VideoQueryRequest(
+                        provider=task.provider,
+                        model=task.model,
+                        task_id=task.providerTaskId,
+                        project_dir=project_path,
+                    ),
+                    self._find_model(task.provider, task.model) or {},
+                )
+                response = adapter_result.raw_response or {}
+            elif task.provider == "yunwu-kling":
+                register_video_adapter(YunwuKlingVideoAdapter(provider))
+                adapter = get_video_adapter("yunwu-kling")
                 adapter_result = await adapter.query(
                     VideoQueryRequest(
                         provider=task.provider,

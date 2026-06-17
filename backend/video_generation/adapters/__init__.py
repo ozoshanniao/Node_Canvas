@@ -25,6 +25,7 @@ from video_generation.adapters.types import (
 from video_generation.adapters.google_veo import GoogleVeoVideoAdapter
 from video_generation.adapters.kling import KlingVideoAdapter
 from video_generation.adapters.yunwu import YunwuVideoAdapter
+from video_generation.adapters.yunwu_kling import YunwuKlingVideoAdapter
 
 __all__ = [
     "LegacyVideoAdapter",
@@ -39,6 +40,7 @@ __all__ = [
     "GoogleVeoVideoAdapter",
     "KlingVideoAdapter",
     "YunwuVideoAdapter",
+    "YunwuKlingVideoAdapter",
     "classify_video_provider_error",
     "get_video_adapter",
     "has_video_adapter",
