@@ -13,7 +13,9 @@ from video_generation.adapters.registry import (
     list_video_adapters,
     register_video_adapter,
     resolve_adapter_for_capability,
+    temporary_video_adapter_registry,
 )
+from video_generation.adapters.yunwu import YunwuVideoAdapter
 from video_generation.adapters.types import (
     VideoCreateRequest,
     VideoCreateResult,
@@ -57,11 +59,13 @@ class DummyVideoAdapter:
 
 class VideoProviderAdapterRegistryTest(unittest.TestCase):
     def test_registry_can_register_and_get_adapter(self):
-        adapter = register_video_adapter(DummyVideoAdapter())
+        with temporary_video_adapter_registry():
+            adapter = register_video_adapter(DummyVideoAdapter())
 
-        self.assertIs(adapter, get_video_adapter("phase5_dummy"))
-        self.assertTrue(has_video_adapter("phase5_dummy"))
-        self.assertIsInstance(adapter, VideoProviderAdapter)
+            self.assertIs(adapter, get_video_adapter("phase5_dummy"))
+            self.assertTrue(has_video_adapter("phase5_dummy"))
+            self.assertIsInstance(adapter, VideoProviderAdapter)
+        self.assertFalse(has_video_adapter("phase5_dummy"))
 
     def test_unknown_provider_raises_clear_error(self):
         with self.assertRaises(VideoProviderAdapterNotFound) as context:
@@ -82,7 +86,9 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
             "adapterHints": {"adapterId": "test:phase5-dummy", "runtime": "legacy"},
         }
 
-        adapter = resolve_adapter_for_capability(capability)
+        with temporary_video_adapter_registry():
+            register_video_adapter(DummyVideoAdapter())
+            adapter = resolve_adapter_for_capability(capability)
 
         self.assertEqual(adapter.adapter_id, "test:phase5-dummy")
 
@@ -93,6 +99,12 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
                 self.assertEqual(adapter.provider, provider)
                 self.assertEqual(adapter.adapter_id, adapter_id)
 
+    def test_yunwu_adapter_is_real_adapter(self):
+        adapter = get_video_adapter("yunwu")
+
+        self.assertIsInstance(adapter, YunwuVideoAdapter)
+        self.assertEqual(adapter.adapter_id, "yunwu:veo")
+
     def test_capability_adapter_hints_are_non_sensitive(self):
         sensitive_tokens = ("apikey", "authorization", "bearer", "secret", "accesskey", "privatekey")
 
@@ -101,7 +113,8 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
             serialized = str(hints).replace("_", "").replace("-", "").lower()
             with self.subTest(provider=capability["provider"], model=capability["model"]):
                 self.assertIn("adapterId", hints)
-                self.assertEqual(hints.get("runtime"), "legacy")
+                expected_runtime = "adapter" if capability["provider"] == "yunwu" else "legacy"
+                self.assertEqual(hints.get("runtime"), expected_runtime)
                 for token in sensitive_tokens:
                     self.assertNotIn(token, serialized)
                 validate_model_capability(capability)

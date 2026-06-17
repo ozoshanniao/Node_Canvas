@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import Any, Mapping
 
 from video_generation.adapters.base import LegacyVideoAdapter, VideoProviderAdapter
@@ -7,11 +8,14 @@ from video_generation.adapters.errors import VideoProviderAdapterNotFound
 
 
 LEGACY_VIDEO_ADAPTER_IDS: dict[str, str] = {
-    "yunwu": "legacy:yunwu-veo",
     "google": "legacy:google-veo",
     "kling": "legacy:kling",
     "yunwu-kling": "legacy:yunwu-kling",
     "seedance_official": "legacy:seedance",
+}
+VIDEO_ADAPTER_IDS: dict[str, str] = {
+    "yunwu": "yunwu:veo",
+    **LEGACY_VIDEO_ADAPTER_IDS,
 }
 
 _ADAPTERS_BY_PROVIDER: dict[str, VideoProviderAdapter] = {}
@@ -47,8 +51,21 @@ def has_video_adapter(provider: str) -> bool:
     return provider in _ADAPTERS_BY_PROVIDER
 
 
+@contextmanager
+def temporary_video_adapter_registry():
+    providers_snapshot = dict(_ADAPTERS_BY_PROVIDER)
+    ids_snapshot = dict(_ADAPTERS_BY_ID)
+    try:
+        yield
+    finally:
+        _ADAPTERS_BY_PROVIDER.clear()
+        _ADAPTERS_BY_PROVIDER.update(providers_snapshot)
+        _ADAPTERS_BY_ID.clear()
+        _ADAPTERS_BY_ID.update(ids_snapshot)
+
+
 def legacy_adapter_id_for_provider(provider: str) -> str:
-    return LEGACY_VIDEO_ADAPTER_IDS.get(provider, f"legacy:{provider}")
+    return VIDEO_ADAPTER_IDS.get(provider, f"legacy:{provider}")
 
 
 def resolve_adapter_for_capability(capability: Mapping[str, Any]) -> VideoProviderAdapter:
@@ -65,4 +82,12 @@ def _register_default_legacy_adapters() -> None:
             register_legacy_video_adapter(provider, adapter_id)
 
 
+def _register_default_adapters() -> None:
+    from video_generation.adapters.yunwu import YunwuVideoAdapter
+
+    if "yunwu" not in _ADAPTERS_BY_PROVIDER:
+        register_video_adapter(YunwuVideoAdapter())
+
+
+_register_default_adapters()
 _register_default_legacy_adapters()

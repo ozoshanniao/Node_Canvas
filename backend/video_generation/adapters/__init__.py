@@ -12,6 +12,7 @@ from video_generation.adapters.registry import (
     register_legacy_video_adapter,
     register_video_adapter,
     resolve_adapter_for_capability,
+    temporary_video_adapter_registry,
 )
 from video_generation.adapters.types import (
     VideoCreateRequest,
@@ -21,6 +22,7 @@ from video_generation.adapters.types import (
     VideoQueryResult,
     normalize_video_adapter_status,
 )
+from video_generation.adapters.yunwu import YunwuVideoAdapter
 
 __all__ = [
     "LegacyVideoAdapter",
@@ -32,6 +34,7 @@ __all__ = [
     "VideoProviderError",
     "VideoQueryRequest",
     "VideoQueryResult",
+    "YunwuVideoAdapter",
     "classify_video_provider_error",
     "get_video_adapter",
     "has_video_adapter",
@@ -41,4 +44,5 @@ __all__ = [
     "register_legacy_video_adapter",
     "register_video_adapter",
     "resolve_adapter_for_capability",
+    "temporary_video_adapter_registry",
 ]

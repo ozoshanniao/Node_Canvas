@@ -3,6 +3,9 @@ import uuid
 import json
 from typing import Any
 
+from video_generation.adapters.registry import get_video_adapter, register_video_adapter
+from video_generation.adapters.types import VideoCreateRequest, VideoInputAsset, VideoQueryRequest
+from video_generation.adapters.yunwu import YunwuVideoAdapter
 from video_generation.providers.yunwu_veo_provider import YunwuVeoProvider
 from video_generation.providers.google_veo_provider import GoogleVeoProvider
 from video_generation.providers.kling import KlingVideoProvider
@@ -31,8 +34,6 @@ YUNWU_STATUS_MAP = {
 
 class VideoGenerationService:
     def __init__(self, yunwu_api_key: str | None = None):
-        # Phase 5.0 keeps the real create/query runtime on the legacy provider
-        # path. Phase 5.1+ can move providers behind VideoProviderAdapter one at a time.
         self.providers = {
             "yunwu": YunwuVeoProvider(api_key=yunwu_api_key),
             "google": GoogleVeoProvider(),
@@ -40,6 +41,7 @@ class VideoGenerationService:
             "kling": KlingVideoProvider(provider_type="kling"),
             "yunwu-kling": KlingVideoProvider(provider_type="yunwu-kling"),
         }
+        register_video_adapter(YunwuVideoAdapter(self.providers["yunwu"]))
 
     def get_model_specs(self) -> dict:
         return get_video_model_specs()
@@ -73,6 +75,39 @@ class VideoGenerationService:
             if value:
                 return str(value)
         raise ValueError("Yunwu create response did not include a task id")
+
+    def _yunwu_create_request(self, request: VideoGenerateRequest) -> VideoCreateRequest:
+        inputs: dict[str, list[VideoInputAsset]] = {}
+        if request.videoMode == "reference-video":
+            inputs["image:references"] = [
+                VideoInputAsset(kind="image", role="reference", url=image, handle_id="image:references")
+                for image in request.images
+            ]
+        elif request.images:
+            inputs["image:firstFrame"] = [
+                VideoInputAsset(kind="image", role="first_frame", url=request.images[0], handle_id="image:firstFrame")
+            ]
+        if request.endImage:
+            inputs["image:lastFrame"] = [
+                VideoInputAsset(kind="image", role="last_frame", url=request.endImage, handle_id="image:lastFrame")
+            ]
+
+        return VideoCreateRequest(
+            provider=request.provider,
+            model=request.model,
+            task_type=request.videoMode,
+            prompt=request.prompt,
+            params={
+                "negativePrompt": request.negativePrompt,
+                "aspectRatio": request.aspectRatio,
+                "enableUpsample": request.enableUpsample,
+                "enhancePrompt": request.customParams.get("enhancePrompt"),
+                "veoFlClose": request.customParams.get("veoFlClose"),
+                "customParams": dict(request.customParams or {}),
+            },
+            inputs=inputs,
+            project_dir=request.projectPath,
+        )
 
     def _extract_query_data(self, response: dict[str, Any]) -> dict[str, Any]:
         data = response.get("data")
@@ -236,7 +271,12 @@ class VideoGenerationService:
         task_id = f"video_{uuid.uuid4().hex[:12]}"
         request.projectPath = project_path
         request.publicAssetStorage = self._normalize_public_asset_storage(request.publicAssetStorage)
-        provider_response = await provider.create_task(request)
+        if request.provider == "yunwu":
+            adapter = get_video_adapter("yunwu")
+            adapter_result = await adapter.create(self._yunwu_create_request(request), self._find_model(request.provider, request.model) or {})
+            provider_response = adapter_result.raw_response or {}
+        else:
+            provider_response = await provider.create_task(request)
         provider_task_id = self._extract_provider_task_id(provider_response)
         provider_status = provider_response.get("status") if isinstance(provider_response, dict) else None
 
@@ -279,7 +319,20 @@ class VideoGenerationService:
             raise ValueError(f"Unsupported provider: {task.provider}")
 
         try:
-            response = await provider.query_task(task.providerTaskId)
+            if task.provider == "yunwu":
+                adapter = get_video_adapter("yunwu")
+                adapter_result = await adapter.query(
+                    VideoQueryRequest(
+                        provider=task.provider,
+                        model=task.model,
+                        task_id=task.providerTaskId,
+                        project_dir=project_path,
+                    ),
+                    self._find_model(task.provider, task.model) or {},
+                )
+                response = adapter_result.raw_response or {}
+            else:
+                response = await provider.query_task(task.providerTaskId)
             status, message, remote_url = self._normalize_query_result(response, task.provider)
             query_data = self._extract_query_data(response)
             raw_status = str(query_data.get("status") or query_data.get("state") or "").strip()

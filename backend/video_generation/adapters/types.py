@@ -48,6 +48,7 @@ class VideoCreateResult:
     raw_status: str | None = None
     message: str | None = None
     created_at: int | None = None
+    raw_response: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,8 @@ class VideoQueryResult:
     message: str | None = None
     raw_status: str | None = None
     completed_at: int | None = None
+    raw_response: dict[str, Any] | None = None
+    video_bytes: bytes | None = None
 
 
 STATUS_MAP: dict[str, VideoAdapterStatus] = {

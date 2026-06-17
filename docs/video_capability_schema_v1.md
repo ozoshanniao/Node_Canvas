@@ -254,3 +254,22 @@ Future migration plan:
 - Phase 5.2: migrate Google Veo behind `VideoProviderAdapter`.
 - Phase 5.3: migrate Kling behind `VideoProviderAdapter`.
 - Phase 5.4: migrate Seedance behind `VideoProviderAdapter`.
+
+## Phase 5.1 Yunwu Video Adapter
+
+Phase 5.1 migrates only `provider: yunwu` video generation to the adapter registry. Yunwu Veo models now resolve to `adapterHints.adapterId = "yunwu:veo"` and `adapterHints.runtime = "adapter"`. Google Veo, Kling, Yunwu-Kling, and Seedance remain on the legacy runtime path.
+
+`YunwuVideoAdapter` reuses the existing `YunwuVeoProvider` create/query implementation. The legacy provider owns the payload builder, so field names and defaults stay compatible with the pre-migration runtime:
+
+- `model`
+- `prompt`
+- `images`
+- `aspect_ratio`
+- `enhance_prompt`
+- `enable_upsample`
+- `negative_prompt`
+- `veo_fl_close`
+
+The service layer routes only Yunwu create/query through `get_video_adapter("yunwu")`. It still feeds the adapter raw response into the existing task id extraction, status/message normalization, task persistence, and output download flow. Public backend API responses, frontend polling behavior, API key resolution, project save shape, `/api/video/model-specs`, and legacy VideoNode bridge handles are unchanged.
+
+`adapterHints` remains adapter-only metadata and is still excluded from `schemaSnapshot` and `project.json`. Phase 5.2+ will migrate the remaining providers one at a time.
