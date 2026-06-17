@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from video_generation.adapters.registry import legacy_adapter_id_for_provider
 from video_generation.specs import VIDEO_GENERATION_REGISTRY
 
 
@@ -312,6 +313,8 @@ def build_model_capability(provider: dict[str, Any], model: dict[str, Any]) -> d
             "phase": "phase-1-schema-only",
         },
         "adapterHints": {
+            "adapterId": legacy_adapter_id_for_provider(provider_id),
+            "runtime": "legacy",
             "adapterKey": adapter_key,
             "legacyModelId": model_id,
             "constraints": deepcopy(model.get("constraints") or {}),

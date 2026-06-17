@@ -192,3 +192,65 @@ VideoNode keeps the core controls custom and stable: provider, model, task type/
 Hidden parameters, `hiddenParams`, `adapterHints`, and raw provider schemas are never rendered. Deprecated parameters are hidden unless the current node already has a saved value for that parameter. Provider-specific advanced parameters can keep a temporary custom UI when needed, but their visibility is still gated by the capability schema. `cameraControl` currently uses the existing Kling UI bridge only when `parameters.cameraControl` or the legacy model capability marks it supported.
 
 Dynamic advanced text, number, slider, object, and textarea controls keep local edit state and commit to `data.params[paramName]` on blur or Enter. Select and boolean controls commit immediately. Phase 4 does not change the real create/query payload builders, backend video services, provider adapters, API key settings, legacy bridge handles, or the `/api/video/model-specs` bridge.
+
+## Phase 5.0 Provider Adapter Contract
+
+Phase 5.0 adds a backend-only adapter contract layer without moving any real provider runtime. The real Yunwu, Google Veo, Kling, Yunwu-Kling, and Seedance create/query paths still run through the existing `VideoGenerationService` provider instances.
+
+The adapter contract is defined by `VideoProviderAdapter` with:
+
+- `provider`
+- `adapter_id`
+- `supports(capability)`
+- `build_create_payload(request, capability)`
+- `create(request, capability)`
+- `query(request, capability)`
+
+The unified internal request/result types are:
+
+- `VideoInputAsset`
+- `VideoCreateRequest`
+- `VideoQueryRequest`
+- `VideoCreateResult`
+- `VideoQueryResult`
+
+These types must not carry API keys, authorization headers, bearer tokens, raw schemas, or base64 media payloads. Asset paths, when present, should be workspace-relative or already sanitized. Mapping sanitized project assets to provider-ready URLs is reserved for later Phase 5.x work.
+
+The unified error layer is `VideoProviderError`, plus `VideoProviderAdapterNotFound` for missing registry entries. Error classification currently maps common provider messages to `auth_error`, `permission_error`, `quota_error`, `rate_limited`, `validation_error`, `safety_error`, `network_error`, `provider_error`, `timeout`, or `unknown`.
+
+The adapter registry exposes:
+
+- `register_video_adapter(adapter)`
+- `get_video_adapter(provider)`
+- `list_video_adapters()`
+- `has_video_adapter(provider)`
+- `resolve_adapter_for_capability(capability)`
+- `register_legacy_video_adapter(provider, adapter_id)`
+
+The registry is local metadata only. Importing it must not make network calls and must not read real API keys. Current providers are registered as legacy placeholders:
+
+- `yunwu` -> `legacy:yunwu-veo`
+- `google` -> `legacy:google-veo`
+- `kling` -> `legacy:kling`
+- `yunwu-kling` -> `legacy:yunwu-kling`
+- `seedance_official` -> `legacy:seedance`
+
+Capabilities connect to adapters through non-sensitive `adapterHints`:
+
+```json
+{
+  "adapterHints": {
+    "adapterId": "legacy:kling",
+    "runtime": "legacy"
+  }
+}
+```
+
+`adapterHints` is adapter-only metadata. It must not be rendered in frontend UI, included in `schemaSnapshot`, or persisted to `project.json`. It must never contain API keys, endpoint secrets, authorization headers, bearer tokens, raw schemas, or base64 media.
+
+Future migration plan:
+
+- Phase 5.1: migrate Yunwu Video behind `VideoProviderAdapter`.
+- Phase 5.2: migrate Google Veo behind `VideoProviderAdapter`.
+- Phase 5.3: migrate Kling behind `VideoProviderAdapter`.
+- Phase 5.4: migrate Seedance behind `VideoProviderAdapter`.

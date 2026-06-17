@@ -31,6 +31,8 @@ YUNWU_STATUS_MAP = {
 
 class VideoGenerationService:
     def __init__(self, yunwu_api_key: str | None = None):
+        # Phase 5.0 keeps the real create/query runtime on the legacy provider
+        # path. Phase 5.1+ can move providers behind VideoProviderAdapter one at a time.
         self.providers = {
             "yunwu": YunwuVeoProvider(api_key=yunwu_api_key),
             "google": GoogleVeoProvider(),
