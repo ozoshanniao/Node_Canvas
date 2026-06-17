@@ -24,6 +24,7 @@ from video_generation.adapters.types import (
 )
 from video_generation.adapters.google_veo import GoogleVeoVideoAdapter
 from video_generation.adapters.kling import KlingVideoAdapter
+from video_generation.adapters.seedance import SeedanceOfficialVideoAdapter
 from video_generation.adapters.yunwu import YunwuVideoAdapter
 from video_generation.adapters.yunwu_kling import YunwuKlingVideoAdapter
 
@@ -39,6 +40,7 @@ __all__ = [
     "VideoQueryResult",
     "GoogleVeoVideoAdapter",
     "KlingVideoAdapter",
+    "SeedanceOfficialVideoAdapter",
     "YunwuVideoAdapter",
     "YunwuKlingVideoAdapter",
     "classify_video_provider_error",

@@ -7,6 +7,7 @@ from video_generation.adapters.registry import get_video_adapter, register_video
 from video_generation.adapters.types import VideoCreateRequest, VideoInputAsset, VideoQueryRequest
 from video_generation.adapters.google_veo import GoogleVeoVideoAdapter
 from video_generation.adapters.kling import KlingVideoAdapter
+from video_generation.adapters.seedance import SeedanceOfficialVideoAdapter
 from video_generation.adapters.yunwu import YunwuVideoAdapter
 from video_generation.adapters.yunwu_kling import YunwuKlingVideoAdapter
 from video_generation.providers.yunwu_veo_provider import YunwuVeoProvider
@@ -48,6 +49,7 @@ class VideoGenerationService:
         register_video_adapter(GoogleVeoVideoAdapter(self.providers["google"]))
         register_video_adapter(KlingVideoAdapter(self.providers["kling"]))
         register_video_adapter(YunwuKlingVideoAdapter(self.providers["yunwu-kling"]))
+        register_video_adapter(SeedanceOfficialVideoAdapter(self.providers["seedance_official"]))
 
     def get_model_specs(self) -> dict:
         return get_video_model_specs()
@@ -178,6 +180,55 @@ class VideoGenerationService:
                 "durationSeconds": request.durationSeconds,
                 "qualityMode": request.qualityMode,
                 "generateAudio": request.generateAudio,
+                "customParams": dict(request.customParams or {}),
+            },
+            inputs=inputs,
+            project_dir=request.projectPath,
+        )
+
+    def _seedance_create_request(self, request: VideoGenerateRequest) -> VideoCreateRequest:
+        raw_seedance_params = (request.customParams or {}).get("seedance")
+        seedance_params = dict(raw_seedance_params) if isinstance(raw_seedance_params, dict) else {}
+        inputs: dict[str, list[VideoInputAsset]] = {}
+        if request.images:
+            if request.videoMode == "frame":
+                inputs["image:firstFrame"] = [
+                    VideoInputAsset(kind="image", role="first_frame", url=request.images[0], handle_id="image:firstFrame")
+                ]
+            else:
+                inputs["image:references"] = [
+                    VideoInputAsset(kind="image", role="reference", url=image, handle_id="image:references")
+                    for image in request.images
+                ]
+        if request.endImage:
+            inputs["image:lastFrame"] = [
+                VideoInputAsset(kind="image", role="last_frame", url=request.endImage, handle_id="image:lastFrame")
+            ]
+        for key, handle_id, kind, role in (
+            ("videos", "video:references", "video", "reference"),
+            ("audios", "audio:references", "audio", "reference"),
+        ):
+            values = [value for value in seedance_params.get(key, []) if value] if isinstance(seedance_params.get(key), list) else []
+            if values:
+                inputs[handle_id] = [
+                    VideoInputAsset(kind=kind, role=role, url=value, handle_id=handle_id)
+                    for value in values
+                ]
+
+        return VideoCreateRequest(
+            provider=request.provider,
+            model=request.model,
+            task_type=request.videoMode,
+            prompt=request.prompt,
+            params={
+                "aspectRatio": request.aspectRatio,
+                "duration": request.duration,
+                "durationSeconds": request.durationSeconds,
+                "resolution": request.resolution,
+                "generateAudio": request.generateAudio,
+                "returnLastFrame": request.returnLastFrame,
+                "publicAssetStorage": request.publicAssetStorage,
+                "seed": request.seed,
                 "customParams": dict(request.customParams or {}),
             },
             inputs=inputs,
@@ -364,6 +415,11 @@ class VideoGenerationService:
             adapter = get_video_adapter("yunwu-kling")
             adapter_result = await adapter.create(self._kling_create_request(request), self._find_model(request.provider, request.model) or {})
             provider_response = adapter_result.raw_response or {}
+        elif request.provider == "seedance_official":
+            register_video_adapter(SeedanceOfficialVideoAdapter(provider))
+            adapter = get_video_adapter("seedance_official")
+            adapter_result = await adapter.create(self._seedance_create_request(request), self._find_model(request.provider, request.model) or {})
+            provider_response = adapter_result.raw_response or {}
         else:
             provider_response = await provider.create_task(request)
         provider_task_id = self._extract_provider_task_id(provider_response)
@@ -448,6 +504,19 @@ class VideoGenerationService:
             elif task.provider == "yunwu-kling":
                 register_video_adapter(YunwuKlingVideoAdapter(provider))
                 adapter = get_video_adapter("yunwu-kling")
+                adapter_result = await adapter.query(
+                    VideoQueryRequest(
+                        provider=task.provider,
+                        model=task.model,
+                        task_id=task.providerTaskId,
+                        project_dir=project_path,
+                    ),
+                    self._find_model(task.provider, task.model) or {},
+                )
+                response = adapter_result.raw_response or {}
+            elif task.provider == "seedance_official":
+                register_video_adapter(SeedanceOfficialVideoAdapter(provider))
+                adapter = get_video_adapter("seedance_official")
                 adapter_result = await adapter.query(
                     VideoQueryRequest(
                         provider=task.provider,

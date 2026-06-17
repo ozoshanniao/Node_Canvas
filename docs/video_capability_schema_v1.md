@@ -233,7 +233,7 @@ The registry is local metadata only. Importing it must not make network calls an
 - `google` -> `google:veo`
 - `kling` -> `kling:official`
 - `yunwu-kling` -> `yunwu-kling:kling`
-- `seedance_official` -> `legacy:seedance`
+- `seedance_official` -> `seedance:official`
 
 Capabilities connect to adapters through non-sensitive `adapterHints`:
 
@@ -366,4 +366,33 @@ The Yunwu-Kling payload compatibility contract preserves the current legacy beha
 
 The service layer routes only `provider == "yunwu-kling"` create/query through `get_video_adapter("yunwu-kling")`. The adapter raw response still flows through the existing task id extraction, status/message normalization, task persistence, video download flow, and frontend polling contract. Public API response shape, project save structure, frontend VideoNode UI, `/api/video/model-specs`, API key settings, and legacy bridge handles are unchanged.
 
-`adapterHints` remains adapter-only metadata and is still excluded from `schemaSnapshot` and `project.json`. Seedance is reserved for Phase 5.4.
+`adapterHints` remains adapter-only metadata and is still excluded from `schemaSnapshot` and `project.json`. At the end of Phase 5.3b, Seedance is reserved for Phase 5.4.
+
+## Phase 5.4 Seedance Official Adapter
+
+Phase 5.4 migrates only `provider: seedance_official` video generation to the adapter registry. Seedance Official models now resolve to `adapterHints.adapterId = "seedance:official"` and `adapterHints.runtime = "adapter"`.
+
+This is the final migration for the existing video providers covered by the Phase 5 adapter standardization. Yunwu remains on `YunwuVideoAdapter`, Google remains on `GoogleVeoVideoAdapter`, Kling Official remains on `KlingVideoAdapter`, and Yunwu-Kling remains on `YunwuKlingVideoAdapter`. No new provider, remote model discovery, experimental model path, frontend UI change, project save change, `/api/video/model-specs` removal, or legacy bridge handle removal is included.
+
+`SeedanceOfficialVideoAdapter` reuses the existing `SeedanceOfficialProvider` runtime. The provider still owns asset resolution, public asset upload selection, payload construction, HTTP client behavior, task id parsing, query status mapping, video URL extraction, and last-frame URL extraction. Adapter import and registry initialization must not read real credentials, perform network requests, or upload R2/TOS assets.
+
+The Seedance payload compatibility contract preserves the current legacy behavior for:
+
+- `model`
+- `prompt`
+- `content`
+- image, video, and audio reference ordering
+- prompt reference normalization
+- `ratio`
+- `duration`
+- `resolution`
+- `seed`
+- `generate_audio`
+- `return_last_frame`
+- `watermark: false`
+
+The R2/public asset flow remains owned by the existing Seedance provider and `PublicAssetService` path. Small supported images and audio can still use the existing base64-first path; large images, video references, and configured public asset storage still use the same public URL generation, object key, cache, storage-provider override, and env-gated smoke behavior. Ordinary adapter tests mock the public asset service and do not upload real R2/TOS objects.
+
+The service layer routes only `provider == "seedance_official"` create/query through `get_video_adapter("seedance_official")`. The adapter raw response still flows through the existing task id extraction, status/message normalization, task persistence, remote video download, return-last-frame download, and frontend polling contract. Public API response shape remains compatible with the pre-migration runtime.
+
+`adapterHints` remains adapter-only metadata and is still excluded from `schemaSnapshot` and `project.json`.
