@@ -145,3 +145,42 @@ These legacy bridge handles are not the final architecture. They are kept only t
 - `audio:references`
 - `omniParams:in`
 - `video:out`
+
+## Phase 3 Saved VideoNode Data
+
+Newly saved project data uses the clean VideoNode contract:
+
+```json
+{
+  "provider": "google",
+  "model": "veo-3.1-generate-001",
+  "taskType": "text-to-video",
+  "params": {},
+  "schemaSnapshot": {},
+  "outputs": {}
+}
+```
+
+`provider`, `model`, and `taskType` are the core model selection state. `params` stores user-configurable parameter values only. `schemaSnapshot` is a trimmed capability snapshot used for offline readability and future port-state replay. `outputs` stores restorable relative workspace paths or API proxy URLs, such as `generation/video.mp4` and `/api/generation/video.mp4`.
+
+Phase 3 does not perform a complex old `project.json` migration. Runtime code has a temporary loader/runtime bridge that can read older flat fields such as `videoMode`, `aspectRatio`, and `outputs.videoUrl`, but save always sanitizes video node data back to the clean structure.
+
+The saved `schemaSnapshot` includes only:
+
+- `schemaVersion`
+- `provider`
+- `model`
+- `displayName`
+- `family`
+- `mediaType`
+- `taskTypes`
+- `inputCapabilities`
+- `outputCapabilities`
+- `parameterSummary`
+- `featured`
+- `experimental`
+- `deprecated`
+
+It must not include full `parameters`, `adapterHints`, `hiddenParams`, full `uiHints`, raw schemas, API keys, or raw provider payloads.
+
+Project save sanitization removes API keys, authorization headers, bearer tokens, access keys, secret keys, private keys, raw provider responses, raw/OpenAPI schemas, base64 media, blob URLs, local absolute paths, transient task state, polling state, `Error` instances, and `File`/`Blob` objects. It preserves relative generated media paths and API proxy URLs needed to reopen project-local outputs.

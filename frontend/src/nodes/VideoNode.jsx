@@ -30,6 +30,7 @@ import {
   supportsKlingMultiShot,
 } from '../utils/videoGenerationOptions';
 import {
+  buildVideoSchemaSnapshot,
   getHandleState,
   getParameterSchema,
   getStableVideoHandles,
@@ -743,6 +744,19 @@ export function VideoNode({ id, data }) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedCapability) return;
+    const snapshot = buildVideoSchemaSnapshot(selectedCapability);
+    if (
+      data?.schemaSnapshot?.provider === snapshot?.provider &&
+      data?.schemaSnapshot?.model === snapshot?.model &&
+      data?.schemaSnapshot?.schemaVersion === snapshot?.schemaVersion
+    ) {
+      return;
+    }
+    updateNodeData({ schemaSnapshot: snapshot });
+  }, [data?.schemaSnapshot, selectedCapability, updateNodeData]);
 
   useEffect(() => {
     let cancelled = false;

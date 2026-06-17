@@ -721,30 +721,43 @@ const applyModelConstraints = (settings, modelConfig) => {
 };
 
 export const normalizeVideoGenerationSettings = (settings = {}, registry) => {
-  const provider = getVideoProvider(settings.provider, registry);
-  const model = getVideoModel(provider?.id, settings.model, registry);
+  // Temporary Phase 3 runtime bridge only. Do not persist to project.json.
+  // New saved VideoNode data stores user settings in data.params and taskType.
+  const sourceSettings = {
+    ...(settings.params || {}),
+    ...settings,
+    videoMode: settings.videoMode || settings.taskType || settings.params?.videoMode,
+    outputs: settings.outputs?.video || settings.outputs?.lastFrame
+      ? {
+          ...settings.outputs,
+          videoUrl: settings.outputs?.video?.url || settings.outputs?.videoUrl,
+        }
+      : settings.outputs,
+  };
+  const provider = getVideoProvider(sourceSettings.provider, registry);
+  const model = getVideoModel(provider?.id, sourceSettings.model, registry);
   const params = model?.params || {};
   const nextSettings = {
     ...DEFAULT_VIDEO_GENERATION_SETTINGS,
-    ...settings,
+    ...sourceSettings,
     provider: provider?.id || DEFAULT_VIDEO_GENERATION_SETTINGS.provider,
     model: model?.id || DEFAULT_VIDEO_GENERATION_SETTINGS.model,
     customParams: {
       ...(model?.customParams || {}),
-      ...(settings.customParams || {}),
+      ...(sourceSettings.customParams || {}),
     },
     task: {
       ...DEFAULT_VIDEO_GENERATION_SETTINGS.task,
-      ...(settings.task || {}),
+      ...(sourceSettings.task || {}),
     },
     outputs: {
       ...DEFAULT_VIDEO_GENERATION_SETTINGS.outputs,
-      ...(settings.outputs || {}),
+      ...(sourceSettings.outputs || {}),
     },
   };
 
   Object.entries(params).forEach(([key, config]) => {
-    const current = settings[key];
+    const current = sourceSettings[key];
     const normalizedCurrent = normalizeSelectValue(key, current);
     const fallback = getParamDefault(config);
     if (config.type === 'select') {

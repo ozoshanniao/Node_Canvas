@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  buildVideoSchemaSnapshot,
   getHandleState,
   getInputCapability,
   getOutputCapability,
@@ -74,6 +75,14 @@ assert.deepEqual(getStableVideoHandles(), {
   ],
   outputs: ['video:out'],
 });
+
+const snapshot = buildVideoSchemaSnapshot(capability);
+assert.equal(snapshot.schemaVersion, 1);
+assert.equal(snapshot.provider, 'kling');
+assert.equal(snapshot.parameterSummary.negativePrompt.group, 'advanced');
+assert.equal(snapshot.adapterHints, undefined);
+assert.equal(snapshot.hiddenParams, undefined);
+assert.equal(snapshot.parameters, undefined);
 
 assert.equal(getVideoCapability([capability], 'kling', 'kling-v3'), capability);
 assert.equal(getVideoCapability([capability], 'kling', 'kling-v3', 'image-to-video'), capability);

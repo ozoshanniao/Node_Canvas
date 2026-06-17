@@ -1,6 +1,6 @@
 import { mergeNodeDefaults } from '../utils/nodeDefaults.js';
 import { DEFAULT_IMAGE_GENERATION_SETTINGS } from '../utils/imageGenerationOptions.js';
-import { DEFAULT_VIDEO_GENERATION_SETTINGS } from '../utils/videoGenerationOptions.js';
+import { createDefaultVideoNodeData } from '../utils/videoNodeData.js';
 import { DEFAULT_EASE_CURVE_DATA } from '../lib/easingPresets.js';
 
 export const NODE_DEFINITIONS = [
@@ -118,7 +118,7 @@ export const NODE_DEFINITIONS = [
       { id: 'video:out', kind: 'video' },
       { id: 'image:lastFrame', kind: 'image', label: 'Last Frame' },
     ],
-    defaultData: { ...DEFAULT_VIDEO_GENERATION_SETTINGS },
+    defaultData: createDefaultVideoNodeData(),
     defaultsKind: 'videoGeneration',
     defaultSize: { width: 520, height: 293 },
   },

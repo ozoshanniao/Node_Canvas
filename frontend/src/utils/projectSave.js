@@ -1,3 +1,5 @@
+import { sanitizeProjectForSave } from './projectSanitize.js';
+
 export const describeImageValue = (value) => {
   if (!value) return { type: 'empty', length: 0 };
   if (typeof value !== 'string') return { type: typeof value, length: 0 };
@@ -92,9 +94,11 @@ export const sanitizeEdgesForSave = (edges = []) =>
   });
 
 export const sanitizeProjectBeforeSave = ({ nodes = [], edges = [], groups = {} }) => ({
-  nodes: sanitizeNodesForSave(nodes),
-  edges: sanitizeEdgesForSave(edges),
-  groups: groups || {},
+  ...sanitizeProjectForSave({
+    nodes: sanitizeNodesForSave(nodes),
+    edges: sanitizeEdgesForSave(edges),
+    groups: groups || {},
+  }),
 });
 
 export const saveProjectCore = async ({

@@ -26,6 +26,36 @@ export const getStableVideoHandles = () => ({
   outputs: [...STABLE_VIDEO_OUTPUT_HANDLES],
 });
 
+export const buildVideoSchemaSnapshot = (capability = null) => {
+  if (!capability) return null;
+  const parameterSummary = {};
+  Object.entries(capability.parameters || {}).forEach(([key, parameter]) => {
+    const summary = {
+      type: parameter?.type,
+      group: parameter?.group,
+      default: parameter?.default,
+    };
+    if (Array.isArray(parameter?.options)) summary.options = [...parameter.options];
+    parameterSummary[key] = summary;
+  });
+
+  return {
+    schemaVersion: capability.schemaVersion,
+    provider: capability.provider,
+    model: capability.model,
+    displayName: capability.displayName,
+    family: capability.family,
+    mediaType: capability.mediaType,
+    taskTypes: [...(capability.taskTypes || [])],
+    inputCapabilities: structuredClone(capability.inputCapabilities || {}),
+    outputCapabilities: structuredClone(capability.outputCapabilities || {}),
+    parameterSummary,
+    featured: Boolean(capability.featured),
+    experimental: Boolean(capability.experimental),
+    deprecated: Boolean(capability.deprecated),
+  };
+};
+
 export const getVideoCapability = (capabilities = [], provider, model, taskType = null) => {
   if (!Array.isArray(capabilities)) return null;
   const matches = capabilities.filter(

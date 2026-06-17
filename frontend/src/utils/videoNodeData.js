@@ -1,0 +1,164 @@
+import { DEFAULT_VIDEO_GENERATION_SETTINGS } from './videoGenerationOptions.js';
+import { buildVideoSchemaSnapshot } from './videoCapabilities.js';
+
+const VIDEO_PARAM_KEYS = [
+  'aspectRatio',
+  'duration',
+  'durationSeconds',
+  'resolution',
+  'qualityMode',
+  'generateAudio',
+  'returnLastFrame',
+  'seed',
+  'numberOfVideos',
+  'negativePrompt',
+  'enableUpsample',
+  'enhancePrompt',
+  'cfgScale',
+  'cameraControl',
+  'serviceTier',
+  'watermark',
+];
+
+const TRANSIENT_KEYS = new Set([
+  'task',
+  'status',
+  'error',
+  'progress',
+  'isGenerating',
+  'isPolling',
+  'loading',
+  'pollingIntervalId',
+  'abortController',
+  'rawResponse',
+  'rawCreateResponse',
+  'rawQueryResponse',
+  'adapterHints',
+  'hiddenParams',
+  'customParamsText',
+]);
+
+const SENSITIVE_KEY_PATTERN = /api[-_]?key|authorization|bearer|access[-_]?key|secret[-_]?key|private[-_]?key|token/i;
+const RAW_KEY_PATTERN = /raw.*(schema|payload|response)|openapi/i;
+const BASE64_PATTERN = /^data:(image|video|audio)\/[^;]+;base64,/i;
+const BLOB_PATTERN = /^blob:/i;
+const WINDOWS_ABSOLUTE_PATTERN = /^[a-zA-Z]:[\\/]/;
+const UNIX_ABSOLUTE_PATTERN = /^\/(Users|home|var|tmp|etc|Volumes)\//;
+
+export { buildVideoSchemaSnapshot };
+
+const defaultParams = () =>
+  VIDEO_PARAM_KEYS.reduce((params, key) => {
+    if (Object.prototype.hasOwnProperty.call(DEFAULT_VIDEO_GENERATION_SETTINGS, key)) {
+      params[key] = DEFAULT_VIDEO_GENERATION_SETTINGS[key];
+    }
+    return params;
+  }, {});
+
+export const createDefaultVideoNodeData = (capability = null) => ({
+  provider: capability?.provider || DEFAULT_VIDEO_GENERATION_SETTINGS.provider,
+  model: capability?.model || DEFAULT_VIDEO_GENERATION_SETTINGS.model,
+  taskType: capability?.taskTypes?.[0] || DEFAULT_VIDEO_GENERATION_SETTINGS.videoMode,
+  params: defaultParams(),
+  schemaSnapshot: buildVideoSchemaSnapshot(capability),
+  outputs: {},
+});
+
+const pickLegacyParams = (data = {}) =>
+  VIDEO_PARAM_KEYS.reduce((params, key) => {
+    if (data[key] !== undefined) params[key] = data[key];
+    return params;
+  }, {});
+
+const normalizeOutputs = (outputs = {}, data = {}) => {
+  const normalized = {};
+  const videoUrl = outputs.video?.url || outputs.videoUrl || data.videoUrl || data.localVideoUrl;
+  const videoPath = outputs.video?.path || outputs.video?.filePath || data.outputVideoPath;
+  if (videoUrl || videoPath) {
+    normalized.video = {
+      ...(videoPath ? { path: videoPath } : {}),
+      ...(videoUrl ? { url: videoUrl } : {}),
+      mimeType: outputs.video?.mimeType || 'video/mp4',
+      ...(outputs.video?.createdAt ? { createdAt: outputs.video.createdAt } : {}),
+    };
+  }
+
+  const lastFrame = outputs.lastFrame || data.lastFrame;
+  if (lastFrame?.url || lastFrame?.path || lastFrame?.filePath) {
+    normalized.lastFrame = {
+      path: lastFrame.path || lastFrame.filePath,
+      url: lastFrame.url,
+      mimeType: lastFrame.mimeType || 'image/png',
+      ...(lastFrame.createdAt ? { createdAt: lastFrame.createdAt } : {}),
+    };
+  }
+  return normalized;
+};
+
+export const normalizeVideoNodeData = (data = {}, capability = null) => {
+  const defaults = createDefaultVideoNodeData(capability);
+  return {
+    provider: data.provider || defaults.provider,
+    model: data.model || defaults.model,
+    taskType: data.taskType || data.videoMode || defaults.taskType,
+    params: {
+      ...defaults.params,
+      ...(data.params || {}),
+      ...pickLegacyParams(data),
+    },
+    schemaSnapshot: data.schemaSnapshot || defaults.schemaSnapshot,
+    outputs: normalizeOutputs(data.outputs || {}, data),
+  };
+};
+
+export const updateVideoNodeParam = (data = {}, key, value) => ({
+  ...normalizeVideoNodeData(data),
+  params: {
+    ...(normalizeVideoNodeData(data).params || {}),
+    [key]: value,
+  },
+});
+
+const isUnsafeString = (value) =>
+  BASE64_PATTERN.test(value) ||
+  BLOB_PATTERN.test(value) ||
+  WINDOWS_ABSOLUTE_PATTERN.test(value) ||
+  UNIX_ABSOLUTE_PATTERN.test(value);
+
+const sanitizeValue = (value, key = '') => {
+  if (value == null) return value;
+  if (TRANSIENT_KEYS.has(key) || SENSITIVE_KEY_PATTERN.test(key) || RAW_KEY_PATTERN.test(key)) return undefined;
+  if (typeof File !== 'undefined' && value instanceof File) return undefined;
+  if (typeof Blob !== 'undefined' && value instanceof Blob) return undefined;
+  if (value instanceof Error) return undefined;
+  if (typeof value === 'string') return isUnsafeString(value) ? undefined : value;
+  if (Array.isArray(value)) {
+    const items = value.map((item) => sanitizeValue(item)).filter((item) => item !== undefined);
+    return items;
+  }
+  if (typeof value === 'object') {
+    const sanitized = {};
+    Object.entries(value).forEach(([childKey, childValue]) => {
+      const next = sanitizeValue(childValue, childKey);
+      if (next !== undefined) sanitized[childKey] = next;
+    });
+    return sanitized;
+  }
+  return value;
+};
+
+export const sanitizeVideoNodeDataForSave = (data = {}, capability = null) => {
+  const normalized = normalizeVideoNodeData(data, capability);
+  const sanitizedParams = sanitizeValue(normalized.params) || {};
+  const sanitizedOutputs = sanitizeValue(normalized.outputs) || {};
+  const snapshot = sanitizeValue(normalized.schemaSnapshot) || null;
+
+  return {
+    provider: normalized.provider,
+    model: normalized.model,
+    taskType: normalized.taskType,
+    params: sanitizedParams,
+    schemaSnapshot: snapshot,
+    outputs: sanitizedOutputs,
+  };
+};
