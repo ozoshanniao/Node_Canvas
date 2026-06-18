@@ -100,13 +100,14 @@ def _input_capabilities_for_model(model: dict[str, Any]) -> dict[str, dict[str, 
             "text",
             "prompt",
             "Prompt",
-            required="text-to-video" in supported_modes or "reference-video" in supported_modes or any(supported_modes),
+            required=bool(legacy.get("promptRequired")) or "text-to-video" in supported_modes or "reference-video" in supported_modes,
             supported=bool(legacy.get("text")) and not is_omni,
         ),
         "image:firstFrame": _handle_capability(
             "image",
             "first_frame",
             "First Frame",
+            required=bool(legacy.get("firstFrameRequired")),
             supported=bool(legacy.get("images") or legacy.get("firstFrame")) and not is_omni,
             metadata={"maxItems": legacy.get("maxImages", 1)},
         ),
@@ -282,7 +283,7 @@ def _advanced_params(parameters: dict[str, dict[str, Any]], quick_params: list[s
 
 def _model_feature_flags(provider_id: str, model: dict[str, Any]) -> tuple[bool, bool, bool]:
     model_id = str(model.get("id") or "")
-    featured = provider_id in {"yunwu", "google", "seedance_official", "kling"} and not model_id.endswith("-lite-generate-001")
+    featured = provider_id in {"yunwu", "google", "seedance_official", "kling", "kie"} and not model_id.endswith("-lite-generate-001")
     return featured, False, False
 
 
@@ -314,7 +315,7 @@ def build_model_capability(provider: dict[str, Any], model: dict[str, Any]) -> d
         },
         "adapterHints": {
             "adapterId": legacy_adapter_id_for_provider(provider_id),
-            "runtime": "adapter" if provider_id in {"yunwu", "google", "kling", "yunwu-kling", "seedance_official"} else "legacy",
+            "runtime": "adapter" if provider_id in {"yunwu", "google", "kling", "yunwu-kling", "seedance_official", "kie"} else "legacy",
             "adapterKey": adapter_key,
             "legacyModelId": model_id,
             "constraints": deepcopy(model.get("constraints") or {}),

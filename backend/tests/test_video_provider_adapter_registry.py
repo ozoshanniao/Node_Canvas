@@ -17,6 +17,7 @@ from video_generation.adapters.registry import (
     _restore_default_video_adapters_for_tests,
 )
 from video_generation.adapters.google_veo import GoogleVeoVideoAdapter
+from video_generation.adapters.kie import KieVideoAdapter
 from video_generation.adapters.kling import KlingVideoAdapter
 from video_generation.adapters.seedance import SeedanceOfficialVideoAdapter
 from video_generation.adapters.yunwu import YunwuVideoAdapter
@@ -89,7 +90,7 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
         self.assertTrue(all(getattr(adapter, "provider", None) for adapter in adapters))
         self.assertEqual(
             {adapter.provider for adapter in adapters},
-            {"yunwu", "google", "kling", "yunwu-kling", "seedance_official"},
+            {"yunwu", "google", "kling", "yunwu-kling", "seedance_official", "kie"},
         )
 
     def test_resolve_adapter_for_capability_uses_adapter_hints(self):
@@ -141,6 +142,12 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
         self.assertIsInstance(adapter, SeedanceOfficialVideoAdapter)
         self.assertEqual(adapter.adapter_id, "seedance:official")
 
+    def test_kie_adapter_is_real_adapter(self):
+        adapter = get_video_adapter("kie")
+
+        self.assertIsInstance(adapter, KieVideoAdapter)
+        self.assertEqual(adapter.adapter_id, "kie:wan")
+
     def test_capability_adapter_hints_are_non_sensitive(self):
         sensitive_tokens = ("apikey", "authorization", "bearer", "secret", "accesskey", "privatekey")
 
@@ -149,7 +156,7 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
             serialized = str(hints).replace("_", "").replace("-", "").lower()
             with self.subTest(provider=capability["provider"], model=capability["model"]):
                 self.assertIn("adapterId", hints)
-                expected_runtime = "adapter" if capability["provider"] in {"yunwu", "google", "kling", "yunwu-kling", "seedance_official"} else "legacy"
+                expected_runtime = "adapter" if capability["provider"] in {"yunwu", "google", "kling", "yunwu-kling", "seedance_official", "kie"} else "legacy"
                 self.assertEqual(hints.get("runtime"), expected_runtime)
                 for token in sensitive_tokens:
                     self.assertNotIn(token, serialized)
@@ -188,6 +195,7 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
         self.assertIsInstance(get_video_adapter("kling"), KlingVideoAdapter)
         self.assertIsInstance(get_video_adapter("yunwu-kling"), YunwuKlingVideoAdapter)
         self.assertIsInstance(get_video_adapter("seedance_official"), SeedanceOfficialVideoAdapter)
+        self.assertIsInstance(get_video_adapter("kie"), KieVideoAdapter)
 
     def test_error_classification_helper(self):
         self.assertEqual(classify_video_provider_error("Invalid API key")[0], "auth_error")

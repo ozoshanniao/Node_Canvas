@@ -9,6 +9,46 @@ COMMON_SEED_PARAM = {
     "default": -1,
 }
 
+KIE_WAN_PARAMS = {
+    "videoMode": {
+        "type": "select",
+        "label": "Video Mode",
+        "options": ["text-to-video", "image-to-video"],
+        "default": "text-to-video",
+    },
+    "aspectRatio": {
+        "type": "select",
+        "label": "Aspect Ratio",
+        "options": ["16:9", "9:16", "1:1"],
+        "default": "16:9",
+    },
+    "duration": {
+        "type": "select",
+        "label": "Duration",
+        "options": ["5s", "10s"],
+        "default": "5s",
+    },
+    "durationSeconds": {
+        "type": "number",
+        "label": "Duration Seconds",
+        "min": 5,
+        "max": 10,
+        "default": 5,
+    },
+    "resolution": {
+        "type": "select",
+        "label": "Resolution",
+        "options": ["720p", "1080p"],
+        "default": "720p",
+    },
+    "negativePrompt": {
+        "type": "text",
+        "label": "Negative Prompt",
+        "default": "",
+    },
+    "seed": COMMON_SEED_PARAM,
+}
+
 SEEDANCE_MODES = ["frame", "multimodal-reference"]
 SEEDANCE_RATIO_OPTIONS = ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
 SEEDANCE_DURATION_OPTIONS = [f"{value}s" for value in range(4, 16)]
@@ -613,6 +653,51 @@ VIDEO_GENERATION_REGISTRY = {
         },
         kling_provider("kling", "Kling"),
         kling_provider("yunwu-kling", "Yunwu Kling"),
+        {
+            "id": "kie",
+            "label": "KIE",
+            "models": [
+                {
+                    "id": "wan/2-7-text-to-video",
+                    "label": "Wan 2.7 Text to Video",
+                    "family": "wan",
+                    "adapterKey": "kie_wan",
+                    "supportedModes": ["text-to-video"],
+                    "inputCapabilities": {
+                        "text": True,
+                        "promptRequired": True,
+                        "images": False,
+                        "endFrame": False,
+                        "referenceImages": False,
+                        "maxImages": 0,
+                    },
+                    "quickParams": ["videoMode", "aspectRatio", "duration", "resolution"],
+                    "params": KIE_WAN_PARAMS,
+                    "customParams": {},
+                },
+                {
+                    "id": "wan/2-7-image-to-video",
+                    "label": "Wan 2.7 Image to Video",
+                    "family": "wan",
+                    "adapterKey": "kie_wan",
+                    "supportedModes": ["image-to-video"],
+                    "inputCapabilities": {
+                        "text": True,
+                        "promptRequired": False,
+                        "images": True,
+                        "firstFrame": True,
+                        "firstFrameRequired": True,
+                        "endFrame": False,
+                        "referenceImages": False,
+                        "maxImages": 1,
+                        "maxInputImageSizeMb": 10,
+                    },
+                    "quickParams": ["videoMode", "duration", "resolution"],
+                    "params": KIE_WAN_PARAMS,
+                    "customParams": {},
+                },
+            ],
+        },
     ]
 }
 

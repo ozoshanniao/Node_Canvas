@@ -23,6 +23,7 @@ from video_generation.adapters.types import (
     normalize_video_adapter_status,
 )
 from video_generation.adapters.google_veo import GoogleVeoVideoAdapter
+from video_generation.adapters.kie import KieVideoAdapter
 from video_generation.adapters.kling import KlingVideoAdapter
 from video_generation.adapters.seedance import SeedanceOfficialVideoAdapter
 from video_generation.adapters.yunwu import YunwuVideoAdapter
@@ -39,6 +40,7 @@ __all__ = [
     "VideoQueryRequest",
     "VideoQueryResult",
     "GoogleVeoVideoAdapter",
+    "KieVideoAdapter",
     "KlingVideoAdapter",
     "SeedanceOfficialVideoAdapter",
     "YunwuVideoAdapter",

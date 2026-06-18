@@ -20,6 +20,9 @@ class VideoAdapterImportSafetyTest(unittest.TestCase):
                 "video_generation.adapters.kling",
                 "video_generation.adapters.yunwu_kling",
                 "video_generation.adapters.seedance",
+                "video_generation.providers.kie.client",
+                "video_generation.providers.kie.payloads",
+                "video_generation.adapters.kie",
                 "video_generation.adapters.registry",
             ]
             for module_name in modules:
@@ -35,7 +38,7 @@ class VideoAdapterImportSafetyTest(unittest.TestCase):
 
         self.assertEqual(
             {adapter.provider for adapter in adapters},
-            {"yunwu", "google", "kling", "yunwu-kling", "seedance_official"},
+            {"yunwu", "google", "kling", "yunwu-kling", "seedance_official", "kie"},
         )
         self.assertEqual(seedance.adapter_id, "seedance:official")
         google_client.assert_not_called()
