@@ -1,13 +1,13 @@
 # Provider Asset Upload Router
 
-Phase 6.0 added backend infrastructure for provider-specific asset preparation. Phase 6.1A uses the KIE route for Wan 2.7 image-to-video first-frame assets only. It does not change FAL or WaveSpeed model availability, VideoNode UI, or project save structure.
+Phase 6.0 added backend infrastructure for provider-specific asset preparation. Phase 6.1C uses the KIE route for selected KIE image-to-video first-frame assets. It does not change FAL or WaveSpeed model availability, VideoNode UI, or project save structure.
 
 ## Scope
 
 - `KIE_API_KEY`, `FAL_API_KEY`, and `WAVESPEED_API_KEY` are supported by the existing provider settings and secret resolver path.
 - `ProviderAssetUploadRouter` converts local files, data URIs, raw base64, and HTTPS URLs into provider-ready asset references.
 - External uploads are behind injectable uploader functions and are covered by mock tests only.
-- Phase 6.1A registers only KIE Wan 2.7 T2V/I2V; KIE full model discovery remains disabled.
+- Phase 6.1C registers only the selected KIE video whitelist: Wan 2.7, Kling 3.0, Kling 2.6, Seedance 2.0, and Seedance 2.0 Fast T2V/I2V. KIE full model discovery remains disabled.
 - Existing Yunwu, Google, Kling Official, Yunwu-Kling, and Seedance runtime paths are unchanged.
 
 ## Routing Policy
@@ -19,7 +19,7 @@ KIE:
 - Data URIs, raw base64, and small image payloads upload through `/api/file-base64-upload`.
 - Local files, bytes, large data URIs, video, and audio upload through `/api/file-stream-upload`.
 - KIE file upload base URL is configurable with `KIE_FILE_UPLOAD_BASE_URL`; the default is `https://api.kie.ai`.
-- Wan 2.7 image-to-video resolves `image:firstFrame` through `ProviderAssetUploadRouter(provider="kie")`.
+- KIE image-to-video models resolve `image:firstFrame` through `ProviderAssetUploadRouter(provider="kie")`.
 
 FAL:
 
@@ -62,7 +62,7 @@ KIE upload routing uses only those three official upload paths.
 
 Google Veo 3 and Veo 3.1 must not be reintroduced through KIE, FAL, or WaveSpeed. The project already has Google Official and Yunwu Veo channels, and duplicate third-party entries would make provider selection and UI behavior ambiguous.
 
-Even if later KIE, FAL, or WaveSpeed model lists contain entries such as `veo3/text-to-video`, `veo3/image-to-video`, `veo3-fast/text-to-video`, `veo3-fast/image-to-video`, `google/imagen4`, or `nano-banana-pro`, they are excluded from Node-AI-Canvas provider expansion.
+Even if later KIE, FAL, or WaveSpeed model lists contain entries such as `veo3/text-to-video`, `veo3/image-to-video`, `veo3-fast/text-to-video`, `veo3-fast/image-to-video`, `google/imagen4`, `gpt-image`, Gemini Omni Video, or `nano-banana-pro`, they are excluded from the Phase 6.1C video whitelist.
 
 ## Later Phases
 

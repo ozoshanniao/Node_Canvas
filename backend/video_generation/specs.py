@@ -46,8 +46,52 @@ KIE_WAN_PARAMS = {
         "label": "Negative Prompt",
         "default": "",
     },
+    "generateAudio": {
+        "type": "boolean",
+        "label": "Generate Audio",
+        "default": False,
+    },
     "seed": COMMON_SEED_PARAM,
 }
+
+KIE_VIDEO_MODEL_WHITELIST = [
+    ("wan/2-7-text-to-video", "Wan 2.7 (KIE)", "wan", "text-to-video"),
+    ("wan/2-7-image-to-video", "Wan 2.7 I2V (KIE)", "wan", "image-to-video"),
+    ("kling-3.0/video/text-to-video", "Kling 3.0 (KIE)", "kling", "text-to-video"),
+    ("kling-3.0/video/image-to-video", "Kling 3.0 I2V (KIE)", "kling", "image-to-video"),
+    ("kling-2.6/text-to-video", "Kling 2.6 (KIE)", "kling", "text-to-video"),
+    ("kling-2.6/image-to-video", "Kling 2.6 I2V (KIE)", "kling", "image-to-video"),
+    ("bytedance/seedance-2/text-to-video", "Seedance 2.0 (KIE)", "seedance", "text-to-video"),
+    ("bytedance/seedance-2/image-to-video", "Seedance 2.0 I2V (KIE)", "seedance", "image-to-video"),
+    ("bytedance/seedance-2-fast/text-to-video", "Seedance 2.0 Fast (KIE)", "seedance", "text-to-video"),
+    ("bytedance/seedance-2-fast/image-to-video", "Seedance 2.0 Fast I2V (KIE)", "seedance", "image-to-video"),
+]
+
+
+def kie_video_model(model_id: str, label: str, family: str, mode: str):
+    is_i2v = mode == "image-to-video"
+    return {
+        "id": model_id,
+        "label": label,
+        "family": family,
+        "adapterKey": "kie_wan",
+        "supportedModes": [mode],
+        "inputCapabilities": {
+            "text": True,
+            "promptRequired": not is_i2v,
+            "images": is_i2v,
+            "firstFrame": is_i2v,
+            "firstFrameRequired": is_i2v,
+            "endFrame": False,
+            "referenceImages": False,
+            "maxImages": 1 if is_i2v else 0,
+            **({"maxInputImageSizeMb": 10} if is_i2v else {}),
+        },
+        "quickParams": ["videoMode", "duration", "resolution"] if is_i2v else ["videoMode", "aspectRatio", "duration", "resolution"],
+        "params": KIE_WAN_PARAMS,
+        "customParams": {},
+    }
+
 
 SEEDANCE_MODES = ["frame", "multimodal-reference"]
 SEEDANCE_RATIO_OPTIONS = ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
@@ -657,45 +701,8 @@ VIDEO_GENERATION_REGISTRY = {
             "id": "kie",
             "label": "KIE",
             "models": [
-                {
-                    "id": "wan/2-7-text-to-video",
-                    "label": "Wan 2.7 Text to Video",
-                    "family": "wan",
-                    "adapterKey": "kie_wan",
-                    "supportedModes": ["text-to-video"],
-                    "inputCapabilities": {
-                        "text": True,
-                        "promptRequired": True,
-                        "images": False,
-                        "endFrame": False,
-                        "referenceImages": False,
-                        "maxImages": 0,
-                    },
-                    "quickParams": ["videoMode", "aspectRatio", "duration", "resolution"],
-                    "params": KIE_WAN_PARAMS,
-                    "customParams": {},
-                },
-                {
-                    "id": "wan/2-7-image-to-video",
-                    "label": "Wan 2.7 Image to Video",
-                    "family": "wan",
-                    "adapterKey": "kie_wan",
-                    "supportedModes": ["image-to-video"],
-                    "inputCapabilities": {
-                        "text": True,
-                        "promptRequired": False,
-                        "images": True,
-                        "firstFrame": True,
-                        "firstFrameRequired": True,
-                        "endFrame": False,
-                        "referenceImages": False,
-                        "maxImages": 1,
-                        "maxInputImageSizeMb": 10,
-                    },
-                    "quickParams": ["videoMode", "duration", "resolution"],
-                    "params": KIE_WAN_PARAMS,
-                    "customParams": {},
-                },
+                kie_video_model(model_id, label, family, mode)
+                for model_id, label, family, mode in KIE_VIDEO_MODEL_WHITELIST
             ],
         },
     ]

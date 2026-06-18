@@ -12,8 +12,37 @@ from video_generation.adapters.types import (
     VideoQueryResult,
 )
 from video_generation.providers.kie.client import KieClient
+from video_generation.providers.kie.payloads import (
+    KIE_KLING_26_I2V_MODEL,
+    KIE_KLING_26_T2V_MODEL,
+    KIE_KLING_30_I2V_MODEL,
+    KIE_KLING_30_T2V_MODEL,
+    KIE_SEEDANCE_2_FAST_I2V_MODEL,
+    KIE_SEEDANCE_2_FAST_T2V_MODEL,
+    KIE_SEEDANCE_2_I2V_MODEL,
+    KIE_SEEDANCE_2_T2V_MODEL,
+    KIE_WAN_I2V_MODEL,
+    KIE_WAN_T2V_MODEL,
+)
 from video_generation.schemas import VideoGenerateRequest
 from video_generation.service import VideoGenerationService
+
+
+KIE_T2V_MODELS = [
+    KIE_WAN_T2V_MODEL,
+    KIE_KLING_30_T2V_MODEL,
+    KIE_KLING_26_T2V_MODEL,
+    KIE_SEEDANCE_2_T2V_MODEL,
+    KIE_SEEDANCE_2_FAST_T2V_MODEL,
+]
+
+KIE_I2V_MODELS = [
+    KIE_WAN_I2V_MODEL,
+    KIE_KLING_30_I2V_MODEL,
+    KIE_KLING_26_I2V_MODEL,
+    KIE_SEEDANCE_2_I2V_MODEL,
+    KIE_SEEDANCE_2_FAST_I2V_MODEL,
+]
 
 
 class FakeKieClient:
@@ -132,6 +161,57 @@ class KieVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["input"]["first_frame_url"], "https://kie-cdn.test/input.png")
         self.assertEqual(router.calls[0]["provider"], "kie")
         self.assertEqual(router.calls[0]["purpose"], "image:firstFrame")
+
+    async def test_kie_whitelisted_t2v_payloads(self):
+        for model in KIE_T2V_MODELS:
+            with self.subTest(model=model):
+                client = FakeKieClient()
+                adapter = KieVideoAdapter(client=client, asset_router=FakeAssetRouter())
+                request = VideoCreateRequest(
+                    provider="kie",
+                    model=model,
+                    task_type="text-to-video",
+                    prompt="a paper boat",
+                    params={"duration": "5s", "resolution": "720p", "aspectRatio": "16:9"},
+                )
+
+                await adapter.create(request, {})
+
+                payload = client.created_payloads[0]
+                self.assertEqual(payload["model"], model)
+                self.assertEqual(payload["input"]["prompt"], "a paper boat")
+                self.assertEqual(payload["input"]["duration"], 5)
+                self.assertEqual(payload["input"]["resolution"], "720p")
+                self.assertEqual(payload["input"]["ratio"], "16:9")
+
+    async def test_kie_whitelisted_i2v_payloads_use_asset_router(self):
+        for model in KIE_I2V_MODELS:
+            with self.subTest(model=model):
+                client = FakeKieClient()
+                router = FakeAssetRouter()
+                adapter = KieVideoAdapter(client=client, asset_router=router)
+                request = VideoCreateRequest(
+                    provider="kie",
+                    model=model,
+                    task_type="image-to-video",
+                    prompt="animate",
+                    params={"duration": "5s", "resolution": "720p"},
+                    inputs={
+                        "image:firstFrame": [
+                            VideoInputAsset(kind="image", role="first_frame", url="https://example.test/input.png")
+                        ]
+                    },
+                    project_dir="Z:/project",
+                )
+
+                await adapter.create(request, {})
+
+                payload = client.created_payloads[0]
+                self.assertEqual(payload["model"], model)
+                self.assertEqual(payload["input"]["first_frame_url"], "https://kie-cdn.test/input.png")
+                self.assertEqual(len(router.calls), 1)
+                self.assertEqual(router.calls[0]["provider"], "kie")
+                self.assertEqual(router.calls[0]["purpose"], "image:firstFrame")
 
     async def test_kie_create_http_429(self):
         error = VideoProviderError(provider="kie", message="KIE createTask failed with HTTP 429: rate limited", category="rate_limited")

@@ -1,11 +1,20 @@
 # KIE Video Provider
 
-Phase 6.1A registers KIE as a video provider for the first selected Wan models only:
+Phase 6.1C registers KIE as a video provider for a selected mock-tested video whitelist:
 
 - `wan/2-7-text-to-video`
 - `wan/2-7-image-to-video`
+- `kling-3.0/video/text-to-video`
+- `kling-3.0/video/image-to-video`
+- `kling-2.6/text-to-video`
+- `kling-2.6/image-to-video`
+- `bytedance/seedance-2/text-to-video`
+- `bytedance/seedance-2/image-to-video`
+- `bytedance/seedance-2-fast/text-to-video`
+- `bytedance/seedance-2-fast/image-to-video`
 
 No remote model discovery is enabled. KIE's full model list is not exposed.
+Phase 6.1B real API smoke was skipped intentionally; Phase 6.1C remains mock-only and does not call real KIE APIs or upload real assets.
 
 ## API Surface
 
@@ -24,7 +33,7 @@ Adapter and client imports do not read `KIE_API_KEY`, create network clients wit
 
 ## Payload Contract
 
-Wan 2.7 text-to-video currently builds:
+KIE text-to-video models currently build:
 
 ```json
 {
@@ -38,7 +47,7 @@ Wan 2.7 text-to-video currently builds:
 }
 ```
 
-Wan 2.7 image-to-video currently builds:
+KIE image-to-video models currently build:
 
 ```json
 {
@@ -52,7 +61,7 @@ Wan 2.7 image-to-video currently builds:
 }
 ```
 
-`ratio` and `first_frame_url` are centralized in the payload builder because the KIE/Wan public examples and node-banana analysis may still differ from final official documentation.
+`ratio` and `first_frame_url` are centralized in the payload builder because KIE examples and node-banana/Redpanda-style analysis may still differ from final official documentation. The Kling and Seedance KIE payload field names require real smoke validation before production confidence.
 
 ## Asset Routing
 
@@ -66,7 +75,7 @@ KIE provider media upload supports three official paths:
 
 All three return the uploaded asset URL in `data.downloadUrl`. The upload host is configurable through `KIE_FILE_UPLOAD_BASE_URL`; default is `https://api.kie.ai`, while tests also cover `https://kieai.redpandaai.co`.
 
-Real smoke testing still requires confirming the final Wan payload fields `ratio` and `first_frame_url`.
+Real smoke testing still requires confirming the final payload fields `ratio` and `first_frame_url` for Wan, Kling, and Seedance through KIE.
 
 ## Result Parsing
 
@@ -100,7 +109,14 @@ KIE is not used to reintroduce Google models or image providers. The following a
 - `google/imagen4`
 - `google/imagen4-fast`
 - `google/imagen4-ultra`
+- `gpt-image`
+- `wan/2-7-image`
 - `nano-banana-pro`
 - `nano-banana-2`
+- Gemini Omni Video
 
 Existing Google Official, Yunwu, Kling, Yunwu-Kling, and Seedance runtimes are unchanged.
+
+## Deferred Models
+
+Gemini Omni Video is deferred to Phase 6.1D until the exact KIE model id, endpoint behavior, payload fields, and query result shape are known. KIE image models such as GPT Image, Imagen, Nano Banana, and Wan image generation are deferred to Phase 6.2 or later image-provider work and are not registered in the video capability list.

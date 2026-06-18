@@ -13,8 +13,8 @@ from video_generation.adapters.types import (
 )
 from video_generation.providers.kie.client import KieClient
 from video_generation.providers.kie.payloads import (
-    KIE_WAN_I2V_MODEL,
     build_kie_create_payload,
+    is_kie_i2v_model,
 )
 from video_generation.providers.kie.result_parser import (
     extract_kie_error_message,
@@ -43,7 +43,7 @@ class KieVideoAdapter:
 
     async def build_create_payload(self, request: VideoCreateRequest, capability: Mapping[str, Any]) -> Mapping[str, Any]:
         first_frame_url = None
-        if request.model == KIE_WAN_I2V_MODEL:
+        if is_kie_i2v_model(request.model):
             first_frame = self._first_asset(request.inputs.get("image:firstFrame") or [])
             if not first_frame:
                 raise ValueError("KIE image-to-video requires image:firstFrame")

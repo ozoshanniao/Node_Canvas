@@ -446,21 +446,31 @@ Planned follow-up phases:
 - Phase 6.3: WaveSpeed Adapter with selected models.
 - Phase 7: Experimental remote discovery.
 
-## Phase 6.1A KIE Wan Video Adapter
+## Phase 6.1C KIE Video Whitelist
 
-Phase 6.1A registers KIE as a video provider through `adapterHints.adapterId = "kie:wan"` and `adapterHints.runtime = "adapter"`. The only exposed KIE models are:
+Phase 6.1C expands the KIE video provider through `adapterHints.adapterId = "kie:wan"` and `adapterHints.runtime = "adapter"`. This phase is mock-only: Phase 6.1B real API smoke was skipped intentionally, no real KIE API is called, and no real assets are uploaded.
+
+The only exposed KIE models are:
 
 - `wan/2-7-text-to-video`
 - `wan/2-7-image-to-video`
+- `kling-3.0/video/text-to-video`
+- `kling-3.0/video/image-to-video`
+- `kling-2.6/text-to-video`
+- `kling-2.6/image-to-video`
+- `bytedance/seedance-2/text-to-video`
+- `bytedance/seedance-2/image-to-video`
+- `bytedance/seedance-2-fast/text-to-video`
+- `bytedance/seedance-2-fast/image-to-video`
 
-KIE full model discovery is not enabled. Google Veo 3, Veo 3.1, Imagen, Nano Banana, Seedance, and Kling models exposed by third-party KIE catalogs are intentionally not registered through KIE.
+KIE full model discovery is not enabled. Google Veo 3, Veo 3.1, Imagen, Nano Banana, GPT Image, Wan image generation, and Gemini Omni Video entries exposed by third-party KIE catalogs are intentionally not registered through KIE.
 
-Wan text-to-video accepts `text:prompt` and emits `video:out`. Wan image-to-video accepts optional `text:prompt`, requires `image:firstFrame`, and emits `video:out`. Image-to-video first-frame inputs are resolved through `ProviderAssetUploadRouter(provider="kie")` before payload construction.
+KIE text-to-video entries accept `text:prompt` and emit `video:out`. KIE image-to-video entries accept optional `text:prompt`, require `image:firstFrame`, and emit `video:out`. Image-to-video first-frame inputs are resolved through `ProviderAssetUploadRouter(provider="kie")` before payload construction.
 
 KIE media upload supports Base64 (`/api/file-base64-upload`), URL (`/api/file-url-upload`), and stream (`/api/file-stream-upload`) routes. Stream upload uses multipart/form-data with `file`, `uploadPath`, and `fileName`.
 
-The current KIE payload builder uses `ratio` for text-to-video aspect ratio and `first_frame_url` for image-to-video. These fields are centralized in the KIE payload builder because KIE official documentation and node-banana/Redpanda-style examples may still differ before real smoke testing.
+The current KIE payload builder uses `ratio` for text-to-video aspect ratio and `first_frame_url` for image-to-video. These fields are centralized in the KIE payload builder because KIE official documentation and node-banana/Redpanda-style examples may still differ before real smoke testing. Kling and Seedance through KIE are intentionally isolated from the official Kling and Seedance runtimes.
 
 KIE query parsing supports stringified `data.resultJson` plus fallback fields such as `data.videoUrl`, `data.video_url`, `data.output`, `data.imageUrl`, `data.image_url`, and `data.url`. Successful remote URLs still flow into the existing local video download/persistence path; the project does not rely on KIE remote URLs as permanent outputs.
 
-Phase 6.1A does not modify VideoNode UI, project save structure, existing Yunwu/Google/Kling/Yunwu-Kling/Seedance runtimes, FAL, WaveSpeed, or remote model discovery.
+Phase 6.1C does not modify VideoNode UI, project save structure, existing Yunwu/Google/Kling/Yunwu-Kling/Seedance runtimes, FAL, WaveSpeed, or remote model discovery. Gemini Omni Video is deferred to Phase 6.1D pending exact KIE model id, payload, and query response confirmation. Image models are deferred to later image-provider work.
