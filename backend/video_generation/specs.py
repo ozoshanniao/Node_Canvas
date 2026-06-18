@@ -102,9 +102,9 @@ def kie_kling_30_params(mode: str):
             "options": KIE_KLING_30_DURATION_OPTIONS,
             "default": "5s",
         },
-        "mode": {
+        "qualityMode": {
             "type": "select",
-            "label": "Mode",
+            "label": "Quality",
             "options": ["std", "pro", "4K"],
             "default": "pro",
         },
@@ -192,6 +192,8 @@ def kie_video_model(model_id: str, label: str, family: str, mode: str):
     quick_params = ["videoMode", "duration"]
     if "aspectRatio" in params:
         quick_params.insert(1, "aspectRatio")
+    if "qualityMode" in params:
+        quick_params.append("qualityMode")
     if "resolution" in params:
         quick_params.append("resolution")
     return {

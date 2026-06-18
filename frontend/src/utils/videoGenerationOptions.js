@@ -849,8 +849,10 @@ export const getActiveVideoHandlesForMode = (mode, modelConfig, settings = {}) =
     return ['omniParams:in'];
   }
   if (isSeedanceModel(modelConfig) || isSeedanceModel(settings)) {
-    if (mode === 'frame') return ['text:prompt', 'image:firstFrame', 'image:lastFrame'];
-    if (mode === 'multimodal-reference') {
+    if (mode === 'frame' || mode === 'image-to-video') {
+      return ['text:prompt', 'image:firstFrame', 'image:lastFrame'];
+    }
+    if (mode === 'multimodal-reference' || mode === 'reference-video') {
       return ['text:prompt', 'image:references', 'video:references', 'audio:references'];
     }
     return ['text:prompt'];

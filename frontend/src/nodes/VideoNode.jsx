@@ -405,10 +405,7 @@ export function VideoNode({ id, data }) {
     if (state.status === 'unsupported') {
       return `${base} !border-white/15 !bg-[#101010] !opacity-35 grayscale`;
     }
-    if (state.status === 'required') {
-      return `${base} !border-white/80 !bg-white shadow-[0_0_8px_rgba(255,255,255,0.35)]`;
-    }
-    return `${base} !border-white/40 !bg-[#121212] group-hover:!border-white`;
+    return `${base} !border-white/40 !bg-[#121212] group-hover:!border-white/70 group-hover:!bg-white/80`;
   };
 
   const handleMenuOpen = useCallback((menuId) => {

@@ -101,12 +101,30 @@ class KieVideoCapabilitiesTest(unittest.TestCase):
 
         self.assertEqual(by_model["kling-3.0/video/text-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(3, 16)])
         self.assertEqual(by_model["kling-3.0/video/image-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(3, 16)])
-        self.assertEqual(by_model["kling-3.0/video/text-to-video"]["params"]["mode"]["options"], ["std", "pro", "4K"])
+        self.assertEqual(by_model["kling-3.0/video/text-to-video"]["params"]["qualityMode"]["options"], ["std", "pro", "4K"])
+        self.assertEqual(by_model["kling-3.0/video/text-to-video"]["params"]["qualityMode"]["default"], "pro")
+        self.assertNotIn("mode", by_model["kling-3.0/video/text-to-video"]["params"])
+        self.assertIn("qualityMode", by_model["kling-3.0/video/text-to-video"]["quickParams"])
+        self.assertIn("qualityMode", by_model["kling-3.0/video/image-to-video"]["quickParams"])
 
         self.assertEqual(by_model["bytedance/seedance-2/text-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(4, 16)])
         self.assertEqual(by_model["bytedance/seedance-2/image-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(4, 16)])
         self.assertEqual(by_model["bytedance/seedance-2-fast/text-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(4, 16)])
         self.assertEqual(by_model["bytedance/seedance-2-fast/text-to-video"]["params"]["resolution"]["options"], ["480p", "720p"])
+
+        for model_id in (
+            "wan/2-7-text-to-video",
+            "wan/2-7-image-to-video",
+            "kling-2.6/text-to-video",
+            "kling-2.6/image-to-video",
+            "bytedance/seedance-2/text-to-video",
+            "bytedance/seedance-2/image-to-video",
+            "bytedance/seedance-2-fast/text-to-video",
+            "bytedance/seedance-2-fast/image-to-video",
+        ):
+            with self.subTest(model=model_id):
+                self.assertNotIn("qualityMode", by_model[model_id]["params"])
+                self.assertNotIn("qualityMode", by_model[model_id]["quickParams"])
 
     def test_excluded_kie_models_are_not_registered(self):
         model_ids = {model["id"] for model in self.providers["kie"]["models"]}

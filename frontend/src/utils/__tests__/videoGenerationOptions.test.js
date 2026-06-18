@@ -19,6 +19,10 @@ import {
   shouldShowVideoCustomParams,
   shouldShowVideoNegativePrompt,
 } from '../videoGenerationOptions.js';
+import {
+  getHandleState,
+  getStableVideoHandles,
+} from '../videoCapabilities.js';
 
 const dynamicRegistry = structuredClone(VIDEO_GENERATION_REGISTRY);
 dynamicRegistry.providers[0].models[0].params.aspectRatio.options = ['1:1'];
@@ -126,10 +130,46 @@ assert.deepEqual(
   'Seedance frame handles should include prompt and first/last frame only'
 );
 assert.deepEqual(
+  getActiveVideoHandlesForMode('image-to-video', seedanceModel, { provider: 'seedance_official', model: seedanceModel.id }),
+  ['text:prompt', 'image:firstFrame', 'image:lastFrame'],
+  'Seedance image-to-video alias should include prompt and first/last frame candidates'
+);
+assert.deepEqual(
   getActiveVideoHandlesForMode('multimodal-reference', seedanceModel, { provider: 'seedance_official', model: seedanceModel.id }),
   ['text:prompt', 'image:references', 'video:references', 'audio:references'],
   'Seedance multimodal handles should include media reference ports'
 );
+assert.deepEqual(
+  getActiveVideoHandlesForMode('reference-video', seedanceModel, { provider: 'seedance_official', model: seedanceModel.id }),
+  ['text:prompt', 'image:references', 'video:references', 'audio:references'],
+  'Seedance reference-video alias should include media reference ports'
+);
+const kieSeedanceI2vModel = {
+  id: 'bytedance/seedance-2/image-to-video',
+  family: 'seedance',
+  provider: 'kie',
+};
+const kieSeedanceI2vCapability = {
+  inputCapabilities: {
+    'text:prompt': { supported: true, required: false },
+    'image:firstFrame': { supported: true, required: true },
+    'image:lastFrame': { supported: false, required: false },
+    'image:references': { supported: false, required: false },
+    'video:references': { supported: false, required: false },
+    'audio:references': { supported: false, required: false },
+    'omniParams:in': { supported: false, required: false },
+  },
+};
+const kieSeedanceI2vActiveHandles = getActiveVideoHandlesForMode('image-to-video', kieSeedanceI2vModel, {
+  provider: 'kie',
+  model: kieSeedanceI2vModel.id,
+});
+const kieSeedanceI2vVisibleHandles = getStableVideoHandles().inputs
+  .map((handleId) => getHandleState(kieSeedanceI2vCapability, handleId))
+  .filter((state) => state.supported && kieSeedanceI2vActiveHandles.includes(state.handleId))
+  .map((state) => state.handleId);
+assert.ok(kieSeedanceI2vVisibleHandles.includes('text:prompt'), 'KIE Seedance I2V visible handles should include prompt');
+assert.ok(kieSeedanceI2vVisibleHandles.includes('image:firstFrame'), 'KIE Seedance I2V visible handles should include first frame');
 const googleVeo31 = getVideoModelConfig('google', 'veo-3.1-generate-001');
 const googleI2vHandles = getActiveVideoHandlesForMode('image-to-video', googleVeo31, {
   provider: 'google',
