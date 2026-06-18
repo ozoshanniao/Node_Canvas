@@ -64,6 +64,13 @@ class KieImageCapabilitiesTest(unittest.TestCase):
                     self.assertIn("text-to-image", model["taskTypes"])
                     self.assertIn("image-to-image", model["taskTypes"])
                     self.assertTrue(model["supports_reference"])
+                    self.assertEqual(model["internalImageInputField"], "image_input")
+                    if model_name == "Nano Banana Pro (KIE)":
+                        self.assertEqual(model["maxImages"], 8)
+                        self.assertEqual(model["promptMaxLength"], 10000)
+                    if model_name == "Nano Banana 2 (KIE)":
+                        self.assertEqual(model["maxImages"], 14)
+                        self.assertEqual(model["promptMaxLength"], 20000)
 
     def test_gpt_image_2_models_are_registered_with_distinct_task_types(self):
         t2i = self.models["GPT Image 2 (KIE)"]

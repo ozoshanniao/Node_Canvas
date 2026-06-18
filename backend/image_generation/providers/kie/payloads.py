@@ -37,6 +37,7 @@ KIE_IMAGE_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "defaults": {"aspect_ratio": "1:1", "resolution": "1K"},
         "image_input_field": "image_input",
         "max_images": 8,
+        "prompt_max_length": 10000,
     },
     KIE_NANO_BANANA_2_MODEL: {
         "display_name": "Nano Banana 2 (KIE)",
@@ -45,6 +46,7 @@ KIE_IMAGE_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "defaults": {"aspect_ratio": "auto", "resolution": "1K"},
         "image_input_field": "image_input",
         "max_images": 14,
+        "prompt_max_length": 20000,
     },
     KIE_GPT_IMAGE_2_T2I_MODEL: {
         "display_name": "GPT Image 2 (KIE)",
@@ -131,6 +133,13 @@ def validate_gpt_image_2_params(
         raise ValueError(f"{label} 1:1 aspect_ratio does not support 4K resolution.")
 
 
+def validate_kie_image_prompt_length(*, model: str, prompt: str) -> None:
+    model_defaults = KIE_IMAGE_MODEL_DEFAULTS.get(model) or {}
+    max_length = int(model_defaults.get("prompt_max_length") or 0)
+    if max_length and len(prompt or "") > max_length:
+        raise ValueError(f"{model_defaults['display_name']} prompt must be {max_length} characters or fewer.")
+
+
 def build_kie_image_create_payload(
     *,
     model: str,
@@ -162,6 +171,7 @@ def build_kie_image_create_payload(
     if values.get("useImageSearch") is not None and model == KIE_NANO_BANANA_2_MODEL:
         input_payload["image_search"] = bool(values.get("useImageSearch"))
 
+    validate_kie_image_prompt_length(model=model, prompt=input_payload["prompt"])
     validate_gpt_image_2_params(
         model=model,
         task_type=task_type,

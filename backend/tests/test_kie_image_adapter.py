@@ -341,6 +341,23 @@ class KieImageAdapterTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(wide_4k["input"]["resolution"], "4K")
 
+    def test_nano_banana_pro_prompt_over_10000_fails(self):
+        with self.assertRaisesRegex(ValueError, "10000 characters or fewer"):
+            build_kie_image_create_payload(
+                model=KIE_NANO_BANANA_PRO_MODEL,
+                prompt="x" * 10001,
+                task_type="text-to-image",
+            )
+
+    def test_nano_banana_2_prompt_20000_allowed(self):
+        payload = build_kie_image_create_payload(
+            model=KIE_NANO_BANANA_2_MODEL,
+            prompt="x" * 20000,
+            task_type="text-to-image",
+        )
+
+        self.assertEqual(len(payload["input"]["prompt"]), 20000)
+
 
 if __name__ == "__main__":
     unittest.main()

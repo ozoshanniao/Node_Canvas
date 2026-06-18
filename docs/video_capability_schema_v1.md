@@ -469,7 +469,14 @@ KIE text-to-video entries accept `text:prompt` and emit `video:out`. KIE image-t
 
 KIE media upload supports Base64 (`/api/file-base64-upload`), URL (`/api/file-url-upload`), and stream (`/api/file-stream-upload`) routes. Stream upload uses multipart/form-data with `file`, `uploadPath`, and `fileName`.
 
-The current KIE payload builder uses `ratio` for text-to-video aspect ratio and `first_frame_url` for image-to-video. These fields are centralized in the KIE payload builder because KIE official documentation and node-banana/Redpanda-style examples may still differ before real smoke testing. Kling and Seedance through KIE are intentionally isolated from the official Kling and Seedance runtimes.
+The KIE payload builder keeps field selection model-specific:
+
+- Wan 2.7 keeps `ratio` for T2V and `first_frame_url`/`last_frame_url` for I2V.
+- Kling 2.6 uses `aspect_ratio`; I2V sends `image_urls`.
+- Kling 3.0 logical entries map to API model `kling-3.0/video`, use `aspect_ratio`, and send `image_urls` only for I2V.
+- Seedance 2.0 and Seedance 2.0 Fast logical entries map to API models `bytedance/seedance-2` and `bytedance/seedance-2-fast`, use `aspect_ratio`, and send `first_frame_url` only for I2V.
+
+Kling and Seedance through KIE are intentionally isolated from the official Kling and Seedance runtimes.
 
 KIE query parsing supports stringified `data.resultJson` plus fallback fields such as `data.videoUrl`, `data.video_url`, `data.output`, `data.imageUrl`, `data.image_url`, and `data.url`. Successful remote URLs still flow into the existing local video download/persistence path; the project does not rely on KIE remote URLs as permanent outputs.
 
@@ -479,4 +486,4 @@ Phase 6.1C does not modify VideoNode UI, project save structure, existing Yunwu/
 
 Phase 6.2 is separate from the video capability schema. It adds mock-only KIE image-provider entries for `nano-banana-pro`, `nano-banana-2`, `gpt-image-2-text-to-image`, and `gpt-image-2-image-to-image` with `(KIE)` display names.
 
-This phase does not add new video capabilities, does not modify VideoNode UI, and does not change existing video provider runtimes. GPT Image 2 image-to-image is registered as mock-only based on KIE docs and uses `input_urls`; Nano Banana image-to-image keeps `image_input`. Real API smoke remains deferred.
+This phase does not add new video capabilities, does not modify VideoNode UI, and does not change existing video provider runtimes. GPT Image 2 image-to-image is registered as mock-only based on KIE docs and uses `input_urls`; Nano Banana image-to-image keeps `image_input`. Nano Banana Pro prompts are capped at 10000 characters, Nano Banana 2 prompts at 20000 characters. Real API smoke remains deferred.

@@ -43,6 +43,7 @@ class KieVideoAdapter:
 
     async def build_create_payload(self, request: VideoCreateRequest, capability: Mapping[str, Any]) -> Mapping[str, Any]:
         first_frame_url = None
+        last_frame_url = None
         if is_kie_i2v_model(request.model):
             first_frame = self._first_asset(request.inputs.get("image:firstFrame") or [])
             if not first_frame:
@@ -56,6 +57,17 @@ class KieVideoAdapter:
             first_frame_url = resolved.url or resolved.data_uri
             if not first_frame_url:
                 raise ValueError("KIE image-to-video asset routing did not return a URL")
+            last_frame = self._first_asset(request.inputs.get("image:lastFrame") or [])
+            if last_frame:
+                resolved_last = await self.asset_router.resolve(
+                    provider="kie",
+                    asset=last_frame,
+                    purpose="image:lastFrame",
+                    project_path=request.project_dir,
+                )
+                last_frame_url = resolved_last.url or resolved_last.data_uri
+                if not last_frame_url:
+                    raise ValueError("KIE image-to-video last-frame routing did not return a URL")
 
         return build_kie_create_payload(
             model=request.model,
@@ -63,6 +75,7 @@ class KieVideoAdapter:
             task_type=request.task_type,
             params=request.params,
             first_frame_url=first_frame_url,
+            last_frame_url=last_frame_url,
         )
 
     async def create(self, request: VideoCreateRequest, capability: Mapping[str, Any]) -> VideoCreateResult:

@@ -33,7 +33,9 @@ Adapter and client imports do not read `KIE_API_KEY`, create network clients wit
 
 ## Payload Contract
 
-KIE text-to-video models currently build:
+KIE payload fields are model-family specific and are centralized in `backend/video_generation/providers/kie/payloads.py`.
+
+Wan 2.7 text-to-video keeps `ratio`:
 
 ```json
 {
@@ -47,7 +49,7 @@ KIE text-to-video models currently build:
 }
 ```
 
-KIE image-to-video models currently build:
+Wan 2.7 image-to-video keeps `first_frame_url` and can pass `last_frame_url` when a last-frame input is supplied:
 
 ```json
 {
@@ -61,7 +63,21 @@ KIE image-to-video models currently build:
 }
 ```
 
-`ratio` and `first_frame_url` are centralized in the payload builder because KIE examples and node-banana/Redpanda-style analysis may still differ from final official documentation. The Kling and Seedance KIE payload field names require real smoke validation before production confidence.
+Kling 2.6 text-to-video uses `aspect_ratio`, not `ratio`, and keeps `sound`/`duration`. Kling 2.6 image-to-video uses `image_urls`, not `first_frame_url`.
+
+Kling 3.0 uses logical capability ids for UI/spec clarity:
+
+- `kling-3.0/video/text-to-video`
+- `kling-3.0/video/image-to-video`
+
+Both map to the documented createTask API model `kling-3.0/video`. Kling 3.0 uses `aspect_ratio`, keeps `mode`/`sound`/`duration`, does not send `image_urls` for T2V, and sends `image_urls` for I2V.
+
+Seedance KIE logical entries map to documented base API model ids:
+
+- `bytedance/seedance-2/text-to-video` and `bytedance/seedance-2/image-to-video` -> `bytedance/seedance-2`
+- `bytedance/seedance-2-fast/text-to-video` and `bytedance/seedance-2-fast/image-to-video` -> `bytedance/seedance-2-fast`
+
+Seedance KIE payloads use `aspect_ratio`, not `ratio`. T2V does not send `first_frame_url`; I2V sends `first_frame_url` and can send `last_frame_url`. Existing Seedance options such as `resolution`, `duration`, `generate_audio`, and `return_last_frame` remain centralized in the KIE payload builder.
 
 ## Asset Routing
 
@@ -75,7 +91,7 @@ KIE provider media upload supports three official paths:
 
 All three return the uploaded asset URL in `data.downloadUrl`. The upload host is configurable through `KIE_FILE_UPLOAD_BASE_URL`; default is `https://api.kie.ai`, while tests also cover `https://kieai.redpandaai.co`.
 
-Real smoke testing still requires confirming the final payload fields `ratio` and `first_frame_url` for Wan, Kling, and Seedance through KIE.
+Real smoke testing remains deferred. This mock-only alignment does not call real KIE APIs, upload real assets, or consume KIE credits.
 
 ## Result Parsing
 

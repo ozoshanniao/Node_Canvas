@@ -85,6 +85,11 @@ Nano Banana image-to-image uses `image_input`:
 
 Do not mix the fields: GPT Image 2 I2I uses `input_urls`; Nano Banana Pro and Nano Banana 2 use `image_input`.
 
+Nano Banana prompt limits are validated locally before create:
+
+- `nano-banana-pro`: at most 10000 characters, `image_input`, max 8 images.
+- `nano-banana-2`: at most 20000 characters, `image_input`, max 14 images.
+
 GPT Image 2 constraints are validated before create:
 
 - prompt is required and must be at most 20000 characters.
