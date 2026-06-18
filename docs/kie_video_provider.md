@@ -120,3 +120,5 @@ Existing Google Official, Yunwu, Kling, Yunwu-Kling, and Seedance runtimes are u
 ## Deferred Models
 
 Gemini Omni Video is deferred to Phase 6.1D until the exact KIE model id, endpoint behavior, payload fields, and query result shape are known. KIE image models such as GPT Image, Imagen, Nano Banana, and Wan image generation are deferred to Phase 6.2 or later image-provider work and are not registered in the video capability list.
+
+Phase 6.2 registers selected KIE image-provider models separately. `nano-banana-pro` and `nano-banana-2` are allowed only in the image provider registry with `(KIE)` display names; they are not video models. `GPT Image 2 (KIE)` remains deferred until its exact KIE model id is confirmed.

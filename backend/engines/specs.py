@@ -16,7 +16,37 @@ CAPABILITY_PROFILES = {
         "features": ["google_search"],
         "supports_reference": True
     },
-        "gpt_image_spec": {
+    "kie_nano_banana_pro_spec": {
+        "id": "nano-banana-pro",
+        "label": "Nano Banana Pro (KIE)",
+        "provider": "kie",
+        "mediaType": "image",
+        "family": "nano-banana",
+        "taskTypes": ["text-to-image", "image-to-image"],
+        "ratios": ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
+        "resolutions": ["1K", "2K", "4K"],
+        "output_format": ["png", "jpeg"],
+        "features": ["google_search"],
+        "supports_reference": True,
+        "featured": True,
+        "experimental": False,
+    },
+    "kie_nano_banana_2_spec": {
+        "id": "nano-banana-2",
+        "label": "Nano Banana 2 (KIE)",
+        "provider": "kie",
+        "mediaType": "image",
+        "family": "nano-banana",
+        "taskTypes": ["text-to-image", "image-to-image"],
+        "ratios": ["auto", "1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "1:4", "4:1", "1:8", "8:1", "21:9"],
+        "resolutions": ["1K", "2K", "4K"],
+        "output_format": ["png", "jpeg"],
+        "features": ["google_search", "image_search"],
+        "supports_reference": True,
+        "featured": True,
+        "experimental": False,
+    },
+    "gpt_image_spec": {
         "ratios": ["auto", "1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
         "resolutions": ["1K", "2K", "4K"],
         "output_format": ["png", "jpeg", "webp"],
@@ -43,13 +73,16 @@ MODEL_NAME_MAP = {
     "Nano 2": "flash_image_spec",
     "Nano Banana 2": "flash_image_spec",
     "gemini-3.1-flash-image-preview": "flash_image_spec",
-    "GPT-2": "gpt_image_spec"
+    "GPT-2": "gpt_image_spec",
+    "Nano Banana Pro (KIE)": "kie_nano_banana_pro_spec",
+    "Nano Banana 2 (KIE)": "kie_nano_banana_2_spec",
 }
 
 # 3. 瀹氫箟鏈嶅姟鍟嗘嫢鏈夌殑妯″瀷锛堜緵鍓嶇娓叉煋鑿滃崟锛?
 PROVIDER_MODELS = {
     "Google": ["Nano Pro", "Nano 2"],
-    "Yunwu": ["Nano pro", "Nano 2", "GPT-2"]
+    "Yunwu": ["Nano pro", "Nano 2", "GPT-2"],
+    "KIE": ["Nano Banana Pro (KIE)", "Nano Banana 2 (KIE)"]
 }
 
 def get_frontend_specs():

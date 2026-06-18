@@ -474,3 +474,9 @@ The current KIE payload builder uses `ratio` for text-to-video aspect ratio and 
 KIE query parsing supports stringified `data.resultJson` plus fallback fields such as `data.videoUrl`, `data.video_url`, `data.output`, `data.imageUrl`, `data.image_url`, and `data.url`. Successful remote URLs still flow into the existing local video download/persistence path; the project does not rely on KIE remote URLs as permanent outputs.
 
 Phase 6.1C does not modify VideoNode UI, project save structure, existing Yunwu/Google/Kling/Yunwu-Kling/Seedance runtimes, FAL, WaveSpeed, or remote model discovery. Gemini Omni Video is deferred to Phase 6.1D pending exact KIE model id, payload, and query response confirmation. Image models are deferred to later image-provider work.
+
+## Phase 6.2 KIE Image Provider
+
+Phase 6.2 is separate from the video capability schema. It adds mock-only KIE image-provider entries for `nano-banana-pro` and `nano-banana-2` with display names `Nano Banana Pro (KIE)` and `Nano Banana 2 (KIE)`.
+
+This phase does not add new video capabilities, does not modify VideoNode UI, and does not change existing video provider runtimes. `GPT Image 2 (KIE)` remains deferred because the exact KIE model id was not confirmed; local/node-banana search only found `gpt-image/1.5-text-to-image` and `gpt-image/1.5-image-to-image`.

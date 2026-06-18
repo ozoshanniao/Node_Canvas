@@ -2,6 +2,8 @@
 
 Phase 6.0 added backend infrastructure for provider-specific asset preparation. Phase 6.1C uses the KIE route for selected KIE image-to-video first-frame assets. It does not change FAL or WaveSpeed model availability, VideoNode UI, or project save structure.
 
+Phase 6.2 also uses the same KIE route for selected KIE image-provider image-to-image inputs. This remains mock-only and does not change the router behavior for existing video providers.
+
 ## Scope
 
 - `KIE_API_KEY`, `FAL_API_KEY`, and `WAVESPEED_API_KEY` are supported by the existing provider settings and secret resolver path.
@@ -20,6 +22,7 @@ KIE:
 - Local files, bytes, large data URIs, video, and audio upload through `/api/file-stream-upload`.
 - KIE file upload base URL is configurable with `KIE_FILE_UPLOAD_BASE_URL`; the default is `https://api.kie.ai`.
 - KIE image-to-video models resolve `image:firstFrame` through `ProviderAssetUploadRouter(provider="kie")`.
+- KIE image-to-image models resolve image inputs through `ProviderAssetUploadRouter(provider="kie")` before writing `image_input` in the KIE image payload.
 
 FAL:
 
@@ -63,6 +66,8 @@ KIE upload routing uses only those three official upload paths.
 Google Veo 3 and Veo 3.1 must not be reintroduced through KIE, FAL, or WaveSpeed. The project already has Google Official and Yunwu Veo channels, and duplicate third-party entries would make provider selection and UI behavior ambiguous.
 
 Even if later KIE, FAL, or WaveSpeed model lists contain entries such as `veo3/text-to-video`, `veo3/image-to-video`, `veo3-fast/text-to-video`, `veo3-fast/image-to-video`, `google/imagen4`, `gpt-image`, Gemini Omni Video, or `nano-banana-pro`, they are excluded from the Phase 6.1C video whitelist.
+
+For Phase 6.2 image-provider work, `nano-banana-pro` and `nano-banana-2` are intentionally allowed only under the KIE image provider. `GPT Image 2 (KIE)` remains deferred until the exact KIE model id is confirmed.
 
 ## Later Phases
 
