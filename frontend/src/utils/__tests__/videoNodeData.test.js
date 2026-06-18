@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 import {
+  buildSyncedVideoParamsPatch,
   buildVideoSchemaSnapshot,
   createDefaultVideoNodeData,
   normalizeVideoNodeData,
   sanitizeVideoNodeDataForSave,
   updateVideoNodeParam,
 } from '../videoNodeData.js';
+import {
+  getVideoModelConfig,
+  normalizeVideoGenerationSettings,
+} from '../videoGenerationOptions.js';
 
 const capability = {
   schemaVersion: 1,
@@ -39,6 +44,55 @@ assert.equal(defaultData.schemaSnapshot.provider, 'google');
 const updated = updateVideoNodeParam(defaultData, 'aspectRatio', '9:16');
 assert.equal(updated.params.aspectRatio, '9:16');
 assert.equal(updated.aspectRatio, undefined);
+
+const googleVeoModel = getVideoModelConfig('google', 'veo-3.1-generate-001');
+const staleToolbarSettings = {
+  provider: 'google',
+  model: 'veo-3.1-generate-001',
+  videoMode: 'text-to-video',
+  aspectRatio: '16:9',
+  duration: '8s',
+  resolution: '1080p',
+  params: {
+    videoMode: 'text-to-video',
+    aspectRatio: '16:9',
+    duration: '8s',
+    resolution: '1080p',
+  },
+};
+const staleRootOnlyChange = normalizeVideoGenerationSettings({
+  ...staleToolbarSettings,
+  videoMode: 'image-to-video',
+  aspectRatio: '9:16',
+  duration: '4s',
+  resolution: '720p',
+});
+assert.equal(staleRootOnlyChange.videoMode, 'text-to-video');
+assert.equal(staleRootOnlyChange.aspectRatio, '16:9');
+assert.equal(staleRootOnlyChange.duration, '8s');
+assert.equal(staleRootOnlyChange.resolution, '1080p');
+
+const syncedToolbarPatch = buildSyncedVideoParamsPatch({
+  settings: staleToolbarSettings,
+  nextSettings: {
+    ...staleToolbarSettings,
+    videoMode: 'image-to-video',
+    aspectRatio: '9:16',
+    duration: '4s',
+    resolution: '720p',
+  },
+  modelConfig: googleVeoModel,
+});
+assert.equal(syncedToolbarPatch.params.videoMode, 'image-to-video');
+assert.equal(syncedToolbarPatch.params.aspectRatio, '9:16');
+assert.equal(syncedToolbarPatch.params.duration, '4s');
+assert.equal(syncedToolbarPatch.params.resolution, '720p');
+
+const normalizedSyncedToolbarPatch = normalizeVideoGenerationSettings(syncedToolbarPatch);
+assert.equal(normalizedSyncedToolbarPatch.videoMode, 'image-to-video');
+assert.equal(normalizedSyncedToolbarPatch.aspectRatio, '9:16');
+assert.equal(normalizedSyncedToolbarPatch.duration, '4s');
+assert.equal(normalizedSyncedToolbarPatch.resolution, '720p');
 
 const snapshot = buildVideoSchemaSnapshot(capability);
 assert.equal(snapshot.provider, 'google');

@@ -6,6 +6,7 @@ import { DynamicAdvancedParams } from '../components/DynamicAdvancedParams';
 import { ParameterInput } from '../components/ParameterInput';
 import { useVideoTask } from '../hooks/useVideoTask';
 import { setLastNodeDefaults } from '../utils/nodeDefaults';
+import { buildSyncedVideoParamsPatch } from '../utils/videoNodeData';
 import {
   getNodeAudioOutput,
   getNodeImageOutput,
@@ -323,15 +324,24 @@ export function VideoNode({ id, data }) {
     requestAnimationFrame(() => updateNodeInternals(id));
   }, [id, updateNodeInternals]);
 
+  const buildSyncedParamsPatch = useCallback((nextSettings, nextModelConfig = modelConfig) => buildSyncedVideoParamsPatch({
+    settings,
+    nextSettings,
+    modelConfig: nextModelConfig,
+    fallbackParamKeys: [...TOOLBAR_PARAM_KEYS, ...CORE_ADVANCED_PARAM_KEYS, 'returnLastFrame'],
+  }), [modelConfig, settings]);
+
   const applySettings = useCallback((patch) => {
-    const nextSettings = normalizeVideoGenerationSettings({
+    const draftSettings = buildSyncedParamsPatch({
       ...settings,
       ...patch,
-    }, registry);
+    });
+    const nextSettings = normalizeVideoGenerationSettings(draftSettings, registry);
+    const nextModelConfig = getVideoModelConfig(nextSettings.provider, nextSettings.model, registry) || modelConfig;
 
-    updateNodeData(nextSettings);
+    updateNodeData(buildSyncedParamsPatch(nextSettings, nextModelConfig));
     refreshHandles();
-  }, [refreshHandles, registry, settings, updateNodeData]);
+  }, [buildSyncedParamsPatch, modelConfig, refreshHandles, registry, settings, updateNodeData]);
 
   // 确保当输入端口支持状态发生变化时，刷新 React Flow handle internals
   useEffect(() => {
@@ -355,14 +365,15 @@ export function VideoNode({ id, data }) {
   };
 
   const handleAspectRatioChange = useCallback((nextRatio) => {
-    const nextSettings = normalizeVideoGenerationSettings({
+    const draftSettings = buildSyncedParamsPatch({
       ...settings,
       aspectRatio: nextRatio,
-    }, registry);
+    });
+    const nextSettings = normalizeVideoGenerationSettings(draftSettings, registry);
 
-    updateNodeData(nextSettings);
+    updateNodeData(buildSyncedParamsPatch(nextSettings));
     refreshHandles();
-  }, [refreshHandles, registry, settings, updateNodeData]);
+  }, [buildSyncedParamsPatch, refreshHandles, registry, settings, updateNodeData]);
 
   const handleParamChange = (key, value) => {
     const config = modelConfig.params?.[key];

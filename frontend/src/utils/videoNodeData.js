@@ -119,6 +119,31 @@ export const updateVideoNodeParam = (data = {}, key, value) => ({
   },
 });
 
+export const buildSyncedVideoParamsPatch = ({
+  settings = {},
+  nextSettings = {},
+  modelConfig = {},
+  fallbackParamKeys = VIDEO_PARAM_KEYS,
+} = {}) => {
+  const modelParamKeys = modelConfig?.params ? Object.keys(modelConfig.params) : [];
+  const paramKeys = new Set([...modelParamKeys, ...fallbackParamKeys]);
+  const nextParams = {
+    ...(settings.params || {}),
+    ...(nextSettings.params || {}),
+  };
+
+  paramKeys.forEach((key) => {
+    if (nextSettings[key] !== undefined) {
+      nextParams[key] = nextSettings[key];
+    }
+  });
+
+  return {
+    ...nextSettings,
+    params: nextParams,
+  };
+};
+
 const isUnsafeString = (value) =>
   BASE64_PATTERN.test(value) ||
   BLOB_PATTERN.test(value) ||
