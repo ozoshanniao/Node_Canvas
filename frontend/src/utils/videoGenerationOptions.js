@@ -844,6 +844,31 @@ export const shouldShowVideoNegativePrompt = (modelConfig = {}, settings = {}) =
 export const shouldShowVideoCustomParams = (_modelConfig = {}, _settings = {}, appSettings = {}) =>
   Boolean(appSettings?.showRawCustomParams);
 
+const VIDEO_MODE_ALIASES = {
+  text: 'text-to-video',
+  t2v: 'text-to-video',
+  frame: 'image-to-video',
+  i2v: 'image-to-video',
+  'image-to-video': 'image-to-video',
+  'text-to-video': 'text-to-video',
+  'reference-video': 'reference-video',
+  'multimodal-reference': 'reference-video',
+};
+
+const normalizeVideoModeAlias = (mode) => VIDEO_MODE_ALIASES[mode] || mode;
+
+export const getEffectiveVideoMode = (settings = {}, modelConfig = {}) => {
+  const supportedModes = modelConfig?.supportedModes || [];
+  if (supportedModes.length === 1) return supportedModes[0];
+
+  const requested = settings.videoMode || modelConfig?.params?.videoMode?.default;
+  if (supportedModes.includes(requested)) return requested;
+
+  const normalizedRequested = normalizeVideoModeAlias(requested);
+  const aliasMatch = supportedModes.find((mode) => normalizeVideoModeAlias(mode) === normalizedRequested);
+  return aliasMatch || supportedModes[0] || requested || DEFAULT_VIDEO_GENERATION_SETTINGS.videoMode;
+};
+
 export const getActiveVideoHandlesForMode = (mode, modelConfig, settings = {}) => {
   if (isKlingOmniModel(modelConfig) || isKlingOmniModel(settings)) {
     return ['omniParams:in'];

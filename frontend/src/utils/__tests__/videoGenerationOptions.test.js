@@ -9,6 +9,7 @@ import {
   buildVideoQuickParamLabel,
   fetchVideoGenerationRegistry,
   getActiveVideoHandlesForMode,
+  getEffectiveVideoMode,
   getVideoAdvancedParamEntries,
   getVideoModelConfig,
   isVideoTaskActive,
@@ -73,11 +74,19 @@ assert.equal(resumePatch.error, '');
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const useVideoTaskSource = fs.readFileSync(path.join(testDir, '../../hooks/useVideoTask.js'), 'utf8');
+const videoNodeSource = fs.readFileSync(path.join(testDir, '../../nodes/VideoNode.jsx'), 'utf8');
 const resumeTaskSource = useVideoTaskSource.match(/const resumeTask = useCallback\([\s\S]*?\n {2}\}, \[setTask, startPolling\]\);/)?.[0] || '';
 assert.ok(resumeTaskSource, 'useVideoTask should expose a resumeTask callback');
 assert.equal(resumeTaskSource.includes('/api/video/generate'), false, 'resumeTask must not call generate endpoint');
 assert.equal(resumeTaskSource.includes('startTask('), false, 'resumeTask must not call startTask');
 assert.equal(resumeTaskSource.includes('startPolling(nextTaskId)'), true, 'resumeTask should resume polling the existing task');
+
+const handleClassesSource = videoNodeSource.match(/const getHandleClasses = \([\s\S]*?\n {2}\};/)?.[0] || '';
+assert.ok(handleClassesSource, 'VideoNode should keep handle classes in a local helper');
+assert.equal(handleClassesSource.includes('!bg-white'), false, 'VideoNode handle classes should not use white fills');
+assert.equal(handleClassesSource.includes('shadow-['), false, 'VideoNode handle classes should not use glow shadows');
+assert.equal(handleClassesSource.includes('ring'), false, 'VideoNode handle classes should not use ring highlights');
+assert.equal(videoNodeSource.includes("{handleState.required ? ' *' : ''}"), false, 'VideoNode handle labels should not append required asterisks');
 
 const dynamicSettings = normalizeVideoGenerationSettings(
   { provider: 'yunwu', model: 'veo3.1', aspectRatio: '16:9' },
@@ -144,16 +153,27 @@ assert.deepEqual(
   ['text:prompt', 'image:references', 'video:references', 'audio:references'],
   'Seedance reference-video alias should include media reference ports'
 );
+assert.equal(
+  getEffectiveVideoMode({ videoMode: 'image-to-video' }, seedanceModel),
+  'frame',
+  'Seedance official image-to-video alias should resolve to frame mode'
+);
+assert.equal(
+  getEffectiveVideoMode({ videoMode: 'frame' }, { supportedModes: ['image-to-video'] }),
+  'image-to-video',
+  'Single-mode image-to-video models should keep their only supported mode'
+);
 const kieSeedanceI2vModel = {
   id: 'bytedance/seedance-2/image-to-video',
   family: 'seedance',
   provider: 'kie',
+  supportedModes: ['image-to-video'],
 };
 const kieSeedanceI2vCapability = {
   inputCapabilities: {
     'text:prompt': { supported: true, required: false },
     'image:firstFrame': { supported: true, required: true },
-    'image:lastFrame': { supported: false, required: false },
+    'image:lastFrame': { supported: true, required: false },
     'image:references': { supported: false, required: false },
     'video:references': { supported: false, required: false },
     'audio:references': { supported: false, required: false },
@@ -170,6 +190,35 @@ const kieSeedanceI2vVisibleHandles = getStableVideoHandles().inputs
   .map((state) => state.handleId);
 assert.ok(kieSeedanceI2vVisibleHandles.includes('text:prompt'), 'KIE Seedance I2V visible handles should include prompt');
 assert.ok(kieSeedanceI2vVisibleHandles.includes('image:firstFrame'), 'KIE Seedance I2V visible handles should include first frame');
+assert.ok(kieSeedanceI2vVisibleHandles.includes('image:lastFrame'), 'KIE Seedance I2V visible handles should include last frame');
+const kieKling30I2vModel = {
+  id: 'kling-3.0/video/image-to-video',
+  family: 'kling',
+  provider: 'kie',
+  supportedModes: ['image-to-video'],
+  inputCapabilities: { endFrame: true },
+};
+const kieKling30I2vCapability = {
+  inputCapabilities: {
+    'text:prompt': { supported: true, required: false },
+    'image:firstFrame': { supported: true, required: true },
+    'image:lastFrame': { supported: true, required: false },
+  },
+};
+const kieKling30I2vActiveHandles = getActiveVideoHandlesForMode(
+  getEffectiveVideoMode({ videoMode: 'text-to-video' }, kieKling30I2vModel),
+  kieKling30I2vModel,
+  { provider: 'kie', model: kieKling30I2vModel.id, qualityMode: 'pro' }
+);
+const kieKling30I2vVisibleHandles = getStableVideoHandles().inputs
+  .map((handleId) => getHandleState(kieKling30I2vCapability, handleId))
+  .filter((state) => state.supported && kieKling30I2vActiveHandles.includes(state.handleId))
+  .map((state) => state.handleId);
+assert.deepEqual(
+  kieKling30I2vVisibleHandles,
+  ['text:prompt', 'image:firstFrame', 'image:lastFrame'],
+  'KIE Kling 3.0 I2V visible handles should match official first/last-frame UI'
+);
 const googleVeo31 = getVideoModelConfig('google', 'veo-3.1-generate-001');
 const googleI2vHandles = getActiveVideoHandlesForMode('image-to-video', googleVeo31, {
   provider: 'google',

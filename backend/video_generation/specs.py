@@ -22,7 +22,7 @@ KIE_WAN_DURATION_OPTIONS = [f"{value}s" for value in range(2, 16)]
 KIE_KLING_30_DURATION_OPTIONS = [f"{value}s" for value in range(3, 16)]
 KIE_SEEDANCE_DURATION_OPTIONS = [f"{value}s" for value in range(4, 16)]
 KIE_WAN_RATIO_OPTIONS = ["16:9", "9:16", "1:1", "4:3", "3:4"]
-KIE_SEEDANCE_RATIO_OPTIONS = ["1:1", "4:3", "3:4", "16:9", "9:16", "21:9", "adaptive"]
+KIE_SEEDANCE_RATIO_OPTIONS = ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
 
 
 def kie_wan_params(mode: str):
@@ -121,7 +121,7 @@ def kie_seedance_params(mode: str, resolution_options):
         "videoMode": kie_video_mode_param(mode),
         "aspectRatio": {
             "type": "select",
-            "label": "Aspect Ratio",
+            "label": "Ratio",
             "options": KIE_SEEDANCE_RATIO_OPTIONS,
             "default": "adaptive",
         },
@@ -153,7 +153,6 @@ def kie_seedance_params(mode: str, resolution_options):
             "type": "boolean",
             "label": "Return Last Frame",
             "default": False,
-            "deprecated": True,
         },
         "seed": COMMON_SEED_PARAM,
     }
@@ -188,6 +187,10 @@ KIE_VIDEO_MODEL_WHITELIST = [
 
 def kie_video_model(model_id: str, label: str, family: str, mode: str):
     is_i2v = mode == "image-to-video"
+    supports_last_frame_input = is_i2v and (
+        model_id.startswith("bytedance/seedance-2")
+        or model_id == "kling-3.0/video/image-to-video"
+    )
     params = deepcopy(KIE_PARAMS_BY_MODEL[model_id])
     quick_params = ["videoMode", "duration"]
     if "aspectRatio" in params:
@@ -208,7 +211,8 @@ def kie_video_model(model_id: str, label: str, family: str, mode: str):
             "images": is_i2v,
             "firstFrame": is_i2v,
             "firstFrameRequired": is_i2v,
-            "endFrame": False,
+            "endFrame": supports_last_frame_input,
+            "lastFrame": supports_last_frame_input,
             "referenceImages": False,
             "maxImages": 1 if is_i2v else 0,
             **({"maxInputImageSizeMb": 10} if is_i2v else {}),

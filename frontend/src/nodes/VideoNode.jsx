@@ -20,6 +20,7 @@ import {
   VIDEO_MODE_OPTIONS,
   fetchVideoGenerationRegistry,
   getActiveVideoHandlesForMode,
+  getEffectiveVideoMode,
   getKlingShotMode,
   getVideoModelConfig,
   getVideoProvider,
@@ -154,17 +155,23 @@ const CAMERA_CONTROL_TYPES = [
 
 const CAMERA_CONTROL_AXES = ['horizontal', 'vertical', 'pan', 'tilt', 'roll', 'zoom'];
 
-const CapsuleDropdown = ({ id, activeMenu, label, minWidth = 84, onOpen, onSelect, options = [], value }) => {
+const CapsuleDropdown = ({ id, activeMenu, label, minWidth = 84, onOpen, onSelect, options = [], value, variant = 'default' }) => {
   const open = activeMenu === id;
+  const buttonClasses =
+    variant === 'quality'
+      ? open
+        ? 'border border-sky-300/25 bg-sky-500/20 text-sky-100'
+        : 'border border-sky-300/15 bg-sky-500/10 text-sky-100/75 hover:border-sky-300/25 hover:bg-sky-500/15 hover:text-sky-100'
+      : open
+        ? 'bg-white/10 text-white'
+        : 'text-white/60 hover:bg-white/5 hover:text-white';
 
   return (
     <div className="relative nodrag">
       <button
         type="button"
         onClick={() => onOpen(open ? null : id)}
-        className={`rounded-full px-1.5 py-0.5 text-xs transition-colors ${
-          open ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white'
-        }`}
+        className={`rounded-full px-1.5 py-0.5 text-xs transition-colors ${buttonClasses}`}
       >
         <span>{label}</span>
       </button>
@@ -245,7 +252,7 @@ export function VideoNode({ id, data }) {
   );
   const activeVideoHandleIds = useMemo(() => {
     try {
-      const handles = getActiveVideoHandlesForMode(settings.videoMode, modelConfig, settings);
+      const handles = getActiveVideoHandlesForMode(getEffectiveVideoMode(settings, modelConfig), modelConfig, settings);
       return Array.isArray(handles) && handles.length ? handles : ['text:prompt'];
     } catch (error) {
       console.warn('Failed to resolve active VideoNode handles; falling back to prompt only.', error);
@@ -403,9 +410,9 @@ export function VideoNode({ id, data }) {
         ? '!left-[-4px] !h-2 !w-2 !rounded-full !border transition-colors'
         : '!right-[-4px] !h-2 !w-2 !rounded-full !border transition-colors';
     if (state.status === 'unsupported') {
-      return `${base} !border-white/15 !bg-[#101010] !opacity-35 grayscale`;
+      return `${base} !border-white/10 !bg-[#0f0f0f] !opacity-30 grayscale`;
     }
-    return `${base} !border-white/40 !bg-[#121212] group-hover:!border-white/70 group-hover:!bg-white/80`;
+    return `${base} !border-white/30 !bg-[#141414] group-hover:!border-white/45 group-hover:!bg-[#1a1a1a]`;
   };
 
   const handleMenuOpen = useCallback((menuId) => {
@@ -1233,6 +1240,7 @@ export function VideoNode({ id, data }) {
                 onSelect={(value) => handleParamChange(key, value)}
                 options={options}
                 value={settings[key] ?? config.default}
+                variant={key === 'qualityMode' ? 'quality' : 'default'}
               />
             </div>
           );
@@ -1304,7 +1312,6 @@ export function VideoNode({ id, data }) {
             className="pointer-events-none absolute left-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light opacity-0 transition-opacity group-hover:opacity-100 text-white/40"
           >
             {getHandleLabel(handleState.handleId)}
-            {handleState.required ? ' *' : ''}
           </span>
         </div>
       ))}
@@ -1329,7 +1336,6 @@ export function VideoNode({ id, data }) {
         >
           <span className="pointer-events-none absolute right-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light text-white/40 opacity-0 transition-opacity group-hover:opacity-100">
             {OUTPUT_HANDLE_LABELS[handleState.handleId] || handleState.handleId}
-            {handleState.required ? ' *' : ''}
           </span>
           <Handle
             type="source"
