@@ -613,6 +613,15 @@ const VIDEO_RECOVERABLE_QUERY_STATUSES = new Set([
   'query_error',
 ]);
 
+export const KIE_VIDEO_MODEL_MIGRATIONS = {
+  'kling-3.0/video/text-to-video': { model: 'kling-3.0/video', videoMode: 'text-to-video' },
+  'kling-3.0/video/image-to-video': { model: 'kling-3.0/video', videoMode: 'image-to-video' },
+  'bytedance/seedance-2/text-to-video': { model: 'bytedance/seedance-2', videoMode: 'text-to-video' },
+  'bytedance/seedance-2/image-to-video': { model: 'bytedance/seedance-2', videoMode: 'frame' },
+  'bytedance/seedance-2-fast/text-to-video': { model: 'bytedance/seedance-2-fast', videoMode: 'text-to-video' },
+  'bytedance/seedance-2-fast/image-to-video': { model: 'bytedance/seedance-2-fast', videoMode: 'frame' },
+};
+
 const hasVideoTaskOutput = (task = {}) =>
   Boolean(task.outputUrl || task.videoUrl || task.localVideoUrl || task.outputs?.videoUrl);
 
@@ -734,6 +743,15 @@ export const normalizeVideoGenerationSettings = (settings = {}, registry) => {
         }
       : settings.outputs,
   };
+  const modelMigration = KIE_VIDEO_MODEL_MIGRATIONS[sourceSettings.model];
+  if (sourceSettings.provider === 'kie' && modelMigration) {
+    sourceSettings.model = modelMigration.model;
+    sourceSettings.videoMode = modelMigration.videoMode;
+    sourceSettings.params = {
+      ...(sourceSettings.params || {}),
+      videoMode: modelMigration.videoMode,
+    };
+  }
   const provider = getVideoProvider(sourceSettings.provider, registry);
   const model = getVideoModel(provider?.id, sourceSettings.model, registry);
   const params = model?.params || {};

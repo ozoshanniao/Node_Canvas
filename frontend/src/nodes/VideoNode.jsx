@@ -155,16 +155,9 @@ const CAMERA_CONTROL_TYPES = [
 
 const CAMERA_CONTROL_AXES = ['horizontal', 'vertical', 'pan', 'tilt', 'roll', 'zoom'];
 
-const CapsuleDropdown = ({ id, activeMenu, label, minWidth = 84, onOpen, onSelect, options = [], value, variant = 'default' }) => {
+const CapsuleDropdown = ({ id, activeMenu, label, minWidth = 84, onOpen, onSelect, options = [], value }) => {
   const open = activeMenu === id;
-  const buttonClasses =
-    variant === 'quality'
-      ? open
-        ? 'border border-sky-300/25 bg-sky-500/20 text-sky-100'
-        : 'border border-sky-300/15 bg-sky-500/10 text-sky-100/75 hover:border-sky-300/25 hover:bg-sky-500/15 hover:text-sky-100'
-      : open
-        ? 'bg-white/10 text-white'
-        : 'text-white/60 hover:bg-white/5 hover:text-white';
+  const buttonClasses = open ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white';
 
   return (
     <div className="relative nodrag">
@@ -1240,7 +1233,6 @@ export function VideoNode({ id, data }) {
                 onSelect={(value) => handleParamChange(key, value)}
                 options={options}
                 value={settings[key] ?? config.default}
-                variant={key === 'qualityMode' ? 'quality' : 'default'}
               />
             </div>
           );

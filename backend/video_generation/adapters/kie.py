@@ -15,6 +15,7 @@ from video_generation.providers.kie.client import KieClient
 from video_generation.providers.kie.payloads import (
     build_kie_create_payload,
     is_kie_i2v_model,
+    is_kie_reference_model,
 )
 from video_generation.providers.kie.result_parser import (
     extract_kie_error_message,
@@ -44,7 +45,10 @@ class KieVideoAdapter:
     async def build_create_payload(self, request: VideoCreateRequest, capability: Mapping[str, Any]) -> Mapping[str, Any]:
         first_frame_url = None
         last_frame_url = None
-        if is_kie_i2v_model(request.model):
+        reference_image_urls: list[str] = []
+        reference_video_urls: list[str] = []
+        reference_audio_urls: list[str] = []
+        if is_kie_i2v_model(request.model, request.task_type, request.params):
             first_frame = self._first_asset(request.inputs.get("image:firstFrame") or [])
             if not first_frame:
                 raise ValueError("KIE image-to-video requires image:firstFrame")
@@ -68,6 +72,10 @@ class KieVideoAdapter:
                 last_frame_url = resolved_last.url or resolved_last.data_uri
                 if not last_frame_url:
                     raise ValueError("KIE image-to-video last-frame routing did not return a URL")
+        if is_kie_reference_model(request.model, request.task_type, request.params):
+            reference_image_urls = await self._resolve_assets(request.inputs.get("image:references") or [], "image:references", request.project_dir)
+            reference_video_urls = await self._resolve_assets(request.inputs.get("video:references") or [], "video:references", request.project_dir)
+            reference_audio_urls = await self._resolve_assets(request.inputs.get("audio:references") or [], "audio:references", request.project_dir)
 
         return build_kie_create_payload(
             model=request.model,
@@ -76,6 +84,9 @@ class KieVideoAdapter:
             params=request.params,
             first_frame_url=first_frame_url,
             last_frame_url=last_frame_url,
+            reference_image_urls=reference_image_urls,
+            reference_video_urls=reference_video_urls,
+            reference_audio_urls=reference_audio_urls,
         )
 
     async def create(self, request: VideoCreateRequest, capability: Mapping[str, Any]) -> VideoCreateResult:
@@ -153,3 +164,19 @@ class KieVideoAdapter:
             if value:
                 return value
         return None
+
+    async def _resolve_assets(self, assets: list[VideoInputAsset], purpose: str, project_dir: str | None) -> list[str]:
+        urls: list[str] = []
+        for asset in assets:
+            if not (asset.url or asset.path):
+                continue
+            resolved = await self.asset_router.resolve(
+                provider="kie",
+                asset=asset.url or asset.path,
+                purpose=purpose,
+                project_path=project_dir,
+            )
+            url = resolved.url or resolved.data_uri
+            if url:
+                urls.append(url)
+        return urls

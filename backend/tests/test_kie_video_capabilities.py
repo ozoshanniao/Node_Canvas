@@ -6,14 +6,11 @@ from video_generation.specs import get_video_model_specs
 KIE_ALLOWED_MODELS = {
     "wan/2-7-text-to-video",
     "wan/2-7-image-to-video",
-    "kling-3.0/video/text-to-video",
-    "kling-3.0/video/image-to-video",
+    "kling-3.0/video",
     "kling-2.6/text-to-video",
     "kling-2.6/image-to-video",
-    "bytedance/seedance-2/text-to-video",
-    "bytedance/seedance-2/image-to-video",
-    "bytedance/seedance-2-fast/text-to-video",
-    "bytedance/seedance-2-fast/image-to-video",
+    "bytedance/seedance-2",
+    "bytedance/seedance-2-fast",
 }
 
 KIE_EXCLUDED_MODELS = {
@@ -35,14 +32,11 @@ KIE_EXCLUDED_MODELS = {
 KIE_MODEL_FAMILIES = {
     "wan/2-7-text-to-video": "wan",
     "wan/2-7-image-to-video": "wan",
-    "kling-3.0/video/text-to-video": "kling",
-    "kling-3.0/video/image-to-video": "kling",
+    "kling-3.0/video": "kling",
     "kling-2.6/text-to-video": "kling",
     "kling-2.6/image-to-video": "kling",
-    "bytedance/seedance-2/text-to-video": "seedance",
-    "bytedance/seedance-2/image-to-video": "seedance",
-    "bytedance/seedance-2-fast/text-to-video": "seedance",
-    "bytedance/seedance-2-fast/image-to-video": "seedance",
+    "bytedance/seedance-2": "seedance",
+    "bytedance/seedance-2-fast": "seedance",
 }
 
 
@@ -86,17 +80,18 @@ class KieVideoCapabilitiesTest(unittest.TestCase):
                     self.assertTrue(capability["inputCapabilities"]["text:prompt"]["required"])
                     self.assertFalse(capability["inputCapabilities"]["image:firstFrame"]["supported"])
                     self.assertFalse(capability["inputCapabilities"]["image:lastFrame"]["supported"])
-                else:
+                elif model_id.endswith("image-to-video"):
                     self.assertFalse(capability["inputCapabilities"]["text:prompt"]["required"])
                     self.assertTrue(capability["inputCapabilities"]["image:firstFrame"]["required"])
-                    if model_id in {
-                        "kling-3.0/video/image-to-video",
-                        "bytedance/seedance-2/image-to-video",
-                        "bytedance/seedance-2-fast/image-to-video",
-                    }:
-                        self.assertTrue(capability["inputCapabilities"]["image:lastFrame"]["supported"])
-                    else:
-                        self.assertFalse(capability["inputCapabilities"]["image:lastFrame"]["supported"])
+                    self.assertFalse(capability["inputCapabilities"]["image:lastFrame"]["supported"])
+                elif model_id in {"kling-3.0/video", "bytedance/seedance-2", "bytedance/seedance-2-fast"}:
+                    self.assertTrue(capability["inputCapabilities"]["text:prompt"]["supported"])
+                    self.assertTrue(capability["inputCapabilities"]["image:firstFrame"]["supported"])
+                    self.assertTrue(capability["inputCapabilities"]["image:lastFrame"]["supported"])
+                    if model_id.startswith("bytedance/seedance-2"):
+                        self.assertTrue(capability["inputCapabilities"]["image:references"]["supported"])
+                        self.assertTrue(capability["inputCapabilities"]["video:references"]["supported"])
+                        self.assertTrue(capability["inputCapabilities"]["audio:references"]["supported"])
 
     def test_kie_parameter_specs_are_model_family_specific(self):
         by_model = {model["id"]: model for model in self.providers["kie"]["models"]}
@@ -108,27 +103,24 @@ class KieVideoCapabilitiesTest(unittest.TestCase):
         self.assertEqual(by_model["kling-2.6/text-to-video"]["params"]["duration"]["options"], ["5s", "10s"])
         self.assertEqual(by_model["kling-2.6/image-to-video"]["params"]["duration"]["options"], ["5s", "10s"])
 
-        self.assertEqual(by_model["kling-3.0/video/text-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(3, 16)])
-        self.assertEqual(by_model["kling-3.0/video/image-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(3, 16)])
-        self.assertEqual(by_model["kling-3.0/video/text-to-video"]["params"]["qualityMode"]["options"], ["std", "pro", "4K"])
-        self.assertEqual(by_model["kling-3.0/video/text-to-video"]["params"]["qualityMode"]["default"], "pro")
-        self.assertNotIn("mode", by_model["kling-3.0/video/text-to-video"]["params"])
+        self.assertEqual(by_model["kling-3.0/video"]["supportedModes"], ["text-to-video", "image-to-video"])
+        self.assertEqual(by_model["kling-3.0/video"]["params"]["duration"]["options"], [f"{value}s" for value in range(3, 16)])
+        self.assertEqual(by_model["kling-3.0/video"]["params"]["qualityMode"]["options"], ["std", "pro", "4K"])
+        self.assertEqual(by_model["kling-3.0/video"]["params"]["qualityMode"]["default"], "pro")
+        self.assertNotIn("mode", by_model["kling-3.0/video"]["params"])
         self.assertEqual(
-            by_model["kling-3.0/video/text-to-video"]["quickParams"],
-            ["videoMode", "aspectRatio", "duration", "qualityMode"],
-        )
-        self.assertEqual(
-            by_model["kling-3.0/video/image-to-video"]["quickParams"],
+            by_model["kling-3.0/video"]["quickParams"],
             ["videoMode", "aspectRatio", "duration", "qualityMode"],
         )
 
-        self.assertEqual(by_model["bytedance/seedance-2/text-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(4, 16)])
-        self.assertEqual(by_model["bytedance/seedance-2/image-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(4, 16)])
-        self.assertEqual(by_model["bytedance/seedance-2-fast/text-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(4, 16)])
-        self.assertEqual(by_model["bytedance/seedance-2-fast/text-to-video"]["params"]["resolution"]["options"], ["480p", "720p"])
-        self.assertEqual(by_model["bytedance/seedance-2/text-to-video"]["params"]["aspectRatio"]["label"], "Ratio")
+        self.assertEqual(by_model["bytedance/seedance-2"]["supportedModes"], ["text-to-video", "frame", "multimodal-reference"])
+        self.assertEqual(by_model["bytedance/seedance-2-fast"]["supportedModes"], ["text-to-video", "frame", "multimodal-reference"])
+        self.assertEqual(by_model["bytedance/seedance-2"]["params"]["duration"]["options"], [f"{value}s" for value in range(4, 16)])
+        self.assertEqual(by_model["bytedance/seedance-2-fast"]["params"]["duration"]["options"], [f"{value}s" for value in range(4, 16)])
+        self.assertEqual(by_model["bytedance/seedance-2-fast"]["params"]["resolution"]["options"], ["480p", "720p"])
+        self.assertEqual(by_model["bytedance/seedance-2"]["params"]["aspectRatio"]["label"], "Ratio")
         self.assertEqual(
-            by_model["bytedance/seedance-2/text-to-video"]["params"]["aspectRatio"]["options"],
+            by_model["bytedance/seedance-2"]["params"]["aspectRatio"]["options"],
             ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
         )
 
@@ -137,10 +129,8 @@ class KieVideoCapabilitiesTest(unittest.TestCase):
             "wan/2-7-image-to-video",
             "kling-2.6/text-to-video",
             "kling-2.6/image-to-video",
-            "bytedance/seedance-2/text-to-video",
-            "bytedance/seedance-2/image-to-video",
-            "bytedance/seedance-2-fast/text-to-video",
-            "bytedance/seedance-2-fast/image-to-video",
+            "bytedance/seedance-2",
+            "bytedance/seedance-2-fast",
         ):
             with self.subTest(model=model_id):
                 self.assertNotIn("qualityMode", by_model[model_id]["params"])
@@ -148,7 +138,15 @@ class KieVideoCapabilitiesTest(unittest.TestCase):
 
     def test_excluded_kie_models_are_not_registered(self):
         model_ids = {model["id"] for model in self.providers["kie"]["models"]}
-        for model_id in KIE_EXCLUDED_MODELS:
+        legacy_suffix_models = {
+            "kling-3.0/video/text-to-video",
+            "kling-3.0/video/image-to-video",
+            "bytedance/seedance-2/text-to-video",
+            "bytedance/seedance-2/image-to-video",
+            "bytedance/seedance-2-fast/text-to-video",
+            "bytedance/seedance-2-fast/image-to-video",
+        }
+        for model_id in KIE_EXCLUDED_MODELS | legacy_suffix_models:
             with self.subTest(model=model_id):
                 self.assertNotIn(model_id, model_ids)
 

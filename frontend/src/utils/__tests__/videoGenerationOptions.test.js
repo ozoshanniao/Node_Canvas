@@ -87,6 +87,8 @@ assert.equal(handleClassesSource.includes('!bg-white'), false, 'VideoNode handle
 assert.equal(handleClassesSource.includes('shadow-['), false, 'VideoNode handle classes should not use glow shadows');
 assert.equal(handleClassesSource.includes('ring'), false, 'VideoNode handle classes should not use ring highlights');
 assert.equal(videoNodeSource.includes("{handleState.required ? ' *' : ''}"), false, 'VideoNode handle labels should not append required asterisks');
+assert.equal(videoNodeSource.includes("variant={key === 'qualityMode'"), false, 'qualityMode should not use a special blue capsule variant');
+assert.equal(videoNodeSource.includes('sky-'), false, 'VideoNode qualityMode capsule should not use sky-blue styling');
 
 const dynamicSettings = normalizeVideoGenerationSettings(
   { provider: 'yunwu', model: 'veo3.1', aspectRatio: '16:9' },
@@ -102,6 +104,82 @@ assert.equal(fallbackSettings.aspectRatio, '16:9', 'missing dynamic registry sho
 
 const dynamicModel = getVideoModelConfig('yunwu', 'veo3.1', dynamicRegistry);
 assert.deepEqual(dynamicModel.params.aspectRatio.options, ['1:1']);
+
+const kieAggregatedRegistry = structuredClone(VIDEO_GENERATION_REGISTRY);
+kieAggregatedRegistry.providers.push({
+  id: 'kie',
+  label: 'KIE',
+  models: [
+    {
+      id: 'kling-3.0/video',
+      label: 'Kling 3.0 (KIE)',
+      family: 'kling',
+      supportedModes: ['text-to-video', 'image-to-video'],
+      quickParams: ['videoMode', 'aspectRatio', 'duration', 'qualityMode'],
+      params: {
+        videoMode: { type: 'select', options: ['text-to-video', 'image-to-video'], default: 'text-to-video' },
+        aspectRatio: { type: 'select', options: ['16:9', '9:16', '1:1'], default: '16:9' },
+        duration: { type: 'select', options: ['3s', '4s', '5s'], default: '5s' },
+        qualityMode: { type: 'select', options: ['std', 'pro', '4K'], default: 'pro' },
+      },
+      customParams: {},
+    },
+    {
+      id: 'bytedance/seedance-2',
+      label: 'Seedance 2.0 (KIE)',
+      family: 'seedance',
+      supportedModes: ['text-to-video', 'frame', 'multimodal-reference'],
+      quickParams: ['videoMode', 'aspectRatio', 'duration', 'resolution'],
+      params: {
+        videoMode: { type: 'select', options: ['text-to-video', 'frame', 'multimodal-reference'], default: 'text-to-video' },
+        aspectRatio: { type: 'select', options: ['adaptive', '16:9', '9:16'], default: 'adaptive' },
+        duration: { type: 'select', options: ['4s', '5s'], default: '5s' },
+        resolution: { type: 'select', options: ['480p', '720p', '1080p'], default: '720p' },
+      },
+      customParams: {},
+    },
+    {
+      id: 'bytedance/seedance-2-fast',
+      label: 'Seedance 2.0 Fast (KIE)',
+      family: 'seedance',
+      supportedModes: ['text-to-video', 'frame', 'multimodal-reference'],
+      quickParams: ['videoMode', 'aspectRatio', 'duration', 'resolution'],
+      params: {
+        videoMode: { type: 'select', options: ['text-to-video', 'frame', 'multimodal-reference'], default: 'text-to-video' },
+        aspectRatio: { type: 'select', options: ['adaptive', '16:9', '9:16'], default: 'adaptive' },
+        duration: { type: 'select', options: ['4s', '5s'], default: '5s' },
+        resolution: { type: 'select', options: ['480p', '720p'], default: '720p' },
+      },
+      customParams: {},
+    },
+  ],
+});
+assert.deepEqual(
+  kieAggregatedRegistry.providers.find((provider) => provider.id === 'kie').models.map((model) => model.label),
+  ['Kling 3.0 (KIE)', 'Seedance 2.0 (KIE)', 'Seedance 2.0 Fast (KIE)'],
+  'KIE aggregated model dropdown should not expose legacy I2V labels'
+);
+const migratedKling = normalizeVideoGenerationSettings(
+  { provider: 'kie', model: 'kling-3.0/video/image-to-video', videoMode: 'text-to-video' },
+  kieAggregatedRegistry
+);
+assert.equal(migratedKling.model, 'kling-3.0/video');
+assert.equal(migratedKling.videoMode, 'image-to-video');
+assert.equal(migratedKling.params?.videoMode, 'image-to-video');
+const migratedSeedance = normalizeVideoGenerationSettings(
+  { provider: 'kie', model: 'bytedance/seedance-2/image-to-video', videoMode: 'text-to-video' },
+  kieAggregatedRegistry
+);
+assert.equal(migratedSeedance.model, 'bytedance/seedance-2');
+assert.equal(migratedSeedance.videoMode, 'frame');
+assert.equal(migratedSeedance.params?.videoMode, 'frame');
+const migratedSeedanceFast = normalizeVideoGenerationSettings(
+  { provider: 'kie', model: 'bytedance/seedance-2-fast/image-to-video', videoMode: 'text-to-video' },
+  kieAggregatedRegistry
+);
+assert.equal(migratedSeedanceFast.model, 'bytedance/seedance-2-fast');
+assert.equal(migratedSeedanceFast.videoMode, 'frame');
+assert.equal(migratedSeedanceFast.params?.videoMode, 'frame');
 
 for (const providerId of ['kling', 'yunwu-kling']) {
   for (const modelId of ['kling-v2-6', 'kling-v3', 'kling-v3-omni']) {
