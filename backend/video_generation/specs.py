@@ -9,49 +9,167 @@ COMMON_SEED_PARAM = {
     "default": -1,
 }
 
-KIE_WAN_PARAMS = {
-    "videoMode": {
+def kie_video_mode_param(mode: str):
+    return {
         "type": "select",
         "label": "Video Mode",
-        "options": ["text-to-video", "image-to-video"],
-        "default": "text-to-video",
-    },
-    "aspectRatio": {
-        "type": "select",
-        "label": "Aspect Ratio",
-        "options": ["16:9", "9:16", "1:1"],
-        "default": "16:9",
-    },
-    "duration": {
-        "type": "select",
-        "label": "Duration",
-        "options": ["5s", "10s"],
-        "default": "5s",
-    },
-    "durationSeconds": {
-        "type": "number",
-        "label": "Duration Seconds",
-        "min": 5,
-        "max": 10,
-        "default": 5,
-    },
-    "resolution": {
-        "type": "select",
-        "label": "Resolution",
-        "options": ["720p", "1080p"],
-        "default": "720p",
-    },
-    "negativePrompt": {
-        "type": "text",
-        "label": "Negative Prompt",
-        "default": "",
-    },
-    "generateAudio": {
-        "type": "boolean",
-        "label": "Generate Audio",
-        "default": False,
-    },
-    "seed": COMMON_SEED_PARAM,
+        "options": [mode],
+        "default": mode,
+    }
+
+
+KIE_WAN_DURATION_OPTIONS = [f"{value}s" for value in range(2, 16)]
+KIE_KLING_30_DURATION_OPTIONS = [f"{value}s" for value in range(3, 16)]
+KIE_SEEDANCE_DURATION_OPTIONS = [f"{value}s" for value in range(4, 16)]
+KIE_WAN_RATIO_OPTIONS = ["16:9", "9:16", "1:1", "4:3", "3:4"]
+KIE_SEEDANCE_RATIO_OPTIONS = ["1:1", "4:3", "3:4", "16:9", "9:16", "21:9", "adaptive"]
+
+
+def kie_wan_params(mode: str):
+    params = {
+        "videoMode": kie_video_mode_param(mode),
+        "duration": {
+            "type": "select",
+            "label": "Duration",
+            "options": KIE_WAN_DURATION_OPTIONS,
+            "default": "5s",
+        },
+        "durationSeconds": {
+            "type": "number",
+            "label": "Duration Seconds",
+            "min": 2,
+            "max": 15,
+            "default": 5,
+        },
+        "resolution": {
+            "type": "select",
+            "label": "Resolution",
+            "options": ["720p", "1080p"],
+            "default": "720p",
+        },
+        "negativePrompt": {
+            "type": "text",
+            "label": "Negative Prompt",
+            "default": "",
+        },
+        "seed": COMMON_SEED_PARAM,
+    }
+    if mode == "text-to-video":
+        params["aspectRatio"] = {
+            "type": "select",
+            "label": "Aspect Ratio",
+            "options": KIE_WAN_RATIO_OPTIONS,
+            "default": "16:9",
+        }
+    return params
+
+
+def kie_kling_26_params(mode: str):
+    return {
+        "videoMode": kie_video_mode_param(mode),
+        "aspectRatio": {
+            "type": "select",
+            "label": "Aspect Ratio",
+            "options": ["1:1", "16:9", "9:16"],
+            "default": "16:9",
+        },
+        "duration": {
+            "type": "select",
+            "label": "Duration",
+            "options": ["5s", "10s"],
+            "default": "5s",
+        },
+        "generateAudio": {
+            "type": "boolean",
+            "label": "Sound",
+            "default": True,
+        },
+    }
+
+
+def kie_kling_30_params(mode: str):
+    return {
+        "videoMode": kie_video_mode_param(mode),
+        "aspectRatio": {
+            "type": "select",
+            "label": "Aspect Ratio",
+            "options": ["16:9", "9:16", "1:1"],
+            "default": "16:9",
+        },
+        "duration": {
+            "type": "select",
+            "label": "Duration",
+            "options": KIE_KLING_30_DURATION_OPTIONS,
+            "default": "5s",
+        },
+        "mode": {
+            "type": "select",
+            "label": "Mode",
+            "options": ["std", "pro", "4K"],
+            "default": "pro",
+        },
+        "generateAudio": {
+            "type": "boolean",
+            "label": "Sound",
+            "default": True,
+        },
+    }
+
+
+def kie_seedance_params(mode: str, resolution_options):
+    return {
+        "videoMode": kie_video_mode_param(mode),
+        "aspectRatio": {
+            "type": "select",
+            "label": "Aspect Ratio",
+            "options": KIE_SEEDANCE_RATIO_OPTIONS,
+            "default": "adaptive",
+        },
+        "duration": {
+            "type": "select",
+            "label": "Duration",
+            "options": KIE_SEEDANCE_DURATION_OPTIONS,
+            "default": "5s",
+        },
+        "durationSeconds": {
+            "type": "number",
+            "label": "Duration Seconds",
+            "min": 4,
+            "max": 15,
+            "default": 5,
+        },
+        "resolution": {
+            "type": "select",
+            "label": "Resolution",
+            "options": resolution_options,
+            "default": "720p",
+        },
+        "generateAudio": {
+            "type": "boolean",
+            "label": "Generate Audio",
+            "default": False,
+        },
+        "returnLastFrame": {
+            "type": "boolean",
+            "label": "Return Last Frame",
+            "default": False,
+            "deprecated": True,
+        },
+        "seed": COMMON_SEED_PARAM,
+    }
+
+
+KIE_PARAMS_BY_MODEL = {
+    "wan/2-7-text-to-video": kie_wan_params("text-to-video"),
+    "wan/2-7-image-to-video": kie_wan_params("image-to-video"),
+    "kling-3.0/video/text-to-video": kie_kling_30_params("text-to-video"),
+    "kling-3.0/video/image-to-video": kie_kling_30_params("image-to-video"),
+    "kling-2.6/text-to-video": kie_kling_26_params("text-to-video"),
+    "kling-2.6/image-to-video": kie_kling_26_params("image-to-video"),
+    "bytedance/seedance-2/text-to-video": kie_seedance_params("text-to-video", ["480p", "720p", "1080p"]),
+    "bytedance/seedance-2/image-to-video": kie_seedance_params("image-to-video", ["480p", "720p", "1080p"]),
+    "bytedance/seedance-2-fast/text-to-video": kie_seedance_params("text-to-video", ["480p", "720p"]),
+    "bytedance/seedance-2-fast/image-to-video": kie_seedance_params("image-to-video", ["480p", "720p"]),
 }
 
 KIE_VIDEO_MODEL_WHITELIST = [
@@ -70,6 +188,12 @@ KIE_VIDEO_MODEL_WHITELIST = [
 
 def kie_video_model(model_id: str, label: str, family: str, mode: str):
     is_i2v = mode == "image-to-video"
+    params = deepcopy(KIE_PARAMS_BY_MODEL[model_id])
+    quick_params = ["videoMode", "duration"]
+    if "aspectRatio" in params:
+        quick_params.insert(1, "aspectRatio")
+    if "resolution" in params:
+        quick_params.append("resolution")
     return {
         "id": model_id,
         "label": label,
@@ -87,8 +211,8 @@ def kie_video_model(model_id: str, label: str, family: str, mode: str):
             "maxImages": 1 if is_i2v else 0,
             **({"maxInputImageSizeMb": 10} if is_i2v else {}),
         },
-        "quickParams": ["videoMode", "duration", "resolution"] if is_i2v else ["videoMode", "aspectRatio", "duration", "resolution"],
-        "params": KIE_WAN_PARAMS,
+        "quickParams": quick_params,
+        "params": params,
         "customParams": {},
     }
 

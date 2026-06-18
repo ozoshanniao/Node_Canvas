@@ -856,15 +856,26 @@ export const getActiveVideoHandlesForMode = (mode, modelConfig, settings = {}) =
     return ['text:prompt'];
   }
   const nextSettings = { ...settings, videoMode: mode };
-  const shotMode = supportsKlingMultiShot(modelConfig) ? getKlingShotMode(nextSettings) : 'single';
-  const promptHandle = shotMode === 'customize' ? 'multiPrompt:in' : 'text:prompt';
-  if (mode === 'image-to-video') {
-    const handles = [promptHandle, 'image:images'];
-    if (supportsVideoEndFrame(modelConfig, nextSettings)) handles.push('image:end');
+  const promptHandle = 'text:prompt';
+  if (mode === 'image-to-video' || mode === 'frame') {
+    const handles = [promptHandle, 'image:firstFrame'];
+    if (supportsVideoEndFrame(modelConfig, nextSettings)) handles.push('image:lastFrame');
     return handles;
   }
-  if (mode === 'reference-video') return [promptHandle, 'image:images'];
+  if (mode === 'reference-video' || mode === 'multimodal-reference') {
+    return [promptHandle, 'image:references', 'video:references', 'audio:references'];
+  }
   return [promptHandle];
+};
+
+export const shouldRenderVideoToolbarParam = (key, modelConfig, settings = {}) => {
+  if (key === 'videoMode') {
+    const supportedModes = modelConfig?.supportedModes || [];
+    return supportedModes.length > 1;
+  }
+  if (key !== 'aspectRatio') return true;
+  if (settings.videoMode !== 'image-to-video') return true;
+  return modelConfig?.family !== 'kling';
 };
 
 const getModeShortLabel = (mode) => VIDEO_MODE_OPTIONS.find((option) => option.id === mode)?.shortLabel || mode;

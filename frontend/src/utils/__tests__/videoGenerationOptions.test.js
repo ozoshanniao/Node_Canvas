@@ -15,6 +15,7 @@ import {
   isVideoTaskRecoverable,
   normalizeVideoGenerationSettings,
   resolveKlingOmniElements,
+  shouldRenderVideoToolbarParam,
   shouldShowVideoCustomParams,
   shouldShowVideoNegativePrompt,
 } from '../videoGenerationOptions.js';
@@ -128,6 +129,43 @@ assert.deepEqual(
   getActiveVideoHandlesForMode('multimodal-reference', seedanceModel, { provider: 'seedance_official', model: seedanceModel.id }),
   ['text:prompt', 'image:references', 'video:references', 'audio:references'],
   'Seedance multimodal handles should include media reference ports'
+);
+const googleVeo31 = getVideoModelConfig('google', 'veo-3.1-generate-001');
+const googleI2vHandles = getActiveVideoHandlesForMode('image-to-video', googleVeo31, {
+  provider: 'google',
+  model: googleVeo31.id,
+  videoMode: 'image-to-video',
+});
+assert.ok(googleI2vHandles.includes('image:firstFrame'), 'I2V handles should include current first frame handle');
+assert.equal(googleI2vHandles.includes('image:images'), false, 'I2V handles should not include legacy images handle');
+assert.equal(googleI2vHandles.includes('image:end'), false, 'I2V handles should not include legacy end frame handle');
+assert.deepEqual(
+  getActiveVideoHandlesForMode('text-to-video', googleVeo31, { provider: 'google', model: googleVeo31.id }),
+  ['text:prompt'],
+  'T2V handles should only include prompt'
+);
+assert.deepEqual(
+  getActiveVideoHandlesForMode('reference-video', googleVeo31, { provider: 'google', model: googleVeo31.id }),
+  ['text:prompt', 'image:references', 'video:references', 'audio:references'],
+  'Reference handles should include stable reference media ports'
+);
+assert.deepEqual(
+  getActiveVideoHandlesForMode('omni-video', getVideoModelConfig('kling', 'kling-v3-omni'), {
+    provider: 'kling',
+    model: 'kling-v3-omni',
+  }),
+  ['omniParams:in'],
+  'Omni handles should only include omni params'
+);
+assert.equal(
+  shouldRenderVideoToolbarParam('videoMode', { supportedModes: ['image-to-video'] }, { videoMode: 'image-to-video' }),
+  false,
+  'Single-mode models should hide the videoMode toolbar param'
+);
+assert.equal(
+  shouldRenderVideoToolbarParam('videoMode', googleVeo31, { videoMode: 'text-to-video' }),
+  true,
+  'Multi-mode models should show the videoMode toolbar param'
 );
 assert.deepEqual(
   getVideoAdvancedParamEntries(seedanceModel).map(([key]) => key),

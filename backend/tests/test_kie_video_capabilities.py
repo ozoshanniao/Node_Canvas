@@ -89,6 +89,25 @@ class KieVideoCapabilitiesTest(unittest.TestCase):
                     self.assertFalse(capability["inputCapabilities"]["text:prompt"]["required"])
                     self.assertTrue(capability["inputCapabilities"]["image:firstFrame"]["required"])
 
+    def test_kie_parameter_specs_are_model_family_specific(self):
+        by_model = {model["id"]: model for model in self.providers["kie"]["models"]}
+
+        self.assertEqual(by_model["wan/2-7-text-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(2, 16)])
+        self.assertEqual(by_model["wan/2-7-image-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(2, 16)])
+        self.assertEqual(by_model["wan/2-7-text-to-video"]["params"]["resolution"]["options"], ["720p", "1080p"])
+
+        self.assertEqual(by_model["kling-2.6/text-to-video"]["params"]["duration"]["options"], ["5s", "10s"])
+        self.assertEqual(by_model["kling-2.6/image-to-video"]["params"]["duration"]["options"], ["5s", "10s"])
+
+        self.assertEqual(by_model["kling-3.0/video/text-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(3, 16)])
+        self.assertEqual(by_model["kling-3.0/video/image-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(3, 16)])
+        self.assertEqual(by_model["kling-3.0/video/text-to-video"]["params"]["mode"]["options"], ["std", "pro", "4K"])
+
+        self.assertEqual(by_model["bytedance/seedance-2/text-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(4, 16)])
+        self.assertEqual(by_model["bytedance/seedance-2/image-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(4, 16)])
+        self.assertEqual(by_model["bytedance/seedance-2-fast/text-to-video"]["params"]["duration"]["options"], [f"{value}s" for value in range(4, 16)])
+        self.assertEqual(by_model["bytedance/seedance-2-fast/text-to-video"]["params"]["resolution"]["options"], ["480p", "720p"])
+
     def test_excluded_kie_models_are_not_registered(self):
         model_ids = {model["id"] for model in self.providers["kie"]["models"]}
         for model_id in KIE_EXCLUDED_MODELS:

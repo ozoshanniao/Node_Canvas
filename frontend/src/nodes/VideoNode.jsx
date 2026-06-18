@@ -18,6 +18,7 @@ import {
   VIDEO_GENERATION_REGISTRY,
   VIDEO_MODE_OPTIONS,
   fetchVideoGenerationRegistry,
+  getActiveVideoHandlesForMode,
   getKlingShotMode,
   getVideoModelConfig,
   getVideoProvider,
@@ -27,6 +28,7 @@ import {
   isSeedanceModel,
   normalizeVideoGenerationSettings,
   resolveKlingOmniElements,
+  shouldRenderVideoToolbarParam,
   supportsKlingMultiShot,
 } from '../utils/videoGenerationOptions';
 import {
@@ -116,12 +118,6 @@ const getParamDisplay = (key, value, config) => {
   if (key === 'generateAudio') return value ? 'Sound On' : 'Sound Off';
   if (config?.type === 'boolean') return value ? config.label : `No ${config.label}`;
   return value;
-};
-
-const shouldRenderToolbarParam = (key, modelConfig, settings) => {
-  if (key !== 'aspectRatio') return true;
-  if (settings.videoMode !== 'image-to-video') return true;
-  return modelConfig?.family !== 'kling';
 };
 
 const resolveVideoUrl = (url) => {
@@ -246,17 +242,36 @@ export function VideoNode({ id, data }) {
     () => stableVideoHandles.inputs.map((handleId) => getHandleState(selectedCapability, handleId)),
     [selectedCapability, stableVideoHandles.inputs]
   );
+  const activeVideoHandleIds = useMemo(() => {
+    try {
+      const handles = getActiveVideoHandlesForMode(settings.videoMode, modelConfig, settings);
+      return Array.isArray(handles) && handles.length ? handles : ['text:prompt'];
+    } catch (error) {
+      console.warn('Failed to resolve active VideoNode handles; falling back to prompt only.', error);
+      return ['text:prompt'];
+    }
+  }, [modelConfig, settings]);
+  const activeVideoHandleIdsHash = useMemo(
+    () => activeVideoHandleIds.join(','),
+    [activeVideoHandleIds]
+  );
   const visibleInputHandleStates = useMemo(
-    () => inputHandleStates.filter((s) => s.supported),
-    [inputHandleStates]
+    () => inputHandleStates.filter((s) => s.supported && activeVideoHandleIds.includes(s.handleId)),
+    [activeVideoHandleIds, inputHandleStates]
   );
   const hiddenInputHandleStates = useMemo(
-    () => inputHandleStates.filter((s) => !s.supported),
-    [inputHandleStates]
+    () => {
+      const visibleHandleIds = new Set(visibleInputHandleStates.map((s) => s.handleId));
+      return inputHandleStates.filter((s) => !visibleHandleIds.has(s.handleId));
+    },
+    [inputHandleStates, visibleInputHandleStates]
   );
   const inputHandleIdsHash = useMemo(() => {
     return inputHandleStates.map((s) => `${s.handleId}:${s.supported}`).join(',');
   }, [inputHandleStates]);
+  const visibleInputHandleIdsHash = useMemo(() => {
+    return visibleInputHandleStates.map((s) => s.handleId).join(',');
+  }, [visibleInputHandleStates]);
 
   const outputHandleStates = useMemo(
     () => stableVideoHandles.outputs.map((handleId) => getHandleState(selectedCapability, handleId)),
@@ -276,7 +291,7 @@ export function VideoNode({ id, data }) {
     const keys = quickParams.filter((key) =>
       TOOLBAR_PARAM_KEYS.includes(key) &&
       modelConfig.params?.[key] &&
-      shouldRenderToolbarParam(key, modelConfig, settings)
+      shouldRenderVideoToolbarParam(key, modelConfig, settings)
     );
     if (modelConfig.params?.qualityMode && !keys.includes('qualityMode')) keys.push('qualityMode');
     return keys;
@@ -321,7 +336,7 @@ export function VideoNode({ id, data }) {
   // 确保当输入端口支持状态发生变化时，刷新 React Flow handle internals
   useEffect(() => {
     refreshHandles();
-  }, [inputHandleIdsHash, refreshHandles]);
+  }, [activeVideoHandleIdsHash, inputHandleIdsHash, refreshHandles, selectedCapability, settings.model, settings.provider, settings.videoMode, visibleInputHandleIdsHash]);
 
   const handleProviderSelect = (providerId) => {
     const provider = getVideoProvider(providerId, registry);
