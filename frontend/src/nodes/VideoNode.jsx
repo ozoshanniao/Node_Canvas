@@ -203,6 +203,14 @@ const CapsuleDropdown = ({ id, activeMenu, label, minWidth = 84, onOpen, onSelec
   );
 };
 
+const getInputHandleTop = (index, total) => {
+  if (total <= 1) return 50;
+  if (total === 2) return index === 0 ? 36 : 56;
+  const start = 30;
+  const end = 72;
+  return start + (index * (end - start)) / (total - 1);
+};
+
 export function VideoNode({ id, data }) {
   countRender('VideoNode');
   const { getEdges, getNodes, setNodes } = useReactFlow();
@@ -238,6 +246,18 @@ export function VideoNode({ id, data }) {
     () => stableVideoHandles.inputs.map((handleId) => getHandleState(selectedCapability, handleId)),
     [selectedCapability, stableVideoHandles.inputs]
   );
+  const visibleInputHandleStates = useMemo(
+    () => inputHandleStates.filter((s) => s.supported),
+    [inputHandleStates]
+  );
+  const hiddenInputHandleStates = useMemo(
+    () => inputHandleStates.filter((s) => !s.supported),
+    [inputHandleStates]
+  );
+  const inputHandleIdsHash = useMemo(() => {
+    return inputHandleStates.map((s) => `${s.handleId}:${s.supported}`).join(',');
+  }, [inputHandleStates]);
+
   const outputHandleStates = useMemo(
     () => stableVideoHandles.outputs.map((handleId) => getHandleState(selectedCapability, handleId)),
     [selectedCapability, stableVideoHandles.outputs]
@@ -297,6 +317,11 @@ export function VideoNode({ id, data }) {
     updateNodeData(nextSettings);
     refreshHandles();
   }, [refreshHandles, registry, settings, updateNodeData]);
+
+  // 确保当输入端口支持状态发生变化时，刷新 React Flow handle internals
+  useEffect(() => {
+    refreshHandles();
+  }, [inputHandleIdsHash, refreshHandles]);
 
   const handleProviderSelect = (providerId) => {
     const provider = getVideoProvider(providerId, registry);
@@ -1239,12 +1264,12 @@ export function VideoNode({ id, data }) {
         />
       ))}
 
-      {inputHandleStates.map((handleState, index) => (
+      {visibleInputHandleStates.map((handleState, index) => (
         <div
           key={handleState.handleId}
-          className={`absolute left-0 z-20 flex items-center ${handleState.status === 'unsupported' ? 'opacity-60' : ''}`}
-          style={{ top: `${32 + index * 18}%` }}
-          title={handleState.status === 'unsupported' ? 'Unsupported by selected model' : `${handleState.label} (${handleState.status})`}
+          className="absolute left-0 z-20 flex items-center"
+          style={{ top: `${getInputHandleTop(index, visibleInputHandleStates.length)}%` }}
+          title={`${handleState.label} (${handleState.status})`}
         >
           <Handle
             type="target"
@@ -1253,14 +1278,23 @@ export function VideoNode({ id, data }) {
             className={getHandleClasses(handleState, 'left')}
           />
           <span
-            className={`pointer-events-none absolute left-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light opacity-0 transition-opacity group-hover:opacity-100 ${
-              handleState.status === 'unsupported' ? 'text-white/20' : 'text-white/40'
-            }`}
+            className="pointer-events-none absolute left-4 whitespace-nowrap rounded bg-[#181818] px-1 text-[11px] font-light opacity-0 transition-opacity group-hover:opacity-100 text-white/40"
           >
             {getHandleLabel(handleState.handleId)}
             {handleState.required ? ' *' : ''}
           </span>
         </div>
+      ))}
+
+      {hiddenInputHandleStates.map((handleState) => (
+        <Handle
+          key={handleState.handleId}
+          type="target"
+          id={handleState.handleId}
+          position={Position.Left}
+          className="!left-[-4px] !h-2 !w-2 !rounded-full !border-0 !bg-transparent !opacity-0"
+          style={{ top: '50%', pointerEvents: 'none' }}
+        />
       ))}
 
       {outputHandleStates.map((handleState, index) => (
