@@ -423,3 +423,25 @@ The service layer still converts adapter raw responses through the existing lega
 Registry and import-time safety tests verify that importing adapter modules and initializing the default registry do not create external provider clients, generate Kling JWTs, send network requests, upload R2/TOS objects, or write project files. Provider clients, credentials, public asset uploads, and SDK calls remain deferred until real create/query/build operations.
 
 `adapterHints` remains backend-only adapter routing metadata. It is still excluded from `schemaSnapshot` and must not be persisted to `project.json`; frontend code continues to consume the trimmed capability schema and saved project data shape. New providers and model discovery are reserved for Phase 6.
+
+## Phase 6.0 Provider Settings And Asset Upload Router
+
+Phase 6.0 adds provider settings and asset upload routing foundations for KIE, FAL, and WaveSpeed. It does not register new video capabilities, does not create production video adapters for those providers, does not expose them in VideoNode, and does not change the existing Yunwu, Google, Kling Official, Yunwu-Kling, or Seedance runtime paths.
+
+The provider settings layer can resolve `KIE_API_KEY`, `FAL_API_KEY`, and `WAVESPEED_API_KEY` through the existing environment/settings priority rules. These keys are not read at import time, are not logged, and must never enter `schemaSnapshot` or `project.json`.
+
+The new Provider Asset Upload Router is backend infrastructure only:
+
+- KIE inputs prefer the KIE CDN uploader for local files, data URIs, and raw base64.
+- FAL inputs prefer the FAL CDN uploader for local files, data URIs, and raw base64.
+- WaveSpeed keeps public HTTPS URLs as URLs and otherwise prefers WaveSpeed media upload for local files, data URIs, and raw base64. Inputs larger than 300MB use the existing Public Asset Service fallback or require a public URL. `preferred_upload="base64"` can keep image data URIs/base64 inline when allowed.
+- Seedance public asset handling remains owned by the existing Seedance provider path, preserving its R2/TOS/public URL behavior from Phase 5.4.
+
+Google Veo 3 and Veo 3.1 are explicitly not routed through KIE, FAL, or WaveSpeed. The project already has Google Official and Yunwu Veo channels; duplicating those models through third-party platforms would make capability selection and UI behavior ambiguous.
+
+Planned follow-up phases:
+
+- Phase 6.1: KIE Adapter with selected non-Google video models.
+- Phase 6.2: FAL Adapter with selected models.
+- Phase 6.3: WaveSpeed Adapter with selected models.
+- Phase 7: Experimental remote discovery.

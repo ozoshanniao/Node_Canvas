@@ -61,6 +61,9 @@ PROVIDER_DEFINITIONS = (
         ),
     ),
     ProviderDefinition("seedance", "Seedance", (_secret("apiKey", "ARK_API_KEY"),)),
+    ProviderDefinition("kie", "KIE", (_secret("apiKey", "KIE_API_KEY"),)),
+    ProviderDefinition("fal", "FAL", (_secret("apiKey", "FAL_API_KEY"),)),
+    ProviderDefinition("wavespeed", "WaveSpeed", (_secret("apiKey", "WAVESPEED_API_KEY"),)),
     ProviderDefinition(
         "cloudflare-r2",
         "Cloudflare R2",

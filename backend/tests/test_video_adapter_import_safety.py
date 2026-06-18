@@ -54,6 +54,22 @@ class VideoAdapterImportSafetyTest(unittest.TestCase):
         self.assertEqual(adapter.provider, "seedance_official")
         provider.assert_not_called()
 
+    def test_phase6_media_imports_have_no_external_side_effects(self):
+        with (
+            patch("media.public_asset_service.R2PublicAssetBackend.upload", new_callable=AsyncMock) as r2_upload,
+            patch("media.public_asset_service.TOSPublicAssetBackend.upload", new_callable=AsyncMock) as tos_upload,
+        ):
+            for module_name in (
+                "media.kie_asset_uploader",
+                "media.fal_asset_uploader",
+                "media.wavespeed_asset_uploader",
+                "media.provider_asset_uploader",
+            ):
+                importlib.import_module(module_name)
+
+        r2_upload.assert_not_called()
+        tos_upload.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
