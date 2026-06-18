@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from media.provider_asset_uploader import ProviderAssetUploadRouter
+from media.provider_asset_types import ProviderAssetUploadResult
 
 
 def run(coro):
@@ -24,21 +25,22 @@ class FakePublicAssets:
 
 
 class ProviderAssetUploadRouterTest(unittest.TestCase):
-    def test_kie_data_uri_uses_kie_uploader_mock(self):
+    def test_kie_small_data_uri_uses_base64_upload_mock(self):
         calls = []
 
         async def fake_kie_uploader(**kwargs):
             calls.append(kwargs)
-            return {"url": "https://kie.test/file.png", "raw": {"id": "kie-file"}}
+            return ProviderAssetUploadResult(provider="kie", source_kind="base64", url="https://kie.test/file.png", storage="kie")
 
         router = ProviderAssetUploadRouter(kie_uploader=fake_kie_uploader)
         with patch.dict("os.environ", {"KIE_API_KEY": "fake-kie-key"}, clear=False):
             result = run(router.resolve(provider="kie", asset=IMAGE_DATA_URI, purpose="input"))
 
         self.assertEqual(result.url, "https://kie.test/file.png")
-        self.assertEqual(result.storage, "kie_cdn")
-        self.assertEqual(result.source_kind, "provider_cdn")
+        self.assertEqual(result.storage, "kie")
+        self.assertEqual(result.source_kind, "base64")
         self.assertEqual(calls[0]["api_key"], "fake-kie-key")
+        self.assertEqual(calls[0]["base64_data"], IMAGE_DATA_URI)
         self.assertEqual(calls[0]["mime_type"], "image/png")
 
     def test_fal_data_uri_uses_fal_uploader_mock(self):
@@ -69,16 +71,93 @@ class ProviderAssetUploadRouterTest(unittest.TestCase):
         self.assertEqual(kie.source_kind, "url")
         self.assertEqual(fal.source_kind, "url")
 
-    def test_remote_url_reupload_to_provider_cdn_is_not_implemented(self):
-        router = ProviderAssetUploadRouter()
+    def test_kie_https_url_preferred_provider_cdn_uses_url_upload_mock(self):
+        calls = []
 
-        with self.assertRaises(NotImplementedError):
-            run(router.resolve(
+        async def fake_kie_uploader(**kwargs):
+            calls.append(kwargs)
+            return ProviderAssetUploadResult(provider="kie", source_kind="url", url="https://kie.test/copied.png", storage="kie")
+
+        router = ProviderAssetUploadRouter(kie_uploader=fake_kie_uploader)
+
+        with patch.dict("os.environ", {"KIE_API_KEY": "fake-kie-key"}, clear=False):
+            result = run(router.resolve(
                 provider="kie",
                 asset="https://cdn.example.test/a.png",
                 purpose="input",
                 preferred_upload="provider_cdn",
             ))
+
+        self.assertEqual(result.url, "https://kie.test/copied.png")
+        self.assertEqual(calls[0]["file_url"], "https://cdn.example.test/a.png")
+        self.assertEqual(calls[0]["preferred_upload"], "provider_cdn")
+
+    def test_kie_large_data_uri_uses_stream_upload_mock(self):
+        class LargeData:
+            def __len__(self):
+                return 11 * 1024 * 1024
+
+        calls = []
+
+        async def fake_kie_uploader(**kwargs):
+            calls.append(kwargs)
+            return ProviderAssetUploadResult(provider="kie", source_kind="stream", url="https://kie.test/large.png", storage="kie")
+
+        router = ProviderAssetUploadRouter(kie_uploader=fake_kie_uploader)
+
+        async def fake_prepare(asset, project_path):
+            class Media:
+                raw_data = LargeData()
+                mime_type = "image/png"
+                filename = "large.png"
+            return Media()
+
+        router._prepare = fake_prepare
+        with patch.dict("os.environ", {"KIE_API_KEY": "fake-kie-key"}, clear=False):
+            result = run(router.resolve(provider="kie", asset=IMAGE_DATA_URI, purpose="input"))
+
+        self.assertEqual(result.source_kind, "stream")
+        self.assertEqual(calls[0]["preferred_upload"], "stream")
+        self.assertEqual(calls[0]["filename"], "large.png")
+
+    def test_kie_local_file_uses_stream_upload_mock(self):
+        calls = []
+
+        async def fake_kie_uploader(**kwargs):
+            calls.append(kwargs)
+            return ProviderAssetUploadResult(provider="kie", source_kind="stream", url="https://kie.test/local.png", storage="kie")
+
+        router = ProviderAssetUploadRouter(kie_uploader=fake_kie_uploader)
+
+        async def fake_prepare(asset, project_path):
+            class Media:
+                raw_data = b"image"
+                mime_type = "image/png"
+                filename = "local.png"
+            return Media()
+
+        router._prepare = fake_prepare
+        with patch.dict("os.environ", {"KIE_API_KEY": "fake-kie-key"}, clear=False):
+            result = run(router.resolve(provider="kie", asset="input/local.png", purpose="input", project_path="Z:/project"))
+
+        self.assertEqual(result.source_kind, "stream")
+        self.assertEqual(calls[0]["data"], b"image")
+        self.assertEqual(calls[0]["filename"], "local.png")
+
+    def test_kie_bytes_use_stream_upload_mock(self):
+        calls = []
+
+        async def fake_kie_uploader(**kwargs):
+            calls.append(kwargs)
+            return ProviderAssetUploadResult(provider="kie", source_kind="stream", url="https://kie.test/bytes.bin", storage="kie")
+
+        router = ProviderAssetUploadRouter(kie_uploader=fake_kie_uploader)
+        with patch.dict("os.environ", {"KIE_API_KEY": "fake-kie-key"}, clear=False):
+            result = run(router.resolve(provider="kie", asset=b"raw-bytes", purpose="input"))
+
+        self.assertEqual(result.source_kind, "stream")
+        self.assertEqual(calls[0]["data"], b"raw-bytes")
+        self.assertEqual(calls[0]["preferred_upload"], "stream")
 
     def test_wavespeed_image_data_uri_uses_wavespeed_uploader_by_default(self):
         public_assets = FakePublicAssets()

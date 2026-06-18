@@ -15,9 +15,11 @@ Phase 6.0 added backend infrastructure for provider-specific asset preparation. 
 KIE:
 
 - Existing public HTTPS URLs pass through by default.
-- Local files, raw base64, and data URIs upload to the KIE CDN uploader.
+- `preferred_upload="provider_cdn"` uploads existing public HTTP/HTTPS URLs through `/api/file-url-upload`.
+- Data URIs, raw base64, and small image payloads upload through `/api/file-base64-upload`.
+- Local files, bytes, large data URIs, video, and audio upload through `/api/file-stream-upload`.
+- KIE file upload base URL is configurable with `KIE_FILE_UPLOAD_BASE_URL`; the default is `https://api.kie.ai`.
 - Wan 2.7 image-to-video resolves `image:firstFrame` through `ProviderAssetUploadRouter(provider="kie")`.
-- Re-uploading an existing remote URL with `preferred_upload="provider_cdn"` is intentionally not implemented in Phase 6.0.
 
 FAL:
 
@@ -45,6 +47,16 @@ Other providers:
 - API keys are resolved only when a provider media upload is requested.
 - Logs and result objects must not include API keys, Authorization headers, raw base64 content, or local absolute paths.
 - No router output is written to `project.json` or `schemaSnapshot`.
+
+## KIE Upload APIs
+
+KIE supports three provider media upload paths:
+
+- Base64: `POST /api/file-base64-upload` with JSON `base64Data`, `uploadPath`, and `fileName`; response URL is `data.downloadUrl`.
+- URL: `POST /api/file-url-upload` with JSON `fileUrl`, `uploadPath`, and `fileName`; response URL is `data.downloadUrl`.
+- Stream: `POST /api/file-stream-upload` with multipart/form-data fields `file`, `uploadPath`, and `fileName`; response URL is `data.downloadUrl`.
+
+KIE upload routing uses only those three official upload paths.
 
 ## Google Veo Exclusion
 

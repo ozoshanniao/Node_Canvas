@@ -58,7 +58,15 @@ Wan 2.7 image-to-video currently builds:
 
 For image-to-video, `image:firstFrame` is passed to `ProviderAssetUploadRouter(provider="kie")`. Existing public HTTPS URLs pass through. Local files, data URIs, and raw base64 go through the KIE provider media upload path, which is mocked in tests.
 
-The current KIE upload protocol has documentation uncertainty around multipart upload versus Redpanda/base64-style examples. Real smoke testing requires confirming the official upload contract first.
+KIE provider media upload supports three official paths:
+
+- Base64 upload: `POST /api/file-base64-upload` with JSON `base64Data`, `uploadPath`, and `fileName`.
+- URL upload: `POST /api/file-url-upload` with JSON `fileUrl`, `uploadPath`, and `fileName`.
+- Stream upload: `POST /api/file-stream-upload` with multipart/form-data fields `file`, `uploadPath`, and `fileName`.
+
+All three return the uploaded asset URL in `data.downloadUrl`. The upload host is configurable through `KIE_FILE_UPLOAD_BASE_URL`; default is `https://api.kie.ai`, while tests also cover `https://kieai.redpandaai.co`.
+
+Real smoke testing still requires confirming the final Wan payload fields `ratio` and `first_frame_url`.
 
 ## Result Parsing
 

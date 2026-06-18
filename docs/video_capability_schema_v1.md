@@ -457,6 +457,8 @@ KIE full model discovery is not enabled. Google Veo 3, Veo 3.1, Imagen, Nano Ban
 
 Wan text-to-video accepts `text:prompt` and emits `video:out`. Wan image-to-video accepts optional `text:prompt`, requires `image:firstFrame`, and emits `video:out`. Image-to-video first-frame inputs are resolved through `ProviderAssetUploadRouter(provider="kie")` before payload construction.
 
+KIE media upload supports Base64 (`/api/file-base64-upload`), URL (`/api/file-url-upload`), and stream (`/api/file-stream-upload`) routes. Stream upload uses multipart/form-data with `file`, `uploadPath`, and `fileName`.
+
 The current KIE payload builder uses `ratio` for text-to-video aspect ratio and `first_frame_url` for image-to-video. These fields are centralized in the KIE payload builder because KIE official documentation and node-banana/Redpanda-style examples may still differ before real smoke testing.
 
 KIE query parsing supports stringified `data.resultJson` plus fallback fields such as `data.videoUrl`, `data.video_url`, `data.output`, `data.imageUrl`, `data.image_url`, and `data.url`. Successful remote URLs still flow into the existing local video download/persistence path; the project does not rely on KIE remote URLs as permanent outputs.
