@@ -477,6 +477,6 @@ Phase 6.1C does not modify VideoNode UI, project save structure, existing Yunwu/
 
 ## Phase 6.2 KIE Image Provider
 
-Phase 6.2 is separate from the video capability schema. It adds mock-only KIE image-provider entries for `nano-banana-pro` and `nano-banana-2` with display names `Nano Banana Pro (KIE)` and `Nano Banana 2 (KIE)`.
+Phase 6.2 is separate from the video capability schema. It adds mock-only KIE image-provider entries for `nano-banana-pro`, `nano-banana-2`, `gpt-image-2-text-to-image`, and `gpt-image-2-image-to-image` with `(KIE)` display names.
 
-This phase does not add new video capabilities, does not modify VideoNode UI, and does not change existing video provider runtimes. `GPT Image 2 (KIE)` remains deferred because the exact KIE model id was not confirmed; local/node-banana search only found `gpt-image/1.5-text-to-image` and `gpt-image/1.5-image-to-image`.
+This phase does not add new video capabilities, does not modify VideoNode UI, and does not change existing video provider runtimes. GPT Image 2 image-to-image is registered as mock-only based on KIE docs and uses `input_urls`; Nano Banana image-to-image keeps `image_input`. Real API smoke remains deferred.

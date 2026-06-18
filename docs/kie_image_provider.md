@@ -8,12 +8,10 @@ The KIE image provider exposes only:
 
 - `nano-banana-pro` as `Nano Banana Pro (KIE)`
 - `nano-banana-2` as `Nano Banana 2 (KIE)`
+- `gpt-image-2-text-to-image` as `GPT Image 2 (KIE)`
+- `gpt-image-2-image-to-image` as `GPT Image 2 I2I (KIE)`
 
-Both entries support `text-to-image` and `image-to-image` in the local capability registry. Display names include `(KIE)` so they remain distinct from native Google/Gemini image channels.
-
-## Deferred Models
-
-`GPT Image 2 (KIE)` is deferred because the exact KIE model id was not found in local docs or node-banana. The only nearby KIE entries found were `gpt-image/1.5-text-to-image` and `gpt-image/1.5-image-to-image`, which are not GPT Image 2.
+Nano Banana entries support `text-to-image` and `image-to-image`. GPT Image 2 is registered as two separate KIE model ids so the payload builder can keep the KIE task type explicit. Display names include `(KIE)` so they remain distinct from native Google/Gemini image channels.
 
 The following are also not registered in Phase 6.2:
 
@@ -28,7 +26,7 @@ The following are also not registered in Phase 6.2:
 
 ## API Shape
 
-Nano Banana Pro and Nano Banana 2 use the standard KIE task API shape:
+The registered KIE image models use the standard KIE task API shape:
 
 - `POST /api/v1/jobs/createTask`
 - `GET /api/v1/jobs/recordInfo?taskId=<taskId>`
@@ -50,7 +48,34 @@ Current mock-tested payload shape:
 }
 ```
 
-Image-to-image adds:
+GPT Image 2 text-to-image uses:
+
+```json
+{
+  "model": "gpt-image-2-text-to-image",
+  "input": {
+    "prompt": "prompt",
+    "aspect_ratio": "auto",
+    "resolution": "1K"
+  }
+}
+```
+
+GPT Image 2 image-to-image uses `input_urls`:
+
+```json
+{
+  "model": "gpt-image-2-image-to-image",
+  "input": {
+    "prompt": "prompt",
+    "input_urls": ["https://kie-cdn.example/input.png"],
+    "aspect_ratio": "auto",
+    "resolution": "1K"
+  }
+}
+```
+
+Nano Banana image-to-image uses `image_input`:
 
 ```json
 {
@@ -58,7 +83,15 @@ Image-to-image adds:
 }
 ```
 
-`image_input` follows node-banana's KIE provider mapping for both `nano-banana-pro` and `nano-banana-2`.
+Do not mix the fields: GPT Image 2 I2I uses `input_urls`; Nano Banana Pro and Nano Banana 2 use `image_input`.
+
+GPT Image 2 constraints are validated before create:
+
+- prompt is required and must be at most 20000 characters.
+- `input_urls` is required for I2I and supports at most 16 images.
+- `aspect_ratio=auto` or an omitted aspect ratio only supports `resolution=1K`.
+- `aspect_ratio=1:1` does not support `resolution=4K`.
+- `aspect_ratio=16:9` with `resolution=4K` is allowed.
 
 ## Asset Routing
 

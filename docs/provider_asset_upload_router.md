@@ -22,7 +22,7 @@ KIE:
 - Local files, bytes, large data URIs, video, and audio upload through `/api/file-stream-upload`.
 - KIE file upload base URL is configurable with `KIE_FILE_UPLOAD_BASE_URL`; the default is `https://api.kie.ai`.
 - KIE image-to-video models resolve `image:firstFrame` through `ProviderAssetUploadRouter(provider="kie")`.
-- KIE image-to-image models resolve image inputs through `ProviderAssetUploadRouter(provider="kie")` before writing `image_input` in the KIE image payload.
+- KIE image-to-image models resolve image inputs through `ProviderAssetUploadRouter(provider="kie")` before writing the model-specific image field in the KIE image payload. GPT Image 2 I2I writes `input_urls`; Nano Banana Pro and Nano Banana 2 write `image_input`.
 
 FAL:
 
@@ -67,7 +67,7 @@ Google Veo 3 and Veo 3.1 must not be reintroduced through KIE, FAL, or WaveSpeed
 
 Even if later KIE, FAL, or WaveSpeed model lists contain entries such as `veo3/text-to-video`, `veo3/image-to-video`, `veo3-fast/text-to-video`, `veo3-fast/image-to-video`, `google/imagen4`, `gpt-image`, Gemini Omni Video, or `nano-banana-pro`, they are excluded from the Phase 6.1C video whitelist.
 
-For Phase 6.2 image-provider work, `nano-banana-pro` and `nano-banana-2` are intentionally allowed only under the KIE image provider. `GPT Image 2 (KIE)` remains deferred until the exact KIE model id is confirmed.
+For Phase 6.2 image-provider work, `nano-banana-pro`, `nano-banana-2`, `gpt-image-2-text-to-image`, and `gpt-image-2-image-to-image` are intentionally allowed only under the KIE image provider. GPT Image 2 I2I uses `input_urls`; Nano Banana uses `image_input`.
 
 ## Later Phases
 

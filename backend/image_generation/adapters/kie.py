@@ -4,7 +4,7 @@ from typing import Any
 
 from media.provider_asset_uploader import ProviderAssetUploadRouter
 
-from image_generation.providers.kie.payloads import build_kie_image_create_payload
+from image_generation.providers.kie.payloads import build_kie_image_create_payload, default_kie_image_task_type
 from image_generation.providers.kie.result_parser import (
     extract_kie_image_error_message,
     extract_kie_image_task_id,
@@ -67,7 +67,7 @@ class KieImageAdapter:
 
     async def build_create_payload(self, request: ImageGenerationRequest) -> dict[str, Any]:
         image_urls = await self._resolve_image_urls(request)
-        task_type = "image-to-image" if image_urls else "text-to-image"
+        task_type = default_kie_image_task_type(request.model or request.config.get("model"), bool(image_urls))
         return build_kie_image_create_payload(
             model=request.model or request.config.get("model"),
             prompt=request.prompt,
