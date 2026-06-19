@@ -26,9 +26,9 @@ KIE_WAN_RATIO_OPTIONS = ["16:9", "9:16", "1:1", "4:3", "3:4"]
 KIE_SEEDANCE_RATIO_OPTIONS = ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
 
 
-def kie_wan_params(mode: str):
+def kie_wan_params(modes):
     params = {
-        "videoMode": kie_video_mode_param(mode),
+        "videoMode": kie_video_mode_param(modes),
         "duration": {
             "type": "select",
             "label": "Duration",
@@ -55,7 +55,8 @@ def kie_wan_params(mode: str):
         },
         "seed": COMMON_SEED_PARAM,
     }
-    if mode == "text-to-video":
+    supported_modes = modes if isinstance(modes, list) else [modes]
+    if "text-to-video" in supported_modes:
         params["aspectRatio"] = {
             "type": "select",
             "label": "Aspect Ratio",
@@ -65,9 +66,9 @@ def kie_wan_params(mode: str):
     return params
 
 
-def kie_kling_26_params(mode: str):
+def kie_kling_26_params(modes):
     return {
-        "videoMode": kie_video_mode_param(mode),
+        "videoMode": kie_video_mode_param(modes),
         "aspectRatio": {
             "type": "select",
             "label": "Aspect Ratio",
@@ -160,21 +161,17 @@ def kie_seedance_params(modes, resolution_options):
 
 
 KIE_PARAMS_BY_MODEL = {
-    "wan/2-7-text-to-video": kie_wan_params("text-to-video"),
-    "wan/2-7-image-to-video": kie_wan_params("image-to-video"),
+    "wan/2-7": kie_wan_params(["text-to-video", "image-to-video"]),
     "kling-3.0/video": kie_kling_30_params(["text-to-video", "image-to-video"]),
-    "kling-2.6/text-to-video": kie_kling_26_params("text-to-video"),
-    "kling-2.6/image-to-video": kie_kling_26_params("image-to-video"),
+    "kling-2.6": kie_kling_26_params(["text-to-video", "image-to-video"]),
     "bytedance/seedance-2": kie_seedance_params(["text-to-video", "frame", "multimodal-reference"], ["480p", "720p", "1080p"]),
     "bytedance/seedance-2-fast": kie_seedance_params(["text-to-video", "frame", "multimodal-reference"], ["480p", "720p"]),
 }
 
 KIE_VIDEO_MODEL_WHITELIST = [
-    ("wan/2-7-text-to-video", "Wan 2.7 (KIE)", "wan", "text-to-video"),
-    ("wan/2-7-image-to-video", "Wan 2.7 I2V (KIE)", "wan", "image-to-video"),
+    ("wan/2-7", "Wan 2.7 (KIE)", "wan", ["text-to-video", "image-to-video"]),
     ("kling-3.0/video", "Kling 3.0 (KIE)", "kling", ["text-to-video", "image-to-video"]),
-    ("kling-2.6/text-to-video", "Kling 2.6 (KIE)", "kling", "text-to-video"),
-    ("kling-2.6/image-to-video", "Kling 2.6 I2V (KIE)", "kling", "image-to-video"),
+    ("kling-2.6", "Kling 2.6 (KIE)", "kling", ["text-to-video", "image-to-video"]),
     ("bytedance/seedance-2", "Seedance 2.0 (KIE)", "seedance", ["text-to-video", "frame", "multimodal-reference"]),
     ("bytedance/seedance-2-fast", "Seedance 2.0 Fast (KIE)", "seedance", ["text-to-video", "frame", "multimodal-reference"]),
 ]
@@ -187,6 +184,7 @@ def kie_video_model(model_id: str, label: str, family: str, modes):
     supports_last_frame_input = supports_i2v and (
         model_id.startswith("bytedance/seedance-2")
         or model_id == "kling-3.0/video"
+        or model_id == "wan/2-7"
     )
     params = deepcopy(KIE_PARAMS_BY_MODEL[model_id])
     quick_params = ["videoMode", "duration"]

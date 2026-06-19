@@ -614,6 +614,10 @@ const VIDEO_RECOVERABLE_QUERY_STATUSES = new Set([
 ]);
 
 export const KIE_VIDEO_MODEL_MIGRATIONS = {
+  'wan/2-7-text-to-video': { model: 'wan/2-7', videoMode: 'text-to-video' },
+  'wan/2-7-image-to-video': { model: 'wan/2-7', videoMode: 'image-to-video' },
+  'kling-2.6/text-to-video': { model: 'kling-2.6', videoMode: 'text-to-video' },
+  'kling-2.6/image-to-video': { model: 'kling-2.6', videoMode: 'image-to-video' },
   'kling-3.0/video/text-to-video': { model: 'kling-3.0/video', videoMode: 'text-to-video' },
   'kling-3.0/video/image-to-video': { model: 'kling-3.0/video', videoMode: 'image-to-video' },
   'bytedance/seedance-2/text-to-video': { model: 'bytedance/seedance-2', videoMode: 'text-to-video' },
@@ -920,6 +924,7 @@ export const shouldRenderVideoToolbarParam = (key, modelConfig, settings = {}) =
   }
   if (key !== 'aspectRatio') return true;
   if (settings.videoMode !== 'image-to-video') return true;
+  if (modelConfig?.family === 'wan') return false;
   return modelConfig?.family !== 'kling';
 };
 

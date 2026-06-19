@@ -111,6 +111,21 @@ kieAggregatedRegistry.providers.push({
   label: 'KIE',
   models: [
     {
+      id: 'wan/2-7',
+      label: 'Wan 2.7 (KIE)',
+      family: 'wan',
+      supportedModes: ['text-to-video', 'image-to-video'],
+      inputCapabilities: { endFrame: true },
+      quickParams: ['videoMode', 'aspectRatio', 'duration', 'resolution'],
+      params: {
+        videoMode: { type: 'select', options: ['text-to-video', 'image-to-video'], default: 'text-to-video' },
+        aspectRatio: { type: 'select', options: ['16:9', '9:16', '1:1'], default: '16:9' },
+        duration: { type: 'select', options: ['2s', '3s', '4s', '5s'], default: '5s' },
+        resolution: { type: 'select', options: ['720p', '1080p'], default: '720p' },
+      },
+      customParams: {},
+    },
+    {
       id: 'kling-3.0/video',
       label: 'Kling 3.0 (KIE)',
       family: 'kling',
@@ -121,6 +136,20 @@ kieAggregatedRegistry.providers.push({
         aspectRatio: { type: 'select', options: ['16:9', '9:16', '1:1'], default: '16:9' },
         duration: { type: 'select', options: ['3s', '4s', '5s'], default: '5s' },
         qualityMode: { type: 'select', options: ['std', 'pro', '4K'], default: 'pro' },
+      },
+      customParams: {},
+    },
+    {
+      id: 'kling-2.6',
+      label: 'Kling 2.6 (KIE)',
+      family: 'kling',
+      supportedModes: ['text-to-video', 'image-to-video'],
+      inputCapabilities: { endFrame: false },
+      quickParams: ['videoMode', 'aspectRatio', 'duration'],
+      params: {
+        videoMode: { type: 'select', options: ['text-to-video', 'image-to-video'], default: 'text-to-video' },
+        aspectRatio: { type: 'select', options: ['1:1', '16:9', '9:16'], default: '16:9' },
+        duration: { type: 'select', options: ['5s', '10s'], default: '5s' },
       },
       customParams: {},
     },
@@ -156,9 +185,23 @@ kieAggregatedRegistry.providers.push({
 });
 assert.deepEqual(
   kieAggregatedRegistry.providers.find((provider) => provider.id === 'kie').models.map((model) => model.label),
-  ['Kling 3.0 (KIE)', 'Seedance 2.0 (KIE)', 'Seedance 2.0 Fast (KIE)'],
+  ['Wan 2.7 (KIE)', 'Kling 3.0 (KIE)', 'Kling 2.6 (KIE)', 'Seedance 2.0 (KIE)', 'Seedance 2.0 Fast (KIE)'],
   'KIE aggregated model dropdown should not expose legacy I2V labels'
 );
+const migratedWan = normalizeVideoGenerationSettings(
+  { provider: 'kie', model: 'wan/2-7-image-to-video', videoMode: 'text-to-video' },
+  kieAggregatedRegistry
+);
+assert.equal(migratedWan.model, 'wan/2-7');
+assert.equal(migratedWan.videoMode, 'image-to-video');
+assert.equal(migratedWan.params?.videoMode, 'image-to-video');
+const migratedKling26 = normalizeVideoGenerationSettings(
+  { provider: 'kie', model: 'kling-2.6/image-to-video', videoMode: 'text-to-video' },
+  kieAggregatedRegistry
+);
+assert.equal(migratedKling26.model, 'kling-2.6');
+assert.equal(migratedKling26.videoMode, 'image-to-video');
+assert.equal(migratedKling26.params?.videoMode, 'image-to-video');
 const migratedKling = normalizeVideoGenerationSettings(
   { provider: 'kie', model: 'kling-3.0/video/image-to-video', videoMode: 'text-to-video' },
   kieAggregatedRegistry
@@ -181,6 +224,33 @@ assert.equal(migratedSeedanceFast.model, 'bytedance/seedance-2-fast');
 assert.equal(migratedSeedanceFast.videoMode, 'frame');
 assert.equal(migratedSeedanceFast.params?.videoMode, 'frame');
 
+const kieWanModel = kieAggregatedRegistry.providers.find((provider) => provider.id === 'kie').models.find((model) => model.id === 'wan/2-7');
+assert.deepEqual(
+  getActiveVideoHandlesForMode('text-to-video', kieWanModel, { provider: 'kie', model: 'wan/2-7', videoMode: 'text-to-video' }),
+  ['text:prompt'],
+  'Aggregated KIE Wan T2V handles should only include prompt'
+);
+assert.deepEqual(
+  getActiveVideoHandlesForMode('image-to-video', kieWanModel, { provider: 'kie', model: 'wan/2-7', videoMode: 'image-to-video' }),
+  ['text:prompt', 'image:firstFrame', 'image:lastFrame'],
+  'Aggregated KIE Wan I2V handles should include prompt plus first/last frame'
+);
+assert.equal(
+  shouldRenderVideoToolbarParam('aspectRatio', kieWanModel, { videoMode: 'image-to-video' }),
+  false,
+  'Aggregated KIE Wan I2V should hide aspectRatio toolbar param'
+);
+const kieKling26Model = kieAggregatedRegistry.providers.find((provider) => provider.id === 'kie').models.find((model) => model.id === 'kling-2.6');
+assert.deepEqual(
+  getActiveVideoHandlesForMode('text-to-video', kieKling26Model, { provider: 'kie', model: 'kling-2.6', videoMode: 'text-to-video' }),
+  ['text:prompt'],
+  'Aggregated KIE Kling 2.6 T2V handles should only include prompt'
+);
+assert.deepEqual(
+  getActiveVideoHandlesForMode('image-to-video', kieKling26Model, { provider: 'kie', model: 'kling-2.6', videoMode: 'image-to-video' }),
+  ['text:prompt', 'image:firstFrame'],
+  'Aggregated KIE Kling 2.6 I2V handles should include prompt plus first frame'
+);
 for (const providerId of ['kling', 'yunwu-kling']) {
   for (const modelId of ['kling-v2-6', 'kling-v3', 'kling-v3-omni']) {
     const model = getVideoModelConfig(providerId, modelId);

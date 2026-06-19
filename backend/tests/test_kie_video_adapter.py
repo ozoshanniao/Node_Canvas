@@ -16,6 +16,7 @@ from video_generation.providers.kie.payloads import (
     KIE_KLING_30_API_MODEL,
     KIE_KLING_30_MODEL,
     KIE_KLING_26_I2V_MODEL,
+    KIE_KLING_26_MODEL,
     KIE_KLING_26_T2V_MODEL,
     KIE_KLING_30_I2V_MODEL,
     KIE_KLING_30_T2V_MODEL,
@@ -28,6 +29,7 @@ from video_generation.providers.kie.payloads import (
     KIE_SEEDANCE_2_I2V_MODEL,
     KIE_SEEDANCE_2_T2V_MODEL,
     KIE_WAN_I2V_MODEL,
+    KIE_WAN_MODEL,
     KIE_WAN_T2V_MODEL,
 )
 from video_generation.schemas import VideoGenerateRequest
@@ -35,17 +37,17 @@ from video_generation.service import VideoGenerationService
 
 
 KIE_T2V_MODELS = [
-    KIE_WAN_T2V_MODEL,
+    KIE_WAN_MODEL,
     KIE_KLING_30_MODEL,
-    KIE_KLING_26_T2V_MODEL,
+    KIE_KLING_26_MODEL,
     KIE_SEEDANCE_2_MODEL,
     KIE_SEEDANCE_2_FAST_MODEL,
 ]
 
 KIE_I2V_MODELS = [
-    KIE_WAN_I2V_MODEL,
+    KIE_WAN_MODEL,
     KIE_KLING_30_MODEL,
-    KIE_KLING_26_I2V_MODEL,
+    KIE_KLING_26_MODEL,
     KIE_SEEDANCE_2_MODEL,
     KIE_SEEDANCE_2_FAST_MODEL,
 ]
@@ -172,16 +174,16 @@ class KieVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_kie_whitelisted_t2v_payloads(self):
         expected_api_models = {
-            KIE_WAN_T2V_MODEL: KIE_WAN_T2V_MODEL,
+            KIE_WAN_MODEL: KIE_WAN_T2V_MODEL,
             KIE_KLING_30_MODEL: KIE_KLING_30_API_MODEL,
-            KIE_KLING_26_T2V_MODEL: KIE_KLING_26_T2V_MODEL,
+            KIE_KLING_26_MODEL: KIE_KLING_26_T2V_MODEL,
             KIE_SEEDANCE_2_MODEL: KIE_SEEDANCE_2_API_MODEL,
             KIE_SEEDANCE_2_FAST_MODEL: KIE_SEEDANCE_2_FAST_API_MODEL,
         }
         expected_ratio_fields = {
-            KIE_WAN_T2V_MODEL: "ratio",
+            KIE_WAN_MODEL: "ratio",
             KIE_KLING_30_MODEL: "aspect_ratio",
-            KIE_KLING_26_T2V_MODEL: "aspect_ratio",
+            KIE_KLING_26_MODEL: "aspect_ratio",
             KIE_SEEDANCE_2_MODEL: "aspect_ratio",
             KIE_SEEDANCE_2_FAST_MODEL: "aspect_ratio",
         }
@@ -211,7 +213,7 @@ class KieVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("image_urls", payload["input"])
 
     async def test_kie_kling_t2v_payloads_keep_documented_options(self):
-        for model in (KIE_KLING_30_MODEL, KIE_KLING_26_T2V_MODEL):
+        for model in (KIE_KLING_30_MODEL, KIE_KLING_26_MODEL):
             with self.subTest(model=model):
                 client = FakeKieClient()
                 adapter = KieVideoAdapter(client=client, asset_router=FakeAssetRouter())
@@ -233,16 +235,16 @@ class KieVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_kie_whitelisted_i2v_payloads_use_asset_router(self):
         expected_api_models = {
-            KIE_WAN_I2V_MODEL: KIE_WAN_I2V_MODEL,
+            KIE_WAN_MODEL: KIE_WAN_I2V_MODEL,
             KIE_KLING_30_MODEL: KIE_KLING_30_API_MODEL,
-            KIE_KLING_26_I2V_MODEL: KIE_KLING_26_I2V_MODEL,
+            KIE_KLING_26_MODEL: KIE_KLING_26_I2V_MODEL,
             KIE_SEEDANCE_2_MODEL: KIE_SEEDANCE_2_API_MODEL,
             KIE_SEEDANCE_2_FAST_MODEL: KIE_SEEDANCE_2_FAST_API_MODEL,
         }
         expected_image_fields = {
-            KIE_WAN_I2V_MODEL: "first_frame_url",
+            KIE_WAN_MODEL: "first_frame_url",
             KIE_KLING_30_MODEL: "image_urls",
-            KIE_KLING_26_I2V_MODEL: "image_urls",
+            KIE_KLING_26_MODEL: "image_urls",
             KIE_SEEDANCE_2_MODEL: "first_frame_url",
             KIE_SEEDANCE_2_FAST_MODEL: "first_frame_url",
         }
@@ -308,6 +310,83 @@ class KieVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["input"]["first_frame_url"], "https://kie-cdn.test/input.png")
         self.assertTrue(payload["input"]["generate_audio"])
         self.assertTrue(payload["input"]["return_last_frame"])
+
+
+    async def test_kie_wan_base_model_t2v_and_i2v_payloads(self):
+        t2v_client = FakeKieClient()
+        adapter = KieVideoAdapter(client=t2v_client, asset_router=FakeAssetRouter())
+        await adapter.create(
+            VideoCreateRequest(
+                provider="kie",
+                model=KIE_WAN_MODEL,
+                task_type="text-to-video",
+                prompt="a paper boat",
+                params={"videoMode": "text-to-video", "aspectRatio": "9:16"},
+            ),
+            {},
+        )
+        t2v_payload = t2v_client.created_payloads[0]
+        self.assertEqual(t2v_payload["model"], KIE_WAN_T2V_MODEL)
+        self.assertEqual(t2v_payload["input"]["ratio"], "9:16")
+        self.assertNotIn("first_frame_url", t2v_payload["input"])
+
+        i2v_client = FakeKieClient()
+        i2v_adapter = KieVideoAdapter(client=i2v_client, asset_router=FakeAssetRouter())
+        await i2v_adapter.create(
+            VideoCreateRequest(
+                provider="kie",
+                model=KIE_WAN_MODEL,
+                task_type="image-to-video",
+                prompt="animate",
+                params={"videoMode": "image-to-video", "aspectRatio": "1:1"},
+                inputs={
+                    "image:firstFrame": [VideoInputAsset(kind="image", role="first_frame", url="https://example.test/first.png")],
+                    "image:lastFrame": [VideoInputAsset(kind="image", role="last_frame", url="https://example.test/last.png")],
+                },
+                project_dir="Z:/project",
+            ),
+            {},
+        )
+        i2v_payload = i2v_client.created_payloads[0]
+        self.assertEqual(i2v_payload["model"], KIE_WAN_I2V_MODEL)
+        self.assertEqual(i2v_payload["input"]["first_frame_url"], "https://kie-cdn.test/input.png")
+        self.assertEqual(i2v_payload["input"]["last_frame_url"], "https://kie-cdn.test/input.png")
+        self.assertNotIn("ratio", i2v_payload["input"])
+        self.assertNotIn("first_clip_url", i2v_payload["input"])
+        self.assertNotIn("driving_audio_url", i2v_payload["input"])
+
+    async def test_kie_kling_26_base_model_t2v_and_i2v_payloads(self):
+        t2v_client = FakeKieClient()
+        adapter = KieVideoAdapter(client=t2v_client, asset_router=FakeAssetRouter())
+        await adapter.create(
+            VideoCreateRequest(
+                provider="kie",
+                model=KIE_KLING_26_MODEL,
+                task_type="text-to-video",
+                prompt="a paper boat",
+                params={"videoMode": "text-to-video", "aspectRatio": "16:9"},
+            ),
+            {},
+        )
+        self.assertEqual(t2v_client.created_payloads[0]["model"], KIE_KLING_26_T2V_MODEL)
+        self.assertNotIn("image_urls", t2v_client.created_payloads[0]["input"])
+
+        i2v_client = FakeKieClient()
+        i2v_adapter = KieVideoAdapter(client=i2v_client, asset_router=FakeAssetRouter())
+        await i2v_adapter.create(
+            VideoCreateRequest(
+                provider="kie",
+                model=KIE_KLING_26_MODEL,
+                task_type="image-to-video",
+                prompt="animate",
+                params={"videoMode": "image-to-video"},
+                inputs={"image:firstFrame": [VideoInputAsset(kind="image", role="first_frame", url="https://example.test/input.png")]},
+                project_dir="Z:/project",
+            ),
+            {},
+        )
+        self.assertEqual(i2v_client.created_payloads[0]["model"], KIE_KLING_26_I2V_MODEL)
+        self.assertEqual(i2v_client.created_payloads[0]["input"]["image_urls"], ["https://kie-cdn.test/input.png"])
 
     async def test_kie_kling_30_base_model_t2v_and_i2v_payloads(self):
         t2v_client = FakeKieClient()
@@ -390,6 +469,36 @@ class KieVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(client.created_payloads[0]["model"], KIE_KLING_30_API_MODEL)
         self.assertIn("image_urls", client.created_payloads[0]["input"])
+
+        wan_client = FakeKieClient()
+        wan_adapter = KieVideoAdapter(client=wan_client, asset_router=FakeAssetRouter())
+        await wan_adapter.create(
+            VideoCreateRequest(
+                provider="kie",
+                model=KIE_WAN_I2V_MODEL,
+                task_type="text-to-video",
+                prompt="legacy wan i2v",
+                inputs={"image:firstFrame": [VideoInputAsset(kind="image", role="first_frame", url="https://example.test/input.png")]},
+                project_dir="Z:/project",
+            ),
+            {},
+        )
+        self.assertEqual(wan_client.created_payloads[0]["model"], KIE_WAN_I2V_MODEL)
+        self.assertIn("first_frame_url", wan_client.created_payloads[0]["input"])
+
+        kling26_client = FakeKieClient()
+        kling26_adapter = KieVideoAdapter(client=kling26_client, asset_router=FakeAssetRouter())
+        await kling26_adapter.create(
+            VideoCreateRequest(
+                provider="kie",
+                model=KIE_KLING_26_T2V_MODEL,
+                task_type="image-to-video",
+                prompt="legacy kling t2v",
+            ),
+            {},
+        )
+        self.assertEqual(kling26_client.created_payloads[0]["model"], KIE_KLING_26_T2V_MODEL)
+        self.assertNotIn("image_urls", kling26_client.created_payloads[0]["input"])
 
         seedance_client = FakeKieClient()
         seedance_adapter = KieVideoAdapter(client=seedance_client, asset_router=FakeAssetRouter())
@@ -531,7 +640,7 @@ class KieVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
 
         request = VideoGenerateRequest(
             provider="kie",
-            model="wan/2-7-text-to-video",
+            model=KIE_WAN_MODEL,
             videoMode="text-to-video",
             prompt="prompt",
             duration="5s",

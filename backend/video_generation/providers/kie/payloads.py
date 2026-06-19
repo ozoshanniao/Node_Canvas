@@ -5,11 +5,13 @@ from typing import Any
 
 KIE_WAN_T2V_MODEL = "wan/2-7-text-to-video"
 KIE_WAN_I2V_MODEL = "wan/2-7-image-to-video"
+KIE_WAN_MODEL = "wan/2-7"
 KIE_KLING_30_T2V_MODEL = "kling-3.0/video/text-to-video"
 KIE_KLING_30_I2V_MODEL = "kling-3.0/video/image-to-video"
 KIE_KLING_30_MODEL = "kling-3.0/video"
 KIE_KLING_26_T2V_MODEL = "kling-2.6/text-to-video"
 KIE_KLING_26_I2V_MODEL = "kling-2.6/image-to-video"
+KIE_KLING_26_MODEL = "kling-2.6"
 KIE_SEEDANCE_2_T2V_MODEL = "bytedance/seedance-2/text-to-video"
 KIE_SEEDANCE_2_I2V_MODEL = "bytedance/seedance-2/image-to-video"
 KIE_SEEDANCE_2_FAST_T2V_MODEL = "bytedance/seedance-2-fast/text-to-video"
@@ -21,6 +23,10 @@ KIE_SEEDANCE_2_API_MODEL = "bytedance/seedance-2"
 KIE_SEEDANCE_2_FAST_API_MODEL = "bytedance/seedance-2-fast"
 
 KIE_LEGACY_MODEL_ALIASES = {
+    KIE_WAN_T2V_MODEL: {"model": KIE_WAN_MODEL, "task_type": "text-to-video"},
+    KIE_WAN_I2V_MODEL: {"model": KIE_WAN_MODEL, "task_type": "image-to-video"},
+    KIE_KLING_26_T2V_MODEL: {"model": KIE_KLING_26_MODEL, "task_type": "text-to-video"},
+    KIE_KLING_26_I2V_MODEL: {"model": KIE_KLING_26_MODEL, "task_type": "image-to-video"},
     KIE_KLING_30_T2V_MODEL: {"model": KIE_KLING_30_MODEL, "task_type": "text-to-video"},
     KIE_KLING_30_I2V_MODEL: {"model": KIE_KLING_30_MODEL, "task_type": "image-to-video"},
     KIE_SEEDANCE_2_T2V_MODEL: {"model": KIE_SEEDANCE_2_MODEL, "task_type": "text-to-video"},
@@ -31,10 +37,14 @@ KIE_LEGACY_MODEL_ALIASES = {
 
 
 KIE_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
-    KIE_WAN_T2V_MODEL: {"task_type": "text-to-video", "family": "wan", "ratio_field": "ratio"},
-    KIE_WAN_I2V_MODEL: {
-        "task_type": "image-to-video",
+    KIE_WAN_MODEL: {
+        "api_models": {
+            "text-to-video": KIE_WAN_T2V_MODEL,
+            "image-to-video": KIE_WAN_I2V_MODEL,
+        },
+        "task_types": {"text-to-video", "image-to-video"},
         "family": "wan",
+        "ratio_field_by_task": {"text-to-video": "ratio"},
         "image_field": "first_frame_url",
         "last_image_field": "last_frame_url",
     },
@@ -48,14 +58,12 @@ KIE_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "mode": "pro",
         "sound": True,
     },
-    KIE_KLING_26_T2V_MODEL: {
-        "task_type": "text-to-video",
-        "family": "kling",
-        "ratio_field": "aspect_ratio",
-        "sound": True,
-    },
-    KIE_KLING_26_I2V_MODEL: {
-        "task_type": "image-to-video",
+    KIE_KLING_26_MODEL: {
+        "api_models": {
+            "text-to-video": KIE_KLING_26_T2V_MODEL,
+            "image-to-video": KIE_KLING_26_I2V_MODEL,
+        },
+        "task_types": {"text-to-video", "image-to-video"},
         "family": "kling",
         "ratio_field": "aspect_ratio",
         "image_field": "image_urls",
@@ -183,7 +191,7 @@ def build_kie_create_payload(
         "resolution": values.get("resolution") or "720p",
     }
 
-    ratio_field = model_defaults.get("ratio_field")
+    ratio_field = model_defaults.get("ratio_field_by_task", {}).get(resolved_task_type) or model_defaults.get("ratio_field")
     if ratio_field:
         input_payload[ratio_field] = values.get("aspectRatio") or values.get("aspect_ratio") or values.get("ratio") or "16:9"
 
@@ -218,7 +226,8 @@ def build_kie_create_payload(
     if values.get("negativePrompt"):
         input_payload["negative_prompt"] = values.get("negativePrompt")
 
+    api_model = model_defaults.get("api_models", {}).get(resolved_task_type) or model_defaults.get("api_model") or model
     return {
-        "model": model_defaults.get("api_model") or model,
+        "model": api_model,
         "input": input_payload,
     }
