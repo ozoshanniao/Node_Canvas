@@ -37,3 +37,6 @@ Thumbs.db
 
 # claude
 .claude
+
+# Ignore local docs directory
+docs/
