@@ -51,6 +51,13 @@ class FakeTOSBackend:
 
 
 class PublicAssetServiceRegressionTest(unittest.TestCase):
+    def setUp(self):
+        self.env_patch = patch.dict(os.environ, {"PUBLIC_ASSET_STORAGE": "r2"}, clear=False)
+        self.env_patch.start()
+
+    def tearDown(self):
+        self.env_patch.stop()
+
     def test_r2_endpoint_is_derived_from_account_id(self):
         with patch.dict(os.environ, {
             "CLOUDFLARE_R2_ACCOUNT_ID": "abc123",

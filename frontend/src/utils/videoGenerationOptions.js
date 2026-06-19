@@ -613,6 +613,19 @@ const VIDEO_RECOVERABLE_QUERY_STATUSES = new Set([
   'query_error',
 ]);
 
+export const KIE_VIDEO_MODEL_MIGRATIONS = {
+  'wan/2-7-text-to-video': { model: 'wan/2-7', videoMode: 'text-to-video' },
+  'wan/2-7-image-to-video': { model: 'wan/2-7', videoMode: 'image-to-video' },
+  'kling-2.6/text-to-video': { model: 'kling-2.6', videoMode: 'text-to-video' },
+  'kling-2.6/image-to-video': { model: 'kling-2.6', videoMode: 'image-to-video' },
+  'kling-3.0/video/text-to-video': { model: 'kling-3.0/video', videoMode: 'text-to-video' },
+  'kling-3.0/video/image-to-video': { model: 'kling-3.0/video', videoMode: 'image-to-video' },
+  'bytedance/seedance-2/text-to-video': { model: 'bytedance/seedance-2', videoMode: 'text-to-video' },
+  'bytedance/seedance-2/image-to-video': { model: 'bytedance/seedance-2', videoMode: 'frame' },
+  'bytedance/seedance-2-fast/text-to-video': { model: 'bytedance/seedance-2-fast', videoMode: 'text-to-video' },
+  'bytedance/seedance-2-fast/image-to-video': { model: 'bytedance/seedance-2-fast', videoMode: 'frame' },
+};
+
 const hasVideoTaskOutput = (task = {}) =>
   Boolean(task.outputUrl || task.videoUrl || task.localVideoUrl || task.outputs?.videoUrl);
 
@@ -649,7 +662,7 @@ export const resolveKlingOmniElements = (omniParamsOutput) => {
 };
 
 export const fetchVideoGenerationRegistry = async () => {
-  const response = await fetch('http://127.0.0.1:8000/api/video/specs');
+  const response = await fetch('http://127.0.0.1:8000/api/video/model-specs');
   const registry = await response.json();
   if (!response.ok) {
     throw new Error(registry?.detail || `Video specs fetch failed: ${response.status}`);
@@ -721,30 +734,52 @@ const applyModelConstraints = (settings, modelConfig) => {
 };
 
 export const normalizeVideoGenerationSettings = (settings = {}, registry) => {
-  const provider = getVideoProvider(settings.provider, registry);
-  const model = getVideoModel(provider?.id, settings.model, registry);
+  // Temporary Phase 3 runtime bridge only. Do not persist to project.json.
+  // New saved VideoNode data stores user settings in data.params and taskType.
+  const sourceSettings = {
+    ...settings,
+    ...(settings.params || {}),
+    videoMode: settings.params?.videoMode || settings.taskType || settings.videoMode,
+    outputs: settings.outputs?.video || settings.outputs?.lastFrame
+      ? {
+          ...settings.outputs,
+          videoUrl: settings.outputs?.video?.url || settings.outputs?.videoUrl,
+        }
+      : settings.outputs,
+  };
+  const modelMigration = KIE_VIDEO_MODEL_MIGRATIONS[sourceSettings.model];
+  if (sourceSettings.provider === 'kie' && modelMigration) {
+    sourceSettings.model = modelMigration.model;
+    sourceSettings.videoMode = modelMigration.videoMode;
+    sourceSettings.params = {
+      ...(sourceSettings.params || {}),
+      videoMode: modelMigration.videoMode,
+    };
+  }
+  const provider = getVideoProvider(sourceSettings.provider, registry);
+  const model = getVideoModel(provider?.id, sourceSettings.model, registry);
   const params = model?.params || {};
   const nextSettings = {
     ...DEFAULT_VIDEO_GENERATION_SETTINGS,
-    ...settings,
+    ...sourceSettings,
     provider: provider?.id || DEFAULT_VIDEO_GENERATION_SETTINGS.provider,
     model: model?.id || DEFAULT_VIDEO_GENERATION_SETTINGS.model,
     customParams: {
       ...(model?.customParams || {}),
-      ...(settings.customParams || {}),
+      ...(sourceSettings.customParams || {}),
     },
     task: {
       ...DEFAULT_VIDEO_GENERATION_SETTINGS.task,
-      ...(settings.task || {}),
+      ...(sourceSettings.task || {}),
     },
     outputs: {
       ...DEFAULT_VIDEO_GENERATION_SETTINGS.outputs,
-      ...(settings.outputs || {}),
+      ...(sourceSettings.outputs || {}),
     },
   };
 
   Object.entries(params).forEach(([key, config]) => {
-    const current = settings[key];
+    const current = sourceSettings[key];
     const normalizedCurrent = normalizeSelectValue(key, current);
     const fallback = getParamDefault(config);
     if (config.type === 'select') {
@@ -831,27 +866,66 @@ export const shouldShowVideoNegativePrompt = (modelConfig = {}, settings = {}) =
 export const shouldShowVideoCustomParams = (_modelConfig = {}, _settings = {}, appSettings = {}) =>
   Boolean(appSettings?.showRawCustomParams);
 
+const VIDEO_MODE_ALIASES = {
+  text: 'text-to-video',
+  t2v: 'text-to-video',
+  frame: 'image-to-video',
+  i2v: 'image-to-video',
+  'image-to-video': 'image-to-video',
+  'text-to-video': 'text-to-video',
+  'reference-video': 'reference-video',
+  'multimodal-reference': 'reference-video',
+};
+
+const normalizeVideoModeAlias = (mode) => VIDEO_MODE_ALIASES[mode] || mode;
+
+export const getEffectiveVideoMode = (settings = {}, modelConfig = {}) => {
+  const supportedModes = modelConfig?.supportedModes || [];
+  if (supportedModes.length === 1) return supportedModes[0];
+
+  const requested = settings.videoMode || modelConfig?.params?.videoMode?.default;
+  if (supportedModes.includes(requested)) return requested;
+
+  const normalizedRequested = normalizeVideoModeAlias(requested);
+  const aliasMatch = supportedModes.find((mode) => normalizeVideoModeAlias(mode) === normalizedRequested);
+  return aliasMatch || supportedModes[0] || requested || DEFAULT_VIDEO_GENERATION_SETTINGS.videoMode;
+};
+
 export const getActiveVideoHandlesForMode = (mode, modelConfig, settings = {}) => {
   if (isKlingOmniModel(modelConfig) || isKlingOmniModel(settings)) {
     return ['omniParams:in'];
   }
   if (isSeedanceModel(modelConfig) || isSeedanceModel(settings)) {
-    if (mode === 'frame') return ['text:prompt', 'image:firstFrame', 'image:lastFrame'];
-    if (mode === 'multimodal-reference') {
+    if (mode === 'frame' || mode === 'image-to-video') {
+      return ['text:prompt', 'image:firstFrame', 'image:lastFrame'];
+    }
+    if (mode === 'multimodal-reference' || mode === 'reference-video') {
       return ['text:prompt', 'image:references', 'video:references', 'audio:references'];
     }
     return ['text:prompt'];
   }
   const nextSettings = { ...settings, videoMode: mode };
-  const shotMode = supportsKlingMultiShot(modelConfig) ? getKlingShotMode(nextSettings) : 'single';
-  const promptHandle = shotMode === 'customize' ? 'multiPrompt:in' : 'text:prompt';
-  if (mode === 'image-to-video') {
-    const handles = [promptHandle, 'image:images'];
-    if (supportsVideoEndFrame(modelConfig, nextSettings)) handles.push('image:end');
+  const promptHandle = 'text:prompt';
+  if (mode === 'image-to-video' || mode === 'frame') {
+    const handles = [promptHandle, 'image:firstFrame'];
+    if (supportsVideoEndFrame(modelConfig, nextSettings)) handles.push('image:lastFrame');
     return handles;
   }
-  if (mode === 'reference-video') return [promptHandle, 'image:images'];
+  if (mode === 'reference-video' || mode === 'multimodal-reference') {
+    return [promptHandle, 'image:references', 'video:references', 'audio:references'];
+  }
   return [promptHandle];
+};
+
+export const shouldRenderVideoToolbarParam = (key, modelConfig, settings = {}) => {
+  if (key === 'videoMode') {
+    const supportedModes = modelConfig?.supportedModes || [];
+    return supportedModes.length > 1;
+  }
+  if (key !== 'aspectRatio') return true;
+  if (settings.videoMode !== 'image-to-video') return true;
+  if (modelConfig?.family === 'wan') return false;
+  return modelConfig?.family !== 'kling';
 };
 
 const getModeShortLabel = (mode) => VIDEO_MODE_OPTIONS.find((option) => option.id === mode)?.shortLabel || mode;

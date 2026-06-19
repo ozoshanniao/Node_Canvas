@@ -1,6 +1,6 @@
 import { mergeNodeDefaults } from '../utils/nodeDefaults.js';
 import { DEFAULT_IMAGE_GENERATION_SETTINGS } from '../utils/imageGenerationOptions.js';
-import { DEFAULT_VIDEO_GENERATION_SETTINGS } from '../utils/videoGenerationOptions.js';
+import { createDefaultVideoNodeData } from '../utils/videoNodeData.js';
 import { DEFAULT_EASE_CURVE_DATA } from '../lib/easingPresets.js';
 
 export const NODE_DEFINITIONS = [
@@ -106,19 +106,19 @@ export const NODE_DEFINITIONS = [
       { id: 'text:prompt', kind: 'text' },
       { id: 'multiPrompt:in', kind: 'multiPrompt' },
       { id: 'omniParams:in', kind: 'omniParams' },
-      { id: 'image:images', kind: 'image' },
-      { id: 'image:end', kind: 'image' },
       { id: 'image:firstFrame', kind: 'image', label: 'First Frame' },
       { id: 'image:lastFrame', kind: 'image', label: 'Last Frame' },
       { id: 'image:references', kind: 'image', label: 'Images' },
       { id: 'video:references', kind: 'video', label: 'Videos' },
       { id: 'audio:references', kind: 'audio', label: 'Audio' },
+      { id: 'image:images', kind: 'image', legacy: true },
+      { id: 'image:end', kind: 'image', legacy: true },
     ],
     outputs: [
       { id: 'video:out', kind: 'video' },
       { id: 'image:lastFrame', kind: 'image', label: 'Last Frame' },
     ],
-    defaultData: { ...DEFAULT_VIDEO_GENERATION_SETTINGS },
+    defaultData: createDefaultVideoNodeData(),
     defaultsKind: 'videoGeneration',
     defaultSize: { width: 520, height: 293 },
   },

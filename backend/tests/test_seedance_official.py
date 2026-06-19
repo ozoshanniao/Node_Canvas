@@ -537,6 +537,7 @@ class PublicAssetServiceTest(unittest.TestCase):
         media_path = Path(__file__).resolve().parents[2] / "requirements.txt"
         backend = FakeR2Backend()
         with patch.dict(os.environ, {
+            "PUBLIC_ASSET_STORAGE": "r2",
             "PUBLIC_ASSET_PREFIX": "node-canvas/seedance-input/",
             "PUBLIC_ASSET_CACHE_TTL_DAYS": "4",
         }):

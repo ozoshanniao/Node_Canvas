@@ -168,12 +168,19 @@ class GoogleVeoProvider(BaseVideoProvider):
 
         return types.GenerateVideosSource(**source_kwargs), types.GenerateVideosConfig(**config_kwargs)
 
-    async def create_task(self, request: VideoGenerateRequest) -> dict:
+    async def build_create_payload(self, request: VideoGenerateRequest) -> dict:
         source, config = await self._build_source_and_config(request)
+        return {
+            "source": source,
+            "config": config,
+        }
+
+    async def create_task(self, request: VideoGenerateRequest) -> dict:
+        payload = await self.build_create_payload(request)
         operation = self._client().models.generate_videos(
             model=request.model,
-            source=source,
-            config=config,
+            source=payload["source"],
+            config=payload["config"],
         )
         return {
             "providerTaskId": operation.name,
