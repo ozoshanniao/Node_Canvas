@@ -397,7 +397,7 @@ export const VIDEO_GENERATION_REGISTRY = {
     },
     {
       id: 'google',
-      label: 'Google',
+      label: 'Google Cloud',
       models: [
         {
           id: 'veo-3.1-generate-001',

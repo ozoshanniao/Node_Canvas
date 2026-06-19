@@ -320,7 +320,7 @@ class VideoGenerationService:
 
     def _provider_label(self, provider_id: str | None) -> str:
         return {
-            "google": "Google",
+            "google": "Google Cloud",
             "kling": "Kling",
             "yunwu-kling": "Yunwu-Kling",
             "seedance_official": "Seedance",
@@ -334,7 +334,7 @@ class VideoGenerationService:
             message = str(response.get("message") or status)
             remote_url = response.get("remoteVideoUrl")
             label = self._provider_label(provider_id)
-            known_prefixes = ("Google:", "Kling:", "Yunwu-Kling:", "Seedance:", "Yunwu:", "KIE:")
+            known_prefixes = ("Google:", "Google Cloud:", "Kling:", "Yunwu-Kling:", "Seedance:", "Yunwu:", "KIE:")
             if status == "error" and not message.startswith(known_prefixes):
                 message = f"{label}: {message}"
             return status, message, remote_url

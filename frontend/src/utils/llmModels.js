@@ -1,7 +1,7 @@
 export const LLM_PROVIDERS = [
   {
     id: 'Google',
-    label: 'Google',
+    label: 'Google Cloud',
     models: [
       {
         id: 'gemini-3.1-flash-lite',

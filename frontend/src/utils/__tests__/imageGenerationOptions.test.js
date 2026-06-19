@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  getImageProviderOptions,
   getImageModelOptions,
   getImageModelSwitchPatch,
   getImageResolutionOptions,
@@ -102,6 +103,17 @@ const kieRegistry = {
 
 
 {
+  assert.deepEqual(
+    getImageProviderOptions({ providers: { Google: ['Nano Pro'], Yunwu: ['Nano 2'] }, models: {} }),
+    [{ id: 'Google', label: 'Google Cloud' }, { id: 'Yunwu', label: 'Yunwu' }]
+  );
+
+  const googleSettings = normalizeImageGenerationSettings({ provider: 'Google', model: 'Nano Pro' }, {
+    providers: { Google: ['Nano Pro'], Yunwu: ['Nano 2'] },
+    models: { 'Nano Pro': { ratios: ['1:1'], resolutions: ['1K'] }, 'Nano 2': { ratios: ['1:1'], resolutions: ['1K'] } },
+  });
+  assert.equal(googleSettings.provider, 'Google');
+
   assert.deepEqual(
     getImageModelOptions('KIE', kieRegistry).map((option) => option.id),
     ['Nano Banana Pro (KIE)', 'Nano Banana 2 (KIE)', 'GPT Image 2 (KIE)']

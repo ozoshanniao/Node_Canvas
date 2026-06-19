@@ -42,7 +42,7 @@ PROVIDER_DEFINITIONS = (
     ProviderDefinition("deepseek", "DeepSeek", (_secret("apiKey", "DEEPSEEK_API_KEY"),)),
     ProviderDefinition(
         "google",
-        "Google / Gemini / Veo",
+        "Google Cloud / Vertex AI",
         (_secret("apiKey", "GOOGLE_CLOUD_API_KEY"),),
         (
             EnvRequirement(

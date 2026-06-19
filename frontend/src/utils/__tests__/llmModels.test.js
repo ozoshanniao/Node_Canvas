@@ -5,6 +5,7 @@ import {
   getLLMModelCapabilities,
   getLLMModelsByProvider,
   getLLMProvider,
+  getLLMProviderLabel,
 } from '../llmModels.js';
 
 const deepseekProvider = getLLMProvider('deepseek');
@@ -25,6 +26,12 @@ for (const modelId of deepseekModels) {
   assert.equal(capabilities.supportsHistory, false);
   assert.equal(capabilities.supportsLocalSoftSkills, true);
 }
+
+
+const googleProvider = getLLMProvider('Google');
+assert.equal(googleProvider.id, 'Google');
+assert.equal(googleProvider.label, 'Google Cloud');
+assert.equal(getLLMProviderLabel('Google'), 'Google Cloud');
 
 assert.deepEqual(getActiveLLMInputHandles('deepseek', 'deepseek-v4-flash'), ['text:in']);
 assert.deepEqual(getActiveLLMInputHandles('Google', 'gemini-3.1-flash-lite'), ['text:in', 'image:in']);

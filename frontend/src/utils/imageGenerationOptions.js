@@ -76,7 +76,10 @@ const normalizeRegistry = (registry) => {
   return registry;
 };
 
+const getImageProviderDisplayLabel = (providerId) => (providerId === 'Google' ? 'Google Cloud' : providerId);
+
 const toOption = (id) => ({ id, label: id });
+const toProviderOption = (id) => ({ id, label: getImageProviderDisplayLabel(id) });
 
 const MODEL_METADATA_KEYS = new Set([
   'id',
@@ -99,7 +102,7 @@ const isExtraParamConfig = (key, value) => {
 };
 
 export const getImageProviderOptions = (registry) =>
-  Object.keys(normalizeRegistry(registry).providers).map(toOption);
+  Object.keys(normalizeRegistry(registry).providers).map(toProviderOption);
 
 export const getImageProviderConfig = (providerId, registry) => {
   const safeRegistry = normalizeRegistry(registry);

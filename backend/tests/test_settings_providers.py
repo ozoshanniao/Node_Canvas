@@ -132,6 +132,14 @@ class ProviderSettingsStatusTest(unittest.TestCase):
         self.assertEqual(self.store.get_provider("deepseek"), {})
         self.assertNotIn("fake-settings", str(ctx.exception.detail))
 
+    def test_google_provider_display_name_is_google_cloud_vertex(self):
+        with patch.dict(os.environ, self.clean_env, clear=False):
+            google = provider_by_id(settings_router.get_provider_statuses(), "google")
+
+        self.assertEqual(google["id"], "google")
+        self.assertEqual(google["name"], "Google Cloud / Vertex AI")
+        self.assertIn("GOOGLE_CLOUD_API_KEY", google["requiredEnv"])
+
     def test_google_settings_still_requires_project_env(self):
         self.store.set_provider("google", {"apiKey": "fake-key"})
         with patch.dict(os.environ, self.clean_env, clear=False):
