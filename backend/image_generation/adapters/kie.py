@@ -67,7 +67,11 @@ class KieImageAdapter:
 
     async def build_create_payload(self, request: ImageGenerationRequest) -> dict[str, Any]:
         image_urls = await self._resolve_image_urls(request)
-        task_type = default_kie_image_task_type(request.model or request.config.get("model"), bool(image_urls))
+        task_type = default_kie_image_task_type(
+            request.model or request.config.get("model"),
+            bool(image_urls),
+            request.config.get("taskType") or request.config.get("task_type"),
+        )
         return build_kie_image_create_payload(
             model=request.model or request.config.get("model"),
             prompt=request.prompt,

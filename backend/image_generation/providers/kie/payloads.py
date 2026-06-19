@@ -5,6 +5,7 @@ from typing import Any
 
 KIE_NANO_BANANA_PRO_MODEL = "nano-banana-pro"
 KIE_NANO_BANANA_2_MODEL = "nano-banana-2"
+KIE_GPT_IMAGE_2_MODEL = "gpt-image-2"
 KIE_GPT_IMAGE_2_T2I_MODEL = "gpt-image-2-text-to-image"
 KIE_GPT_IMAGE_2_I2I_MODEL = "gpt-image-2-image-to-image"
 
@@ -48,21 +49,14 @@ KIE_IMAGE_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "max_images": 14,
         "prompt_max_length": 20000,
     },
-    KIE_GPT_IMAGE_2_T2I_MODEL: {
+    KIE_GPT_IMAGE_2_MODEL: {
         "display_name": "GPT Image 2 (KIE)",
         "family": "gpt-image",
-        "task_types": ["text-to-image"],
-        "defaults": {"aspect_ratio": "auto", "resolution": "1K"},
-        "image_input_field": None,
-        "max_images": 0,
-        "prompt_max_length": 20000,
-        "aspect_ratio_options": GPT_IMAGE_2_ASPECT_RATIOS,
-        "resolution_options": GPT_IMAGE_2_RESOLUTIONS,
-    },
-    KIE_GPT_IMAGE_2_I2I_MODEL: {
-        "display_name": "GPT Image 2 I2I (KIE)",
-        "family": "gpt-image",
-        "task_types": ["image-to-image"],
+        "task_types": ["text-to-image", "image-to-image"],
+        "api_models": {
+            "text-to-image": KIE_GPT_IMAGE_2_T2I_MODEL,
+            "image-to-image": KIE_GPT_IMAGE_2_I2I_MODEL,
+        },
         "defaults": {"aspect_ratio": "auto", "resolution": "1K"},
         "image_input_field": "input_urls",
         "max_images": 16,
@@ -73,11 +67,17 @@ KIE_IMAGE_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 
 KIE_IMAGE_SUPPORTED_MODELS = set(KIE_IMAGE_MODEL_DEFAULTS)
+KIE_IMAGE_LEGACY_TASK_TYPES = {
+    KIE_GPT_IMAGE_2_T2I_MODEL: "text-to-image",
+    KIE_GPT_IMAGE_2_I2I_MODEL: "image-to-image",
+}
 KIE_IMAGE_MODEL_ALIASES = {
     "Nano Banana Pro (KIE)": KIE_NANO_BANANA_PRO_MODEL,
     "Nano Banana 2 (KIE)": KIE_NANO_BANANA_2_MODEL,
-    "GPT Image 2 (KIE)": KIE_GPT_IMAGE_2_T2I_MODEL,
-    "GPT Image 2 I2I (KIE)": KIE_GPT_IMAGE_2_I2I_MODEL,
+    KIE_GPT_IMAGE_2_T2I_MODEL: KIE_GPT_IMAGE_2_MODEL,
+    KIE_GPT_IMAGE_2_I2I_MODEL: KIE_GPT_IMAGE_2_MODEL,
+    "GPT Image 2 (KIE)": KIE_GPT_IMAGE_2_MODEL,
+    "GPT Image 2 I2I (KIE)": KIE_GPT_IMAGE_2_MODEL,
 }
 
 
@@ -89,12 +89,20 @@ def supports_kie_image_task(model: str, task_type: str) -> bool:
     return task_type in KIE_IMAGE_MODEL_DEFAULTS.get(normalize_kie_image_model(model), {}).get("task_types", [])
 
 
-def default_kie_image_task_type(model: str, has_image_inputs: bool) -> str:
+def default_kie_image_task_type(model: str, has_image_inputs: bool, task_type: str | None = None) -> str:
+    raw_model = str(model or "")
     model = normalize_kie_image_model(model)
     task_types = KIE_IMAGE_MODEL_DEFAULTS.get(model, {}).get("task_types", [])
-    if len(task_types) == 1:
-        return str(task_types[0])
-    return "image-to-image" if has_image_inputs else "text-to-image"
+    if task_type in task_types:
+        return str(task_type)
+    legacy_task_type = KIE_IMAGE_LEGACY_TASK_TYPES.get(raw_model)
+    if legacy_task_type in task_types:
+        return legacy_task_type
+    if has_image_inputs and "image-to-image" in task_types:
+        return "image-to-image"
+    if "text-to-image" in task_types:
+        return "text-to-image"
+    return str(task_types[0]) if task_types else "text-to-image"
 
 
 def validate_gpt_image_2_params(
@@ -106,7 +114,7 @@ def validate_gpt_image_2_params(
     aspect_ratio: str | None,
     resolution: str | None,
 ) -> None:
-    if model not in {KIE_GPT_IMAGE_2_T2I_MODEL, KIE_GPT_IMAGE_2_I2I_MODEL}:
+    if normalize_kie_image_model(model) != KIE_GPT_IMAGE_2_MODEL:
         return
 
     label = "GPT Image 2 (KIE)"
@@ -191,7 +199,8 @@ def build_kie_image_create_payload(
         image_field = model_defaults.get("image_input_field") or "image_input"
         input_payload[image_field] = urls
 
+    api_model = model_defaults.get("api_models", {}).get(task_type) or model
     return {
-        "model": model,
+        "model": api_model,
         "input": input_payload,
     }

@@ -6,6 +6,7 @@ from video_generation.adapters.errors import VideoProviderError
 from image_generation.adapters.kie import KieImageAdapter
 from image_generation.providers.kie.payloads import (
     KIE_GPT_IMAGE_2_I2I_MODEL,
+    KIE_GPT_IMAGE_2_MODEL,
     KIE_GPT_IMAGE_2_T2I_MODEL,
     KIE_NANO_BANANA_2_MODEL,
     KIE_NANO_BANANA_PRO_MODEL,
@@ -78,7 +79,7 @@ class KieImageAdapterTest(unittest.IsolatedAsyncioTestCase):
         adapter = KieImageAdapter(client=client, asset_router=router)
         request = ImageGenerationRequest(
             provider="KIE",
-            model=KIE_GPT_IMAGE_2_T2I_MODEL,
+            model=KIE_GPT_IMAGE_2_MODEL,
             prompt="a sharp editorial product photo",
             config={"aspectRatio": "16:9", "resolution": "4K"},
             project_path="Z:/project",
@@ -102,7 +103,7 @@ class KieImageAdapterTest(unittest.IsolatedAsyncioTestCase):
         adapter = KieImageAdapter(client=client, asset_router=router)
         request = ImageGenerationRequest(
             provider="KIE",
-            model=KIE_GPT_IMAGE_2_I2I_MODEL,
+            model=KIE_GPT_IMAGE_2_MODEL,
             prompt="turn this into a studio campaign image",
             config={"aspectRatio": "16:9", "resolution": "4K"},
             project_path="Z:/project",
@@ -126,7 +127,7 @@ class KieImageAdapterTest(unittest.IsolatedAsyncioTestCase):
         adapter = KieImageAdapter(client=client, asset_router=FakeAssetRouter())
         request = ImageGenerationRequest(
             provider="KIE",
-            model=KIE_GPT_IMAGE_2_I2I_MODEL,
+            model=KIE_GPT_IMAGE_2_MODEL,
             prompt="edit",
             config={},
             project_path="Z:/project",
@@ -195,6 +196,29 @@ class KieImageAdapterTest(unittest.IsolatedAsyncioTestCase):
         await adapter.create(request)
 
         self.assertEqual(client.created_payloads[0]["model"], KIE_NANO_BANANA_PRO_MODEL)
+
+
+    async def test_gpt_image_2_legacy_ids_remain_compatible(self):
+        t2i = build_kie_image_create_payload(
+            model=KIE_GPT_IMAGE_2_T2I_MODEL,
+            prompt="prompt",
+            task_type="text-to-image",
+            params={"aspectRatio": "16:9", "resolution": "4K"},
+        )
+        self.assertEqual(t2i["model"], KIE_GPT_IMAGE_2_T2I_MODEL)
+        self.assertNotIn("input_urls", t2i["input"])
+        self.assertNotIn("image_input", t2i["input"])
+
+        i2i = build_kie_image_create_payload(
+            model=KIE_GPT_IMAGE_2_I2I_MODEL,
+            prompt="edit",
+            task_type="image-to-image",
+            params={"aspectRatio": "16:9", "resolution": "4K"},
+            image_urls=["https://x/input.png"],
+        )
+        self.assertEqual(i2i["model"], KIE_GPT_IMAGE_2_I2I_MODEL)
+        self.assertEqual(i2i["input"]["input_urls"], ["https://x/input.png"])
+        self.assertNotIn("image_input", i2i["input"])
 
     async def test_create_propagates_business_error(self):
         error = VideoProviderError(provider="kie", message="KIE createTask failed: rejected", category="provider_error")

@@ -7,7 +7,6 @@ KIE_IMAGE_MODELS = {
     "Nano Banana Pro (KIE)",
     "Nano Banana 2 (KIE)",
     "GPT Image 2 (KIE)",
-    "GPT Image 2 I2I (KIE)",
 }
 
 DEFERRED_OR_EXCLUDED = {
@@ -25,8 +24,7 @@ DEFERRED_OR_EXCLUDED = {
 EXPECTED_MODEL_IDS = {
     "Nano Banana Pro (KIE)": "nano-banana-pro",
     "Nano Banana 2 (KIE)": "nano-banana-2",
-    "GPT Image 2 (KIE)": "gpt-image-2-text-to-image",
-    "GPT Image 2 I2I (KIE)": "gpt-image-2-image-to-image",
+    "GPT Image 2 (KIE)": "gpt-image-2",
 }
 
 
@@ -52,13 +50,10 @@ class KieImageCapabilitiesTest(unittest.TestCase):
                 self.assertFalse(model["experimental"])
                 self.assertIn("(KIE)", model["label"])
                 if model_name == "GPT Image 2 (KIE)":
-                    self.assertEqual(model["taskTypes"], ["text-to-image"])
-                    self.assertFalse(model["supports_reference"])
-                    self.assertNotIn("internalImageInputField", model)
-                elif model_name == "GPT Image 2 I2I (KIE)":
-                    self.assertEqual(model["taskTypes"], ["image-to-image"])
+                    self.assertEqual(model["taskTypes"], ["text-to-image", "image-to-image"])
                     self.assertEqual(model["internalImageInputField"], "input_urls")
                     self.assertEqual(model["maxImages"], 16)
+                    self.assertEqual(model["promptMaxLength"], 20000)
                     self.assertTrue(model["supports_reference"])
                 else:
                     self.assertIn("text-to-image", model["taskTypes"])
@@ -72,19 +67,19 @@ class KieImageCapabilitiesTest(unittest.TestCase):
                         self.assertEqual(model["maxImages"], 14)
                         self.assertEqual(model["promptMaxLength"], 20000)
 
-    def test_gpt_image_2_models_are_registered_with_distinct_task_types(self):
-        t2i = self.models["GPT Image 2 (KIE)"]
-        i2i = self.models["GPT Image 2 I2I (KIE)"]
+    def test_gpt_image_2_model_is_aggregated(self):
+        gpt = self.models["GPT Image 2 (KIE)"]
 
-        self.assertEqual(t2i["id"], "gpt-image-2-text-to-image")
-        self.assertEqual(i2i["id"], "gpt-image-2-image-to-image")
-        self.assertEqual(t2i["taskTypes"], ["text-to-image"])
-        self.assertEqual(i2i["taskTypes"], ["image-to-image"])
-        self.assertEqual(i2i["internalImageInputField"], "input_urls")
+        self.assertEqual(gpt["id"], "gpt-image-2")
+        self.assertEqual(gpt["taskTypes"], ["text-to-image", "image-to-image"])
+        self.assertEqual(gpt["internalImageInputField"], "input_urls")
+        self.assertEqual(self.providers["KIE"].count("GPT Image 2 (KIE)"), 1)
+        self.assertNotIn("GPT Image 2 I2I (KIE)", self.providers["KIE"])
 
     def test_excluded_models_are_not_registered_under_kie(self):
         kie_models = set(self.providers.get("KIE", []))
         serialized_kie = " ".join(kie_models)
+        self.assertNotIn("GPT Image 2 I2I (KIE)", kie_models)
         for model_id in DEFERRED_OR_EXCLUDED:
             with self.subTest(model=model_id):
                 self.assertNotIn(model_id, serialized_kie)
