@@ -17,6 +17,8 @@ assert.deepEqual(
     missingEnv: ['KLING_ACCESS_KEY', 'KLING_SECRET_KEY'],
     missingDependencyEnv: [],
     requiredSettings: ['accessKey', 'secretKey'],
+    settingsFields: ['baseUrl'],
+    publicSettings: { baseUrl: 'https://api.openai.com/v1' },
     missingSettings: [],
     accessKey: 'must-not-be-preserved',
   }),
@@ -30,6 +32,8 @@ assert.deepEqual(
     missingEnv: ['KLING_ACCESS_KEY', 'KLING_SECRET_KEY'],
     missingDependencyEnv: [],
     requiredSettings: ['accessKey', 'secretKey'],
+    settingsFields: ['baseUrl'],
+    publicSettings: { baseUrl: 'https://api.openai.com/v1' },
     missingSettings: [],
   },
   'provider status normalization should preserve status metadata only'
@@ -83,3 +87,25 @@ await assert.rejects(
 );
 
 console.log('providerSettings tests passed');
+
+
+let openAISaveRequest;
+await saveProviderSettings('openai', { apiKey: 'fake-key', baseUrl: 'https://api.openai.com/v1' }, async (url, options) => {
+  openAISaveRequest = { url, options, body: JSON.parse(options.body) };
+  return {
+    ok: true,
+    json: async () => ({
+      status: 'success',
+      provider: {
+        id: 'openai',
+        name: 'OpenAI',
+        configured: true,
+        source: 'settings',
+        publicSettings: { baseUrl: 'https://api.openai.com/v1' },
+      },
+    }),
+  };
+});
+assert.equal(openAISaveRequest.body.apiKey, 'fake-key');
+assert.equal(openAISaveRequest.body.baseUrl, 'https://api.openai.com/v1');
+assert.equal(globalThis.localStorage?.getItem?.('OPENAI_API_KEY'), undefined);

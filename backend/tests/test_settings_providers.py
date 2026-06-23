@@ -15,6 +15,9 @@ PROVIDER_ENV_NAMES = {
     "GOOGLE_PROJECT_ID",
     "GOOGLE_PROJECT",
     "YUNWU_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "ANTHROPIC_API_KEY",
     "KLING_ACCESS_KEY",
     "KLING_SECRET_KEY",
     "ARK_API_KEY",
@@ -151,6 +154,47 @@ class ProviderSettingsStatusTest(unittest.TestCase):
             google["missingDependencyEnv"],
             ["GOOGLE_CLOUD_PROJECT or GOOGLE_PROJECT_ID or GOOGLE_PROJECT"],
         )
+
+
+    def test_openai_settings_status_and_base_url_do_not_leak_secret(self):
+        fake_secret = "fake-openai-secret"
+        self.store.set_provider("openai", {"apiKey": fake_secret, "baseUrl": "https://proxy.example.test/v1/"})
+
+        with patch.dict(os.environ, self.clean_env, clear=False):
+            openai = provider_by_id(settings_router.get_provider_statuses(), "openai")
+
+        self.assertEqual(openai["name"], "OpenAI")
+        self.assertEqual(openai["source"], "settings")
+        self.assertEqual(openai["publicSettings"], {"baseUrl": "https://proxy.example.test/v1"})
+        self.assertNotIn(fake_secret, str(openai))
+
+    def test_openai_post_saves_api_key_and_normalized_base_url(self):
+        payload = {"apiKey": "fake-openai", "baseUrl": "https://proxy.example.test/v1/"}
+        with patch.dict(os.environ, self.clean_env, clear=False):
+            response = run(settings_router.save_settings_provider("openai", payload))
+
+        self.assertEqual(response["provider"]["source"], "settings")
+        self.assertEqual(self.store.get_provider("openai"), {"apiKey": "fake-openai", "baseUrl": "https://proxy.example.test/v1"})
+        self.assertNotIn("fake-openai", str(response))
+
+    def test_openai_post_rejects_invalid_base_url(self):
+        with patch.dict(os.environ, self.clean_env, clear=False):
+            with self.assertRaises(HTTPException) as ctx:
+                run(settings_router.save_settings_provider("openai", {"apiKey": "fake", "baseUrl": "https://user:pass@example.test/v1"}))
+
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.assertEqual(self.store.get_provider("openai"), {})
+
+    def test_anthropic_settings_status_does_not_leak_secret(self):
+        fake_secret = "fake-claude-secret"
+        self.store.set_provider("anthropic", {"apiKey": fake_secret})
+
+        with patch.dict(os.environ, self.clean_env, clear=False):
+            anthropic = provider_by_id(settings_router.get_provider_statuses(), "anthropic")
+
+        self.assertEqual(anthropic["name"], "Claude")
+        self.assertEqual(anthropic["source"], "settings")
+        self.assertNotIn(fake_secret, str(anthropic))
 
     def test_r2_settings_still_requires_non_secret_env(self):
         self.store.set_provider(

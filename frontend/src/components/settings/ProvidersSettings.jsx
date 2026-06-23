@@ -7,17 +7,22 @@ import {
 } from '../../utils/providerSettings';
 
 const PROVIDER_FIELDS = {
-  deepseek: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey' }],
-  google: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey' }],
-  yunwu: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey' }],
-  seedance: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey' }],
+  deepseek: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
+  google: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
+  openai: [
+    { id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true },
+    { id: 'baseUrl', label: 'Base URL', placeholder: 'https://api.openai.com/v1', secret: false, required: false },
+  ],
+  anthropic: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
+  yunwu: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
+  seedance: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
   kling: [
-    { id: 'accessKey', labelKey: 'settings.providers.accessKey', placeholderKey: 'settings.providers.enterAccessKey' },
-    { id: 'secretKey', labelKey: 'settings.providers.secretKey', placeholderKey: 'settings.providers.enterSecretKey' },
+    { id: 'accessKey', labelKey: 'settings.providers.accessKey', placeholderKey: 'settings.providers.enterAccessKey', secret: true, required: true },
+    { id: 'secretKey', labelKey: 'settings.providers.secretKey', placeholderKey: 'settings.providers.enterSecretKey', secret: true, required: true },
   ],
   'cloudflare-r2': [
-    { id: 'accessKeyId', labelKey: 'settings.providers.accessKeyId', placeholderKey: 'settings.providers.enterAccessKeyId' },
-    { id: 'secretAccessKey', labelKey: 'settings.providers.secretAccessKey', placeholderKey: 'settings.providers.enterSecretAccessKey' },
+    { id: 'accessKeyId', labelKey: 'settings.providers.accessKeyId', placeholderKey: 'settings.providers.enterAccessKeyId', secret: true, required: true },
+    { id: 'secretAccessKey', labelKey: 'settings.providers.secretAccessKey', placeholderKey: 'settings.providers.enterSecretAccessKey', secret: true, required: true },
   ],
 };
 
@@ -89,13 +94,20 @@ function ProviderStatusCard({ provider, t, onRefresh }) {
   const [actionStatus, setActionStatus] = useState('idle');
   const [message, setMessage] = useState('');
   const settingsEditable = provider.supportsSettings && provider.source !== 'env' && fields.length > 0;
-  const canSave = settingsEditable && fields.every((field) => values[field.id]?.trim()) && actionStatus === 'idle';
+  const canSave = settingsEditable && fields.every((field) => !field.required || values[field.id]?.trim()) && actionStatus === 'idle';
 
   const handleSave = async () => {
     setActionStatus('saving');
     setMessage('');
     try {
-      await saveProviderSettings(provider.id, Object.fromEntries(fields.map((field) => [field.id, values[field.id].trim()])));
+      await saveProviderSettings(
+        provider.id,
+        Object.fromEntries(
+          fields
+            .filter((field) => field.required || values[field.id]?.trim())
+            .map((field) => [field.id, values[field.id].trim()])
+        )
+      );
       setValues({});
       setMessage(t('settings.providers.saved'));
       await onRefresh();
@@ -144,13 +156,13 @@ function ProviderStatusCard({ provider, t, onRefresh }) {
         <div className="mt-4 grid gap-3">
           {fields.map((field) => (
             <label key={field.id} className="block">
-              <span className="mb-1.5 block text-[10px] uppercase tracking-[0.14em] text-white/30">{t(field.labelKey)}</span>
+              <span className="mb-1.5 block text-[10px] uppercase tracking-[0.14em] text-white/30">{field.label || t(field.labelKey)}</span>
               <input
-                type="password"
+                type={field.secret === false ? 'text' : 'password'}
                 autoComplete="new-password"
                 value={values[field.id] || ''}
                 onChange={(event) => setValues((current) => ({ ...current, [field.id]: event.target.value }))}
-                placeholder={provider.source === 'settings' ? t('settings.providers.replacePlaceholder') : t(field.placeholderKey)}
+                placeholder={field.placeholder || (provider.source === 'settings' && field.secret !== false ? t('settings.providers.replacePlaceholder') : t(field.placeholderKey))}
                 className="w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2.5 text-xs text-white/80 outline-none transition-colors placeholder:text-white/20 focus:border-white/25"
               />
             </label>
@@ -169,6 +181,9 @@ function ProviderStatusCard({ provider, t, onRefresh }) {
         </div>
       )}
 
+      {Object.keys(provider.publicSettings || {}).length > 0 && (
+        <ProviderEnvList label="Global settings" values={Object.entries(provider.publicSettings).map(([key, value]) => `${key}: ${value}`)} />
+      )}
       <ProviderEnvList label={t('settings.providers.requiredEnv')} values={provider.requiredEnv} />
       {provider.missingEnv.length > 0 && <ProviderEnvList label={t('settings.providers.missingEnv')} values={provider.missingEnv} missing />}
 

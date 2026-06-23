@@ -28,6 +28,8 @@ export const sanitizeNodesForSave = (nodes = []) =>
     }
     delete data.hover;
     delete data.resolvedText;
+    delete data.apiKey;
+    delete data.baseUrl;
 
     // Strip base64 image fields - images are now stored as relative paths
     delete data.dataUrl;

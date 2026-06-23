@@ -1,14 +1,18 @@
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LLMImageInputItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     index: int
     url: str
 
 
 class LLMGenerateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     provider: str
     model: str
     inputText: str = ""
