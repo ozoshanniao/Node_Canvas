@@ -121,6 +121,15 @@ LLM_SPECS = {
             THINKING_LEVEL_PARAMETERS,
         ),
         _provider(
+            "google_studio",
+            "Google Studio",
+            [
+                _model("gemini-3.5-flash", "Gemini 3.5 Flash", images=True),
+                _model("gemini-3.1-pro-preview", "Gemini 3.1 Pro (Preview)", images=True),
+                _model("gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite", images=True),
+            ],
+        ),
+        _provider(
             "Yunwu",
             "Yunwu",
             [

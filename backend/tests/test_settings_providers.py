@@ -11,6 +11,8 @@ import settings_router
 PROVIDER_ENV_NAMES = {
     "DEEPSEEK_API_KEY",
     "GOOGLE_CLOUD_API_KEY",
+    "GOOGLE_API_KEY",
+    "GEMINI_API_KEY",
     "GOOGLE_CLOUD_PROJECT",
     "GOOGLE_PROJECT_ID",
     "GOOGLE_PROJECT",
@@ -155,6 +157,33 @@ class ProviderSettingsStatusTest(unittest.TestCase):
             ["GOOGLE_CLOUD_PROJECT or GOOGLE_PROJECT_ID or GOOGLE_PROJECT"],
         )
 
+
+    def test_google_studio_status_uses_independent_api_key_only(self):
+        self.store.set_provider("google_studio", {"apiKey": "fake-studio-settings"})
+        with patch.dict(os.environ, self.clean_env, clear=False):
+            google_studio = provider_by_id(settings_router.get_provider_statuses(), "google_studio")
+
+        self.assertEqual(google_studio["id"], "google_studio")
+        self.assertEqual(google_studio["name"], "Google Studio")
+        self.assertTrue(google_studio["configured"])
+        self.assertEqual(google_studio["source"], "settings")
+        self.assertEqual(google_studio["requiredEnv"], ["GOOGLE_API_KEY or GEMINI_API_KEY"])
+        self.assertEqual(google_studio["requiredSettings"], ["apiKey"])
+        self.assertEqual(google_studio["settingsFields"], [])
+        self.assertEqual(google_studio["missingDependencyEnv"], [])
+        self.assertEqual(google_studio["publicSettings"], {})
+        self.assertNotIn("fake-studio-settings", str(google_studio))
+
+    def test_google_studio_env_does_not_configure_google_cloud(self):
+        env = {**self.clean_env, "GOOGLE_API_KEY": "fake-studio-env"}
+        with patch.dict(os.environ, env, clear=False):
+            google = provider_by_id(settings_router.get_provider_statuses(), "google")
+            google_studio = provider_by_id(settings_router.get_provider_statuses(), "google_studio")
+
+        self.assertFalse(google["configured"])
+        self.assertEqual(google["source"], "none")
+        self.assertTrue(google_studio["configured"])
+        self.assertEqual(google_studio["source"], "env")
 
     def test_openai_settings_status_and_base_url_do_not_leak_secret(self):
         fake_secret = "fake-openai-secret"

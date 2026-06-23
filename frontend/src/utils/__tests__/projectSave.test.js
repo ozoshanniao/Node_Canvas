@@ -117,6 +117,10 @@ await saveProjectCore({
         model: 'gpt-5.5',
         apiKey: 'secret',
         baseUrl: 'https://api.openai.com/v1',
+        endpoint: 'https://example.test',
+        project: 'cloud-project',
+        location: 'us-central1',
+        vertexai: true,
         outputText: 'hello',
       },
     },
@@ -124,6 +128,10 @@ await saveProjectCore({
 });
 assert.equal(requests[2].body.nodes[0].data.apiKey, undefined);
 assert.equal(requests[2].body.nodes[0].data.baseUrl, undefined);
+assert.equal(requests[2].body.nodes[0].data.endpoint, undefined);
+assert.equal(requests[2].body.nodes[0].data.project, undefined);
+assert.equal(requests[2].body.nodes[0].data.location, undefined);
+assert.equal(requests[2].body.nodes[0].data.vertexai, undefined);
 assert.equal(requests[2].body.nodes[0].data.provider, 'openai');
 assert.equal(requests[2].body.nodes[0].data.model, 'gpt-5.5');
 

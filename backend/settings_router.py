@@ -72,6 +72,19 @@ PROVIDER_DEFINITIONS = (
         ),
     ),
     ProviderDefinition(
+        "google_studio",
+        "Google Studio",
+        (
+            SecretRequirement(
+                field="apiKey",
+                env=EnvRequirement(
+                    label="GOOGLE_API_KEY or GEMINI_API_KEY",
+                    alternatives=("GOOGLE_API_KEY", "GEMINI_API_KEY"),
+                ),
+            ),
+        ),
+    ),
+    ProviderDefinition(
         "openai",
         "OpenAI",
         (_secret("apiKey", "OPENAI_API_KEY"),),

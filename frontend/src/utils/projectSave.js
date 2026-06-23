@@ -30,6 +30,10 @@ export const sanitizeNodesForSave = (nodes = []) =>
     delete data.resolvedText;
     delete data.apiKey;
     delete data.baseUrl;
+    delete data.endpoint;
+    delete data.project;
+    delete data.location;
+    delete data.vertexai;
 
     // Strip base64 image fields - images are now stored as relative paths
     delete data.dataUrl;

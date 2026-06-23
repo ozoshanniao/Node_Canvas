@@ -9,6 +9,7 @@ import {
 const PROVIDER_FIELDS = {
   deepseek: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
   google: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
+  google_studio: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
   openai: [
     { id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true },
     { id: 'baseUrl', label: 'Base URL', placeholder: 'https://api.openai.com/v1', secret: false, required: false },

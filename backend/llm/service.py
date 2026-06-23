@@ -2,6 +2,7 @@ from .providers.base import LLMProviderError
 from .providers.anthropic_provider import AnthropicLLMProvider
 from .providers.deepseek_provider import DeepSeekLLMProvider
 from .providers.google_provider import GoogleLLMProvider
+from .providers.google_studio_provider import GoogleStudioLLMProvider
 from .providers.openai_provider import OpenAILLMProvider
 from .providers.yunwu_provider import YunwuLLMProvider
 from .schemas import LLMGenerateRequest
@@ -28,6 +29,7 @@ class LLMService:
         self.providers = {
             "yunwu": YunwuLLMProvider(api_key=yunwu_api_key),
             "google": GoogleLLMProvider(api_key=google_api_key),
+            "google_studio": GoogleStudioLLMProvider(),
             "deepseek": DeepSeekLLMProvider(api_key=deepseek_api_key, base_url=deepseek_base_url),
             "openai": OpenAILLMProvider(api_key=openai_api_key, base_url=openai_base_url),
             "anthropic": AnthropicLLMProvider(api_key=anthropic_api_key),

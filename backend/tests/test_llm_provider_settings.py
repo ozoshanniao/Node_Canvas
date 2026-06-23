@@ -7,7 +7,7 @@ from llm.providers.base import LLMProviderError
 from llm.providers.deepseek_provider import DeepSeekLLMProvider
 from llm.providers.openai_provider import OpenAILLMProvider
 from llm.providers.yunwu_provider import YunwuLLMProvider
-from settings_resolver import resolve_provider_secret, resolve_provider_setting
+from settings_resolver import resolve_google_studio_api_key, resolve_provider_secret, resolve_provider_setting
 
 
 class FakeSettingsStore:
@@ -88,6 +88,42 @@ class ProviderSettingsTest(unittest.TestCase):
             value = resolve_provider_secret("anthropic", "apiKey", "ANTHROPIC_API_KEY", store)
 
         self.assertEqual(value, "settings-anthropic")
+
+    def test_google_studio_resolver_precedence(self):
+        store = FakeSettingsStore({"google_studio": {"apiKey": "settings-studio"}})
+        env = {"GOOGLE_API_KEY": "env-google", "GEMINI_API_KEY": "env-gemini"}
+        with patch.dict(os.environ, env, clear=False):
+            self.assertEqual(resolve_google_studio_api_key(store), "env-google")
+
+        env = {"GOOGLE_API_KEY": "", "GEMINI_API_KEY": "env-gemini"}
+        with patch.dict(os.environ, env, clear=False):
+            self.assertEqual(resolve_google_studio_api_key(store), "env-gemini")
+
+        env = {"GOOGLE_API_KEY": "", "GEMINI_API_KEY": ""}
+        with patch.dict(os.environ, env, clear=False):
+            self.assertEqual(resolve_google_studio_api_key(store), "settings-studio")
+
+    def test_google_studio_does_not_use_google_cloud_key(self):
+        store = FakeSettingsStore({"google_studio": {}})
+        env = {"GOOGLE_API_KEY": "", "GEMINI_API_KEY": "", "GOOGLE_CLOUD_API_KEY": "cloud-only"}
+        with patch.dict(os.environ, env, clear=False):
+            self.assertIsNone(resolve_google_studio_api_key(store))
+
+    def test_google_cloud_does_not_use_google_studio_keys(self):
+        store = FakeSettingsStore({"google": {}})
+        env = {"GOOGLE_API_KEY": "studio-google", "GEMINI_API_KEY": "studio-gemini", "GOOGLE_CLOUD_API_KEY": ""}
+        with patch.dict(os.environ, env, clear=False):
+            self.assertIsNone(resolve_provider_secret("google", "apiKey", "GOOGLE_CLOUD_API_KEY", store))
+
+    def test_google_and_google_studio_use_different_settings_namespaces(self):
+        store = FakeSettingsStore({
+            "google": {"apiKey": "settings-cloud"},
+            "google_studio": {"apiKey": "settings-studio"},
+        })
+        env = {"GOOGLE_API_KEY": "", "GEMINI_API_KEY": "", "GOOGLE_CLOUD_API_KEY": ""}
+        with patch.dict(os.environ, env, clear=False):
+            self.assertEqual(resolve_provider_secret("google", "apiKey", "GOOGLE_CLOUD_API_KEY", store), "settings-cloud")
+            self.assertEqual(resolve_google_studio_api_key(store), "settings-studio")
 
     def test_provider_headers_use_patched_resolvers_without_real_settings(self):
         with patch("llm.providers.openai_provider.resolve_provider_secret", return_value="settings-openai"):

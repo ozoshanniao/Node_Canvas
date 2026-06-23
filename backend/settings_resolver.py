@@ -18,6 +18,20 @@ def resolve_provider_secret(
         return settings_value.strip()
     return None
 
+
+
+def resolve_google_studio_api_key(store: SettingsStore | None = None) -> str | None:
+    for env_var_name in ("GOOGLE_API_KEY", "GEMINI_API_KEY"):
+        env_value = (os.getenv(env_var_name) or "").strip()
+        if env_value:
+            return env_value
+
+    settings_value = (store or SettingsStore()).get_provider("google_studio").get("apiKey")
+    if isinstance(settings_value, str) and settings_value.strip():
+        return settings_value.strip()
+    return None
+
+
 def resolve_provider_setting(
     provider_id: str,
     field_name: str,

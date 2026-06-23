@@ -56,6 +56,66 @@ export const LLM_PROVIDERS = [
     },
   },
   {
+    id: 'google_studio',
+    label: 'Google Studio',
+    models: [
+      {
+        id: 'gemini-3.5-flash',
+        label: 'Gemini 3.5 Flash',
+        capabilities: {
+          supportsImages: true,
+          supportsThinking: false,
+          supportsReasoningEffort: false,
+          supportsStreaming: false,
+          supportsLocalSoftSkills: false,
+        },
+      },
+      {
+        id: 'gemini-3.1-pro-preview',
+        label: 'Gemini 3.1 Pro (Preview)',
+        capabilities: {
+          supportsImages: true,
+          supportsThinking: false,
+          supportsReasoningEffort: false,
+          supportsStreaming: false,
+          supportsLocalSoftSkills: false,
+        },
+      },
+      {
+        id: 'gemini-3.1-flash-lite',
+        label: 'Gemini 3.1 Flash-Lite',
+        capabilities: {
+          supportsImages: true,
+          supportsThinking: false,
+          supportsReasoningEffort: false,
+          supportsStreaming: false,
+          supportsLocalSoftSkills: false,
+        },
+      },
+    ],
+    parameters: {
+      thinkingLevel: {
+        enabled: false,
+      },
+      temperature: {
+        enabled: true,
+        label: 'Temperature',
+        default: 0.85,
+        min: 0,
+        max: 2,
+        step: 0.05,
+      },
+      maxTokens: {
+        enabled: true,
+        label: 'Max Tokens',
+        default: 8192,
+        min: 256,
+        max: 65535,
+        step: 256,
+      },
+    },
+  },
+  {
     id: 'Yunwu',
     label: 'Yunwu',
     models: [

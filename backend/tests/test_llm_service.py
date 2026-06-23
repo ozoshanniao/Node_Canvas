@@ -23,11 +23,27 @@ class FakeProvider:
 
 
 class LLMServiceTest(unittest.TestCase):
-    def test_registers_openai_and_anthropic(self):
+    def test_registers_openai_anthropic_and_google_studio(self):
         service = LLMService()
         self.assertIn("google", service.providers)
+        self.assertIn("google_studio", service.providers)
         self.assertIn("openai", service.providers)
         self.assertIn("anthropic", service.providers)
+
+    def test_routes_google_cloud_legacy_and_google_studio_separately(self):
+        service = LLMService()
+        service.providers["google"] = FakeProvider("google cloud text")
+        service.providers["google_studio"] = FakeProvider("studio text")
+
+        legacy_text = run(service.generate(LLMGenerateRequest(provider="Google", model="gemini-3.1-flash-lite", inputText="Hi")))
+        cloud_text = run(service.generate(LLMGenerateRequest(provider="google", model="gemini-3.1-flash-lite", inputText="Hi")))
+        studio_text = run(service.generate(LLMGenerateRequest(provider="google_studio", model="gemini-3.5-flash", inputText="Hi")))
+
+        self.assertEqual(legacy_text, "google cloud text")
+        self.assertEqual(cloud_text, "google cloud text")
+        self.assertEqual(studio_text, "studio text")
+        self.assertEqual(service.providers["google"].requests[0].provider, "Google")
+        self.assertEqual(service.providers["google_studio"].requests[0].provider, "google_studio")
 
     def test_routes_openai_and_anthropic(self):
         service = LLMService()
@@ -49,6 +65,9 @@ class LLMServiceTest(unittest.TestCase):
             LLMGenerateRequest(provider="openai", model="gpt-5.5", inputText="Hi", apiKey="secret")
         with self.assertRaises(ValidationError):
             LLMGenerateRequest(provider="openai", model="gpt-5.5", inputText="Hi", baseUrl="https://example.test/v1")
+        for field, value in {"endpoint": "https://example.test", "project": "p", "location": "us", "vertexai": True}.items():
+            with self.assertRaises(ValidationError):
+                LLMGenerateRequest(provider="google_studio", model="gemini-3.5-flash", inputText="Hi", **{field: value})
 
 
 class LLMSpecsTest(unittest.TestCase):
@@ -57,7 +76,11 @@ class LLMSpecsTest(unittest.TestCase):
         providers = {provider["id"]: provider for provider in specs["providers"]}
 
         self.assertIn("Google", providers)
+        self.assertIn("google_studio", providers)
+        self.assertEqual(providers["Google"]["label"], "Google Cloud")
+        self.assertEqual(providers["google_studio"]["label"], "Google Studio")
         self.assertIn("gemini-3.1-flash-lite", [model["id"] for model in providers["Google"]["models"]])
+        self.assertEqual([model["id"] for model in providers["google_studio"]["models"]], ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite"])
         self.assertEqual([model["id"] for model in providers["openai"]["models"]], ["gpt-5.5", "gpt-5.4-mini", "gpt-5.4-nano"])
         self.assertEqual([model["id"] for model in providers["anthropic"]["models"]], ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"])
 
@@ -73,6 +96,10 @@ class LLMSpecsTest(unittest.TestCase):
                 self.assertNotIn("toolCalling", model)
                 self.assertNotIn("fileInput", model)
                 self.assertNotIn("videoInput", model)
+                self.assertNotIn("audioInput", model)
+                self.assertNotIn("agent", model)
+                self.assertNotIn("imageGeneration", model)
+                self.assertNotIn("videoGeneration", model)
 
 
 if __name__ == "__main__":
