@@ -1,6 +1,7 @@
-from .schemas import ImageGenerationRequest, ImageGenerationResult, ImageInputItem
+﻿from .schemas import ImageGenerationRequest, ImageGenerationResult, ImageInputItem
 from .storage import ensure_generation_dir, wrap_image_result
 from .providers.google_provider import GoogleImageProvider
+from .providers.google_studio_provider import GoogleStudioImageProvider
 from .providers.kie.provider import KieImageProvider
 
 
@@ -8,6 +9,7 @@ class ImageGenerationService:
     def __init__(self, engines: dict):
         self.engines = engines
         self.google_provider = None
+        self.google_studio_provider = None
         self.kie_provider = None
 
     def _legacy_image_inputs(self, image_inputs) -> list[str]:
@@ -45,6 +47,16 @@ class ImageGenerationService:
             if self.google_provider is None:
                 self.google_provider = GoogleImageProvider()
             result = await self.google_provider.generate(request)
+            response_data = wrap_image_result(result)
+            return ImageGenerationResult(
+                url=response_data.get("url"),
+                urls=response_data.get("urls"),
+            )
+
+        if request.provider == "google_studio":
+            if self.google_studio_provider is None:
+                self.google_studio_provider = GoogleStudioImageProvider()
+            result = await self.google_studio_provider.generate(request)
             response_data = wrap_image_result(result)
             return ImageGenerationResult(
                 url=response_data.get("url"),

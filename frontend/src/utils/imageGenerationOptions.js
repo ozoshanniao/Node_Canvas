@@ -1,6 +1,7 @@
-export const DEFAULT_IMAGE_GENERATION_REGISTRY = {
+﻿export const DEFAULT_IMAGE_GENERATION_REGISTRY = {
   providers: {
     Google: ['Nano Pro', 'Nano 2'],
+    google_studio: ['gemini-3-pro-image', 'gemini-3.1-flash-image'],
     Yunwu: ['Nano pro', 'Nano 2', 'GPT-2'],
   },
   models: {
@@ -24,6 +25,30 @@ export const DEFAULT_IMAGE_GENERATION_REGISTRY = {
       output_format: ['png', 'jpeg'],
       features: ['google_search'],
       supports_reference: true,
+    },
+    'gemini-3-pro-image': {
+      id: 'gemini-3-pro-image',
+      label: 'Nano Banana Pro',
+      provider: 'google_studio',
+      mediaType: 'image',
+      taskTypes: ['text-to-image', 'image-to-image'],
+      ratios: ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
+      resolutions: ['1K', '2K', '4K'],
+      output_format: ['png', 'jpeg'],
+      supports_reference: true,
+      maxImages: 14,
+    },
+    'gemini-3.1-flash-image': {
+      id: 'gemini-3.1-flash-image',
+      label: 'Nano Banana 2',
+      provider: 'google_studio',
+      mediaType: 'image',
+      taskTypes: ['text-to-image', 'image-to-image'],
+      ratios: ['1:1', '1:4', '1:8', '2:3', '3:2', '3:4', '4:1', '4:3', '4:5', '5:4', '8:1', '9:16', '16:9', '21:9'],
+      resolutions: ['0.5K', '1K', '2K', '4K'],
+      output_format: ['png', 'jpeg'],
+      supports_reference: true,
+      maxImages: 14,
     },
     'GPT-2': {
       ratios: ['auto', '1:1', '3:2', '2:3', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
@@ -76,9 +101,14 @@ const normalizeRegistry = (registry) => {
   return registry;
 };
 
-const getImageProviderDisplayLabel = (providerId) => (providerId === 'Google' ? 'Google Cloud' : providerId);
+const IMAGE_PROVIDER_DISPLAY_LABELS = {
+  Google: 'Google Cloud',
+  google_studio: 'Google Studio',
+};
 
-const toOption = (id) => ({ id, label: id });
+const getImageProviderDisplayLabel = (providerId) => IMAGE_PROVIDER_DISPLAY_LABELS[providerId] || providerId;
+
+const toOption = (id, registry) => ({ id, label: registry?.models?.[id]?.label || id });
 const toProviderOption = (id) => ({ id, label: getImageProviderDisplayLabel(id) });
 
 const MODEL_METADATA_KEYS = new Set([
@@ -116,8 +146,10 @@ export const getImageProviderConfig = (providerId, registry) => {
     : null;
 };
 
-export const getImageModelOptions = (providerId, registry) =>
-  (getImageProviderConfig(providerId, registry)?.models || []).map(toOption);
+export const getImageModelOptions = (providerId, registry) => {
+  const safeRegistry = normalizeRegistry(registry);
+  return (getImageProviderConfig(providerId, safeRegistry)?.models || []).map((id) => toOption(id, safeRegistry));
+};
 
 export const getImageModelConfig = (providerId, modelId, registry) => {
   const safeRegistry = normalizeRegistry(registry);
