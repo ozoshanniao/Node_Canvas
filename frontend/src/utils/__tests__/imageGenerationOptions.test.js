@@ -1,7 +1,9 @@
 ﻿import assert from 'node:assert/strict';
 import {
   getImageProviderOptions,
+  getImageProviderLabel,
   getImageModelOptions,
+  getImageModelLabel,
   getImageModelConfig,
   getImageModelSwitchPatch,
   getImageResolutionOptions,
@@ -171,6 +173,37 @@ const kieRegistry = {
     getImageModelOptions('KIE', kieRegistry).map((option) => option.label),
     ['Nano Banana Pro (KIE)', 'Nano Banana 2 (KIE)', 'GPT Image 2 (KIE)']
   );
+}
+
+
+{
+  assert.equal(getImageProviderLabel('google_studio'), 'Google Studio');
+  assert.equal(getImageProviderLabel('Google'), 'Google Cloud');
+  assert.equal(getImageProviderLabel('unknown-provider'), 'unknown-provider');
+
+  assert.equal(getImageModelLabel('google_studio', 'gemini-3-pro-image'), 'Nano Banana Pro');
+  assert.equal(getImageModelLabel('google_studio', 'gemini-3.1-flash-image'), 'Nano Banana 2');
+  assert.equal(getImageModelLabel('KIE', 'Nano Banana Pro (KIE)', kieRegistry), 'Nano Banana Pro (KIE)');
+  assert.equal(getImageModelLabel('KIE', 'Nano Banana 2 (KIE)', kieRegistry), 'Nano Banana 2 (KIE)');
+  assert.equal(getImageModelLabel('unknown-provider', 'unknown-model'), 'unknown-model');
+
+  const savedProjectData = {
+    provider: 'google_studio',
+    model: 'gemini-3-pro-image',
+    aspectRatio: '1:1',
+    ratio: '1:1',
+    resolution: '1K',
+  };
+  const reopened = normalizeImageGenerationSettings(savedProjectData);
+  assert.equal(reopened.provider, 'google_studio');
+  assert.equal(reopened.model, 'gemini-3-pro-image');
+  assert.equal(getImageProviderLabel(reopened.provider), 'Google Studio');
+  assert.equal(getImageModelLabel(reopened.provider, reopened.model), 'Nano Banana Pro');
+
+  const switchPatch = getImageModelSwitchPatch(savedProjectData, 'google_studio', 'gemini-3.1-flash-image');
+  assert.equal(switchPatch.provider, 'google_studio');
+  assert.equal(switchPatch.model, 'gemini-3.1-flash-image');
+  assert.equal(getImageModelLabel(switchPatch.provider, switchPatch.model), 'Nano Banana 2');
 }
 
 console.log('imageGenerationOptions tests passed');

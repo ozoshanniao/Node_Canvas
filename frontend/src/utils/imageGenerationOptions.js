@@ -106,10 +106,18 @@ const IMAGE_PROVIDER_DISPLAY_LABELS = {
   google_studio: 'Google Studio',
 };
 
-const getImageProviderDisplayLabel = (providerId) => IMAGE_PROVIDER_DISPLAY_LABELS[providerId] || providerId;
+export const getImageProviderLabel = (providerId) => IMAGE_PROVIDER_DISPLAY_LABELS[providerId] || providerId;
+
+export const getImageModelLabel = (providerId, modelId, registry) => {
+  const safeRegistry = normalizeRegistry(registry);
+  const modelIds = safeRegistry.providers[providerId] || [];
+  const resolvedModelId = resolveImageModelId(safeRegistry, providerId, modelId);
+  if (!modelIds.includes(resolvedModelId)) return modelId;
+  return safeRegistry.models[resolvedModelId]?.label || resolvedModelId;
+};
 
 const toOption = (id, registry) => ({ id, label: registry?.models?.[id]?.label || id });
-const toProviderOption = (id) => ({ id, label: getImageProviderDisplayLabel(id) });
+const toProviderOption = (id) => ({ id, label: getImageProviderLabel(id) });
 
 const MODEL_METADATA_KEYS = new Set([
   'id',
@@ -140,7 +148,7 @@ export const getImageProviderConfig = (providerId, registry) => {
   return provider
     ? {
         id: provider,
-        label: provider,
+        label: getImageProviderLabel(provider),
         models: safeRegistry.providers[provider] || [],
       }
     : null;
