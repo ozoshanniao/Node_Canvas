@@ -1,9 +1,9 @@
 import asyncio
-import os
 from typing import Optional
 
 from google import genai
 from google.genai import types
+from settings_resolver import resolve_provider_secret
 
 from .base import BaseLLMProvider, LLMProviderError
 from ..image_inputs import prepare_llm_image_inputs
@@ -12,14 +12,23 @@ from ..schemas import LLMGenerateRequest
 
 class GoogleLLMProvider(BaseLLMProvider):
     def __init__(self, api_key: str | None):
-        self.api_key = api_key or os.getenv("GOOGLE_CLOUD_API_KEY")
+        self.api_key = api_key
         self.client = None
+        self._client_api_key = None
 
-        if self.api_key:
+    def _client(self):
+        api_key = self.api_key or resolve_provider_secret("google", "apiKey", "GOOGLE_CLOUD_API_KEY")
+        if not api_key:
+            raise LLMProviderError("GOOGLE_CLOUD_API_KEY is missing")
+        if self.client is not None and self._client_api_key is None:
+            return self.client
+        if self.client is None or self._client_api_key != api_key:
             self.client = genai.Client(
                 vertexai=True,
-                api_key=self.api_key,
+                api_key=api_key,
             )
+            self._client_api_key = api_key
+        return self.client
 
     async def generate(self, request: LLMGenerateRequest) -> str:
         return await self._generate_text(
@@ -45,8 +54,7 @@ class GoogleLLMProvider(BaseLLMProvider):
         thinking_level: Optional[str] = None,
         system_prompt: Optional[str] = None,
     ) -> str:
-        if not self.api_key or not self.client:
-            raise LLMProviderError("GOOGLE_CLOUD_API_KEY is missing")
+        client = self._client()
 
         safety_settings = [
             types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="OFF"),
@@ -118,7 +126,7 @@ class GoogleLLMProvider(BaseLLMProvider):
 
         try:
             response = await asyncio.to_thread(
-                self.client.models.generate_content,
+                client.models.generate_content,
                 model=model,
                 contents=contents,
                 config=generate_content_config,

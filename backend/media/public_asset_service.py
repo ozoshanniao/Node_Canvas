@@ -11,6 +11,7 @@ from urllib.parse import quote, unquote, urlparse
 import httpx
 
 from engines.image_utils import decode_base64_payload, infer_mime_type
+from settings_resolver import resolve_provider_secret
 
 
 VIDEO_MIME_FALLBACKS = {
@@ -160,8 +161,8 @@ async def prepare_provider_media_input(value: str, project_path: str | None = No
 class R2PublicAssetBackend:
     def __init__(self):
         self.account_id = os.getenv("CLOUDFLARE_R2_ACCOUNT_ID", "")
-        self.access_key_id = os.getenv("CLOUDFLARE_R2_ACCESS_KEY_ID", "")
-        self.secret_access_key = os.getenv("CLOUDFLARE_R2_SECRET_ACCESS_KEY", "")
+        self.access_key_id = ""
+        self.secret_access_key = ""
         self.bucket = os.getenv("CLOUDFLARE_R2_BUCKET_NAME", "")
         self.public_domain = os.getenv("CLOUDFLARE_R2_PUBLIC_DOMAIN", "").rstrip("/")
         self.endpoint = (os.getenv("CLOUDFLARE_R2_ENDPOINT") or "").rstrip("/")
@@ -169,6 +170,16 @@ class R2PublicAssetBackend:
             self.endpoint = f"https://{self.account_id}.r2.cloudflarestorage.com"
 
     def _require_config(self) -> None:
+        self.access_key_id = resolve_provider_secret(
+            "cloudflare-r2",
+            "accessKeyId",
+            "CLOUDFLARE_R2_ACCESS_KEY_ID",
+        ) or ""
+        self.secret_access_key = resolve_provider_secret(
+            "cloudflare-r2",
+            "secretAccessKey",
+            "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+        ) or ""
         missing = [
             name
             for name, value in {

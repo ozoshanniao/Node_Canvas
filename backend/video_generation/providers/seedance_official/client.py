@@ -2,6 +2,7 @@ import os
 from urllib.parse import urljoin
 
 import httpx
+from settings_resolver import resolve_provider_secret
 
 
 class SeedanceClientError(ValueError):
@@ -10,14 +11,15 @@ class SeedanceClientError(ValueError):
 
 class SeedanceOfficialClient:
     def __init__(self, api_key: str | None = None, base_url: str | None = None):
-        self.api_key = api_key or os.getenv("ARK_API_KEY")
+        self.api_key = api_key
         self.base_url = (base_url or os.getenv("ARK_BASE_URL") or "https://ark.cn-beijing.volces.com/api/v3").rstrip("/")
 
     def _headers(self) -> dict[str, str]:
-        if not self.api_key:
+        api_key = self.api_key or resolve_provider_secret("seedance", "apiKey", "ARK_API_KEY")
+        if not api_key:
             raise ValueError("ARK_API_KEY is not configured")
         return {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
 

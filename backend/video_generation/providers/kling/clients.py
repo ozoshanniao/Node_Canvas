@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from urllib.parse import urljoin
 
 import httpx
+from settings_resolver import resolve_provider_secret
 
 from video_generation.providers.kling.auth import encode_kling_jwt
 
@@ -65,13 +66,15 @@ class KlingOfficialClient(BaseKlingClient):
         base_url: str | None = None,
     ):
         super().__init__(base_url or os.getenv("KLING_API_BASE") or "https://api-beijing.klingai.com")
-        self.access_key = access_key or os.getenv("KLING_ACCESS_KEY")
-        self.secret_key = secret_key or os.getenv("KLING_SECRET_KEY")
+        self.access_key = access_key
+        self.secret_key = secret_key
 
     def _headers(self) -> dict[str, str]:
-        if not self.access_key or not self.secret_key:
+        access_key = self.access_key or resolve_provider_secret("kling", "accessKey", "KLING_ACCESS_KEY")
+        secret_key = self.secret_key or resolve_provider_secret("kling", "secretKey", "KLING_SECRET_KEY")
+        if not access_key or not secret_key:
             raise ValueError("KLING_ACCESS_KEY and KLING_SECRET_KEY are not configured")
-        token = encode_kling_jwt(self.access_key, self.secret_key)
+        token = encode_kling_jwt(access_key, secret_key)
         return {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
