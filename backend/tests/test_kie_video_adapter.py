@@ -663,8 +663,11 @@ class KieVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fake_adapter.created_requests[0][0].provider, "kie")
         self.assertEqual(len(fake_adapter.queried_requests), 1)
         self.assertEqual(fake_adapter.queried_requests[0][0].task_id, "kie-task-1")
-        self.assertEqual(updated.localVideoUrl, "generation/video.mp4")
-        self.assertEqual(updated.outputs["videoUrl"], "generation/video.mp4")
+        self.assertNotIn("localVideoUrl", updated.model_dump())
+        self.assertEqual(
+            updated.outputs["video"]["relativePath"],
+            f"generation/videos/{updated.id}.mp4",
+        )
 
 
 if __name__ == "__main__":

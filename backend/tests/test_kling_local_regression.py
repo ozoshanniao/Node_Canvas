@@ -1,6 +1,6 @@
 import asyncio
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -465,11 +465,9 @@ class KlingEndpointRegressionTest(unittest.TestCase):
         self.assertEqual(body["status"], "success")
         self.assertEqual(body["data"]["provider"], "yunwu-kling")
         self.assertEqual(body["data"]["model"], "kling-v3")
-        self.assertEqual(body["data"]["request"]["provider"], "yunwu-kling")
-        self.assertEqual(body["data"]["request"]["aspectRatio"], "9:16")
-        self.assertEqual(body["data"]["request"]["duration"], "6s")
-        self.assertEqual(body["data"]["request"]["qualityMode"], "pro")
-        self.assertEqual(body["data"]["request"]["generateAudio"], True)
+        self.assertEqual(body["data"]["schemaVersion"], "v2")
+        self.assertNotIn("request", body["data"])
+        self.assertNotIn("requestSnapshot", body["data"])
         self.assertEqual(len(self.fake_yunwu_kling.created_requests), 1)
         self.assertEqual(self.fake_yunwu_kling.created_requests[0].provider, "yunwu-kling")
         self.assertEqual(self.fake_yunwu_kling.created_requests[0].model, "kling-v3")
@@ -515,7 +513,8 @@ class KlingEndpointRegressionTest(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["data"]["provider"], "yunwu-kling")
         self.assertEqual(body["data"]["videoMode"], "image-to-video")
-        self.assertEqual(body["data"]["request"]["images"], ["https://example.test/start.png"])
+        self.assertNotIn("request", body["data"])
+        self.assertEqual(body["data"]["outputs"], {})
 
     def test_video_task_query_mock_running_and_failed(self):
         create_response = self.client.post("/api/video/generate", json={
@@ -569,7 +568,8 @@ class KlingEndpointRegressionTest(unittest.TestCase):
         self.assertEqual(interrupted.status_code, 200)
         self.assertEqual(interrupted_task["status"], "interrupted")
         self.assertEqual(interrupted_task["providerTaskId"], provider_task_id)
-        self.assertEqual(interrupted_task["outputs"]["rawCreateResponse"], {"mock": True, "provider": "kling"})
+        self.assertNotIn("rawCreateResponse", interrupted_task["outputs"])
+        self.assertNotIn("request", interrupted_task)
         self.assertIn("retry querying", interrupted_task["message"])
         self.assertIn("temporary query timeout", interrupted_task["error"])
 
@@ -610,8 +610,16 @@ class KlingEndpointRegressionTest(unittest.TestCase):
         self.assertEqual(running.json()["data"]["provider"], "yunwu-kling")
         self.assertEqual(running.json()["data"]["status"], "running")
 
-        self.fake_yunwu_kling.query_responses.append({"status": "success", "message": "yunwu done"})
-        succeeded = self.client.get(f"/api/video/tasks/{task_id}", params={"projectPath": self.project_path})
+        self.fake_yunwu_kling.query_responses.append({
+            "status": "success",
+            "message": "yunwu done",
+            "remoteVideoUrl": "https://cdn.example.test/yunwu-kling.mp4",
+        })
+        with patch(
+            "video_generation.service.download_video_to_project",
+            AsyncMock(return_value=f"/api/video/{task_id}.mp4"),
+        ):
+            succeeded = self.client.get(f"/api/video/tasks/{task_id}", params={"projectPath": self.project_path})
         self.assertEqual(succeeded.status_code, 200)
         self.assertEqual(succeeded.json()["data"]["provider"], "yunwu-kling")
         self.assertEqual(succeeded.json()["data"]["status"], "success")

@@ -17,6 +17,22 @@ def _safe_video_filename(task_id: str) -> str:
     return f"{safe_id}.mp4"
 
 
+
+def video_relative_path(task_id: str) -> str:
+    return f"generation/videos/{_safe_video_filename(task_id)}"
+
+
+def video_api_url(relative_path: str) -> str:
+    parsed = urlparse(relative_path or "")
+    if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment:
+        raise ValueError("Invalid video relative path")
+    normalized = str(relative_path or "").replace("\\", "/")
+    prefix = "generation/videos/"
+    if not normalized.startswith(prefix) or "/" in normalized[len(prefix):] or ".." in normalized:
+        raise ValueError("Invalid video relative path")
+    return f"/api/video/{normalized[len(prefix):]}"
+
+
 def save_video_bytes_to_project(project_path: str, video_bytes: bytes, task_id: str) -> str:
     if not video_bytes:
         raise ValueError("video_bytes is empty")

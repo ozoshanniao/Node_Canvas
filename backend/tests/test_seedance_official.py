@@ -643,9 +643,14 @@ class SeedanceLastFrameQueryTest(unittest.TestCase):
             updated = run(service.query_task("/project", "video_local_task"))
 
         self.assertEqual(updated.status, "success")
-        self.assertEqual(updated.outputs["videoUrl"], "/api/video/video_local_task.mp4")
-        self.assertEqual(updated.outputs["lastFrame"], last_frame)
-        self.assertEqual(updated.outputs["lastFrame"]["url"], "generation/official_task_42_last_frame.png")
+        self.assertEqual(
+            updated.outputs["video"]["relativePath"],
+            "generation/videos/video_local_task.mp4",
+        )
+        self.assertEqual(
+            updated.outputs["lastFrame"],
+            {"relativePath": "generation/official_task_42_last_frame.png"},
+        )
         download_last_frame.assert_awaited_once_with(
             "/project",
             "https://seedance.test/last.png",
@@ -668,6 +673,10 @@ class SeedanceLastFrameQueryTest(unittest.TestCase):
             updated = run(service.query_task("/project", "video_local_task"))
 
         self.assertEqual(updated.status, "success")
+        self.assertEqual(
+            updated.outputs["video"]["relativePath"],
+            "generation/videos/video_local_task.mp4",
+        )
         self.assertIsNone(updated.outputs.get("lastFrame"))
         download_last_frame.assert_not_called()
 
@@ -689,9 +698,13 @@ class SeedanceLastFrameQueryTest(unittest.TestCase):
             updated = run(service.query_task("/project", "video_local_task"))
 
         self.assertEqual(updated.status, "success")
-        self.assertEqual(updated.outputs["videoUrl"], "/api/video/video_local_task.mp4")
+        self.assertEqual(
+            updated.outputs["video"]["relativePath"],
+            "generation/videos/video_local_task.mp4",
+        )
         self.assertIsNone(updated.outputs.get("lastFrame"))
-        self.assertIn("last frame download failed", updated.outputs.get("lastFrameWarning", "").lower())
+        self.assertNotIn("lastFrameWarning", updated.outputs)
+        self.assertIn("last frame is unavailable", updated.message.lower())
 
 
 if __name__ == "__main__":

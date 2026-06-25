@@ -30,6 +30,7 @@ from llm.specs import get_llm_specs as get_llm_model_specs
 from llm.skills.loader import public_soft_skills, scan_soft_skills
 from video_generation.schemas import VideoGenerateRequest
 from video_generation.service import VideoGenerationService
+from video_generation.tasks import task_api_data
 from engines.specs import get_frontend_specs  # Frontend engine capability specs
 from generation_media import (
     guess_generation_content_type,
@@ -179,7 +180,7 @@ async def generate_video(payload: VideoGenerateRequest):
         raise HTTPException(status_code=400, detail="projectPath is required")
     try:
         task = await video_generation_service.create_task(project_path, payload)
-        return {"status": "success", "data": task.model_dump()}
+        return {"status": "success", "data": task_api_data(task)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -192,7 +193,7 @@ async def get_video_task(task_id: str, projectPath: Optional[str] = None):
         raise HTTPException(status_code=400, detail="projectPath is required")
     try:
         task = await video_generation_service.query_task(project_path, task_id)
-        return {"status": "success", "data": task.model_dump()}
+        return {"status": "success", "data": task_api_data(task)}
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
