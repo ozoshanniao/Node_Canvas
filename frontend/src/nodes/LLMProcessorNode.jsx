@@ -1,6 +1,7 @@
 import { setLastNodeDefaults } from '../utils/nodeDefaults';
 import {
   LLM_PROVIDERS,
+  fetchLLMProviders,
   getLLMProviderLabel,
   getLLMModelsByProvider,
   getLLMModelLabel,
@@ -32,15 +33,14 @@ export function LLMProcessorNode({ id, data }) {
   const [availableSkills, setAvailableSkills] = useState([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsError, setSkillsError] = useState('');
+  const [llmProviders, setLlmProviders] = useState(LLM_PROVIDERS);
 
   const provider = data.provider || 'Yunwu';
-  const availableModels = getLLMModelsByProvider(provider);
-  const model = availableModels.some((item) => item.id === data.model)
-    ? data.model
-    : getFirstLLMModelId(provider);
+  const availableModels = getLLMModelsByProvider(provider, llmProviders);
+  const model = data.model || getFirstLLMModelId(provider, llmProviders);
 
-  const providerParameters = getLLMParametersByProvider(provider);
-  const defaultParameters = getDefaultLLMParameters(provider);
+  const providerParameters = getLLMParametersByProvider(provider, llmProviders);
+  const defaultParameters = getDefaultLLMParameters(provider, llmProviders);
 
   const temperature = data.temperature ?? defaultParameters.temperature ?? 0.85;
   const maxTokens = data.maxTokens ?? defaultParameters.maxTokens ?? 65535;
@@ -50,11 +50,11 @@ export function LLMProcessorNode({ id, data }) {
   const hasThinking = Boolean(providerParameters.thinking?.enabled);
   const hasReasoningEffort = Boolean(providerParameters.reasoningEffort?.enabled) && thinking !== 'disabled';
 
-  const providerLabel = getLLMProviderLabel(provider);
-  const modelLabel = getLLMModelLabel(provider, model);
-  const modelCapabilities = getLLMModelCapabilities(provider, model);
+  const providerLabel = getLLMProviderLabel(provider, llmProviders);
+  const modelLabel = getLLMModelLabel(provider, model, llmProviders);
+  const modelCapabilities = getLLMModelCapabilities(provider, model, llmProviders);
   const supportsLocalSoftSkills = provider === 'deepseek' && Boolean(modelCapabilities.supportsLocalSoftSkills);
-  const activeInputHandles = getActiveLLMInputHandles(provider, model);
+  const activeInputHandles = getActiveLLMInputHandles(provider, model, llmProviders);
   const projectPath = data.projectPath || (typeof window !== 'undefined' ? window.currentProjectPath : '') || '';
   const enabledSkills = normalizeEnabledSkills(data.enabledSkills || []);
 
@@ -261,6 +261,21 @@ export function LLMProcessorNode({ id, data }) {
   };
 
   useEffect(() => {
+    let cancelled = false;
+    fetchLLMProviders()
+      .then((providers) => {
+        if (!cancelled) setLlmProviders(providers);
+      })
+      .catch((error) => {
+        console.warn('Failed to load LLM specs; using fallback models', error);
+        if (!cancelled) setLlmProviders(LLM_PROVIDERS);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!data?.runRequestId || lastHandledRunRequestRef.current === data.runRequestId) return;
     lastHandledRunRequestRef.current = data.runRequestId;
     handleRun();
@@ -311,11 +326,11 @@ export function LLMProcessorNode({ id, data }) {
   }, [projectPath, supportsLocalSoftSkills]);
 
   const handleProviderSelect = (nextProvider) => {
-    const defaults = getDefaultLLMParameters(nextProvider);
+    const defaults = getDefaultLLMParameters(nextProvider, llmProviders);
 
     updateNodeData({
       provider: nextProvider,
-      model: getFirstLLMModelId(nextProvider),
+      model: getFirstLLMModelId(nextProvider, llmProviders),
       ...defaults,
     });
     setActiveMenu(null);
@@ -583,7 +598,7 @@ export function LLMProcessorNode({ id, data }) {
           >
             {providerLabel} <span className="text-[9px] opacity-30 transform scale-90">|</span>
           </div>
-          {renderMenu('provider', LLM_PROVIDERS, provider, handleProviderSelect)}
+          {renderMenu('provider', llmProviders, provider, handleProviderSelect)}
         </div>
 
         <div className="relative nodrag">

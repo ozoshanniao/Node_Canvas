@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 from fastapi import APIRouter, HTTPException
 
+from provider_base_url import ProviderBaseUrlError, normalize_provider_base_url
+from settings_resolver import resolve_provider_setting
 from settings_store import SettingsStore, SettingsStoreError
 
 
@@ -23,11 +25,20 @@ class SecretRequirement:
 
 
 @dataclass(frozen=True)
+class SettingRequirement:
+    field: str
+    env: EnvRequirement | None = None
+    default: str | None = None
+    required: bool = False
+
+
+@dataclass(frozen=True)
 class ProviderDefinition:
     id: str
     name: str
     secrets: tuple[SecretRequirement, ...]
     dependencies: tuple[EnvRequirement, ...] = ()
+    settings: tuple[SettingRequirement, ...] = ()
 
 
 def _env(name: str) -> EnvRequirement:
@@ -36,6 +47,15 @@ def _env(name: str) -> EnvRequirement:
 
 def _secret(field: str, env_name: str) -> SecretRequirement:
     return SecretRequirement(field=field, env=_env(env_name))
+
+
+def _setting(
+    field: str,
+    env_name: str | None = None,
+    default: str | None = None,
+    required: bool = False,
+) -> SettingRequirement:
+    return SettingRequirement(field=field, env=_env(env_name) if env_name else None, default=default, required=required)
 
 
 PROVIDER_DEFINITIONS = (
@@ -51,6 +71,26 @@ PROVIDER_DEFINITIONS = (
             ),
         ),
     ),
+    ProviderDefinition(
+        "google_studio",
+        "Google Studio",
+        (
+            SecretRequirement(
+                field="apiKey",
+                env=EnvRequirement(
+                    label="GOOGLE_API_KEY or GEMINI_API_KEY",
+                    alternatives=("GOOGLE_API_KEY", "GEMINI_API_KEY"),
+                ),
+            ),
+        ),
+    ),
+    ProviderDefinition(
+        "openai",
+        "OpenAI",
+        (_secret("apiKey", "OPENAI_API_KEY"),),
+        settings=(_setting("baseUrl", "OPENAI_BASE_URL", "https://api.openai.com/v1"),),
+    ),
+    ProviderDefinition("anthropic", "Claude", (_secret("apiKey", "ANTHROPIC_API_KEY"),)),
     ProviderDefinition("yunwu", "Yunwu", (_secret("apiKey", "YUNWU_API_KEY"),)),
     ProviderDefinition(
         "kling",
@@ -93,6 +133,26 @@ def _has_nonempty_setting(settings: dict, field: str) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+def _public_settings(definition: ProviderDefinition, store: SettingsStore) -> dict:
+    public_values = {}
+    for setting in definition.settings:
+        value = resolve_provider_setting(
+            definition.id,
+            setting.field,
+            setting.env.alternatives[0] if setting.env else None,
+            setting.default,
+            store,
+        )
+        if setting.field == "baseUrl" and value:
+            try:
+                value = normalize_provider_base_url(value, default=setting.default)
+            except ProviderBaseUrlError:
+                value = setting.default
+        if value is not None:
+            public_values[setting.field] = value
+    return public_values
+
+
 def _provider_status(definition: ProviderDefinition, store: SettingsStore) -> dict:
     settings = store.get_provider(definition.id)
     missing_secret_env = [
@@ -125,6 +185,8 @@ def _provider_status(definition: ProviderDefinition, store: SettingsStore) -> di
         "missingEnv": [*missing_secret_env, *missing_dependency_env],
         "missingDependencyEnv": missing_dependency_env,
         "requiredSettings": [secret.field for secret in definition.secrets],
+        "settingsFields": [setting.field for setting in definition.settings],
+        "publicSettings": _public_settings(definition, store),
         "missingSettings": missing_settings,
     }
 
@@ -167,16 +229,38 @@ async def save_settings_provider(provider_id: str, payload: dict):
                 detail="Configured via .env. Settings override is disabled.",
             )
 
-        allowed_fields = {secret.field for secret in definition.secrets}
-        if set(payload) != allowed_fields:
+        secret_fields = {secret.field for secret in definition.secrets}
+        setting_fields = {setting.field for setting in definition.settings}
+        allowed_fields = secret_fields | setting_fields
+        if not set(payload).issubset(allowed_fields):
+            raise HTTPException(status_code=422, detail="Unsupported provider settings field")
+        missing_secret_fields = [field for field in secret_fields if field not in payload]
+        if missing_secret_fields:
             raise HTTPException(status_code=422, detail="All required provider key fields must be provided")
-        values = {
-            field: payload[field].strip()
-            for field in allowed_fields
-            if isinstance(payload.get(field), str) and payload[field].strip()
-        }
-        if set(values) != allowed_fields:
-            raise HTTPException(status_code=422, detail="Provider key fields cannot be empty")
+
+        values = {}
+        for field in secret_fields:
+            value = payload.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise HTTPException(status_code=422, detail="Provider key fields cannot be empty")
+            values[field] = value.strip()
+
+        setting_by_field = {setting.field: setting for setting in definition.settings}
+        for field in setting_fields:
+            if field not in payload:
+                continue
+            value = payload.get(field)
+            if not isinstance(value, str) or not value.strip():
+                if setting_by_field[field].required:
+                    raise HTTPException(status_code=422, detail="Provider settings fields cannot be empty")
+                continue
+            value = value.strip()
+            if field == "baseUrl":
+                try:
+                    value = normalize_provider_base_url(value, default=setting_by_field[field].default)
+                except ProviderBaseUrlError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
+            values[field] = value
 
         SETTINGS_STORE.set_provider(provider_id, values)
         return _safe_status_response(provider_id, SETTINGS_STORE)

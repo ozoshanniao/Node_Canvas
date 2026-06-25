@@ -105,15 +105,45 @@ assert.equal(
   'Easy Curve project file path should be saved'
 );
 
+await saveProjectCore({
+  ...baseProject,
+  nodes: [
+    {
+      id: 'llm-1',
+      type: 'llmProcessor',
+      position: { x: 0, y: 0 },
+      data: {
+        provider: 'openai',
+        model: 'gpt-5.5',
+        apiKey: 'secret',
+        baseUrl: 'https://api.openai.com/v1',
+        endpoint: 'https://example.test',
+        project: 'cloud-project',
+        location: 'us-central1',
+        vertexai: true,
+        outputText: 'hello',
+      },
+    },
+  ],
+});
+assert.equal(requests[2].body.nodes[0].data.apiKey, undefined);
+assert.equal(requests[2].body.nodes[0].data.baseUrl, undefined);
+assert.equal(requests[2].body.nodes[0].data.endpoint, undefined);
+assert.equal(requests[2].body.nodes[0].data.project, undefined);
+assert.equal(requests[2].body.nodes[0].data.location, undefined);
+assert.equal(requests[2].body.nodes[0].data.vertexai, undefined);
+assert.equal(requests[2].body.nodes[0].data.provider, 'openai');
+assert.equal(requests[2].body.nodes[0].data.model, 'gpt-5.5');
+
 await saveProjectCore(baseProject);
 
 assert.equal(
-  Object.prototype.hasOwnProperty.call(requests[2].body, 'viewport'),
+  Object.prototype.hasOwnProperty.call(requests[3].body, 'viewport'),
   false,
   'saveProjectCore should remain compatible when viewport is omitted'
 );
 assert.deepEqual(
-  requests[2].body.groups,
+  requests[3].body.groups,
   baseProject.groups,
   'saving without viewport should preserve existing groups payload'
 );
@@ -147,16 +177,16 @@ await saveProjectCore({
 });
 
 assert.deepEqual(
-  Object.keys(requests[3].body.nodes[0].data).sort(),
+  Object.keys(requests[4].body.nodes[0].data).sort(),
   ['model', 'outputs', 'params', 'provider', 'schemaSnapshot', 'taskType'],
   'video nodes should be saved with the clean Phase 3 data contract'
 );
-assert.equal(requests[3].body.nodes[0].data.params.aspectRatio, '9:16');
-assert.equal(requests[3].body.nodes[0].data.params.localFile, undefined);
-assert.equal(requests[3].body.nodes[0].data.apiKey, undefined);
-assert.equal(requests[3].body.nodes[0].data.rawResponse, undefined);
-assert.equal(requests[3].body.nodes[0].data.outputs.video.path, 'generation/video.mp4');
-assert.equal(requests[3].body.nodes[0].data.outputs.video.url, '/api/generation/video.mp4');
+assert.equal(requests[4].body.nodes[0].data.params.aspectRatio, '9:16');
+assert.equal(requests[4].body.nodes[0].data.params.localFile, undefined);
+assert.equal(requests[4].body.nodes[0].data.apiKey, undefined);
+assert.equal(requests[4].body.nodes[0].data.rawResponse, undefined);
+assert.equal(requests[4].body.nodes[0].data.outputs.video.path, 'generation/video.mp4');
+assert.equal(requests[4].body.nodes[0].data.outputs.video.url, '/api/generation/video.mp4');
 
 if (originalFetch === undefined) {
   delete globalThis.fetch;

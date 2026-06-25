@@ -56,6 +56,66 @@ export const LLM_PROVIDERS = [
     },
   },
   {
+    id: 'google_studio',
+    label: 'Google Studio',
+    models: [
+      {
+        id: 'gemini-3.5-flash',
+        label: 'Gemini 3.5 Flash',
+        capabilities: {
+          supportsImages: true,
+          supportsThinking: false,
+          supportsReasoningEffort: false,
+          supportsStreaming: false,
+          supportsLocalSoftSkills: false,
+        },
+      },
+      {
+        id: 'gemini-3.1-pro-preview',
+        label: 'Gemini 3.1 Pro (Preview)',
+        capabilities: {
+          supportsImages: true,
+          supportsThinking: false,
+          supportsReasoningEffort: false,
+          supportsStreaming: false,
+          supportsLocalSoftSkills: false,
+        },
+      },
+      {
+        id: 'gemini-3.1-flash-lite',
+        label: 'Gemini 3.1 Flash-Lite',
+        capabilities: {
+          supportsImages: true,
+          supportsThinking: false,
+          supportsReasoningEffort: false,
+          supportsStreaming: false,
+          supportsLocalSoftSkills: false,
+        },
+      },
+    ],
+    parameters: {
+      thinkingLevel: {
+        enabled: false,
+      },
+      temperature: {
+        enabled: true,
+        label: 'Temperature',
+        default: 0.85,
+        min: 0,
+        max: 2,
+        step: 0.05,
+      },
+      maxTokens: {
+        enabled: true,
+        label: 'Max Tokens',
+        default: 8192,
+        min: 256,
+        max: 65535,
+        step: 256,
+      },
+    },
+  },
+  {
     id: 'Yunwu',
     label: 'Yunwu',
     models: [
@@ -185,29 +245,76 @@ export const LLM_PROVIDERS = [
   },
 ];
 
-export const getLLMProvider = (providerId) => {
-  return LLM_PROVIDERS.find((provider) => provider.id === providerId) || LLM_PROVIDERS[0];
+const LLM_SPECS_URL = 'http://127.0.0.1:8000/api/llm/specs';
+
+export const normalizeLLMSpecs = (payload) => {
+  const providers = Array.isArray(payload?.providers) ? payload.providers : [];
+  return providers
+    .filter((provider) => typeof provider?.id === 'string' && typeof provider?.label === 'string')
+    .map((provider) => ({
+      id: provider.id,
+      label: provider.label,
+      models: (Array.isArray(provider.models) ? provider.models : [])
+        .filter((model) => typeof model?.id === 'string' && typeof model?.label === 'string' && model.enabled !== false)
+        .map((model) => ({
+          id: model.id,
+          label: model.label,
+          capabilities: {
+            supportsImages: model.supportsImages === true,
+            supportsThinking: false,
+            supportsReasoningEffort: false,
+            supportsStreaming: model.streaming === true,
+            supportsTools: false,
+            supportsJsonMode: false,
+            supportsHistory: false,
+            supportsLocalSoftSkills: false,
+            ...(model.capabilities || {}),
+          },
+        })),
+      parameters: provider.parameters || {},
+    }));
 };
 
-export const getLLMProviderLabel = (providerId) => {
-  return getLLMProvider(providerId)?.label || providerId;
+export const fetchLLMProviders = async (fetchImpl = globalThis.fetch) => {
+  if (typeof fetchImpl !== 'function') {
+    throw new Error('LLM specs request is unavailable');
+  }
+  const response = await fetchImpl(LLM_SPECS_URL);
+  if (!response.ok) {
+    throw new Error('Failed to load LLM specs');
+  }
+  const providers = normalizeLLMSpecs(await response.json());
+  if (!providers.length) {
+    throw new Error('Invalid LLM specs response');
+  }
+  return providers;
 };
 
-export const getLLMModelsByProvider = (providerId) => {
-  return getLLMProvider(providerId)?.models || [];
+const providerList = (providers) => (Array.isArray(providers) && providers.length ? providers : LLM_PROVIDERS);
+
+export const getLLMProvider = (providerId, providers = LLM_PROVIDERS) => {
+  return providerList(providers).find((provider) => provider.id === providerId) || null;
 };
 
-export const getLLMModelLabel = (providerId, modelId) => {
-  const models = getLLMModelsByProvider(providerId);
+export const getLLMProviderLabel = (providerId, providers = LLM_PROVIDERS) => {
+  return getLLMProvider(providerId, providers)?.label || providerId;
+};
+
+export const getLLMModelsByProvider = (providerId, providers = LLM_PROVIDERS) => {
+  return getLLMProvider(providerId, providers)?.models || [];
+};
+
+export const getLLMModelLabel = (providerId, modelId, providers = LLM_PROVIDERS) => {
+  const models = getLLMModelsByProvider(providerId, providers);
   return models.find((model) => model.id === modelId)?.label || modelId;
 };
 
-export const getLLMModelConfig = (providerId, modelId) => {
-  const models = getLLMModelsByProvider(providerId);
+export const getLLMModelConfig = (providerId, modelId, providers = LLM_PROVIDERS) => {
+  const models = getLLMModelsByProvider(providerId, providers);
   return models.find((model) => model.id === modelId) || models[0] || null;
 };
 
-export const getLLMModelCapabilities = (providerId, modelId) => ({
+export const getLLMModelCapabilities = (providerId, modelId, providers = LLM_PROVIDERS) => ({
   supportsImages: true,
   supportsThinking: false,
   supportsReasoningEffort: false,
@@ -216,27 +323,27 @@ export const getLLMModelCapabilities = (providerId, modelId) => ({
   supportsJsonMode: false,
   supportsHistory: false,
   supportsLocalSoftSkills: false,
-  ...(getLLMModelConfig(providerId, modelId)?.capabilities || {}),
+  ...(getLLMModelConfig(providerId, modelId, providers)?.capabilities || {}),
 });
 
-export const getActiveLLMInputHandles = (providerId, modelId) => {
+export const getActiveLLMInputHandles = (providerId, modelId, providers = LLM_PROVIDERS) => {
   const handles = ['text:in'];
-  if (getLLMModelCapabilities(providerId, modelId).supportsImages) {
+  if (getLLMModelCapabilities(providerId, modelId, providers).supportsImages) {
     handles.push('image:in');
   }
   return handles;
 };
 
-export const getFirstLLMModelId = (providerId) => {
-  return getLLMModelsByProvider(providerId)[0]?.id || '';
+export const getFirstLLMModelId = (providerId, providers = LLM_PROVIDERS) => {
+  return getLLMModelsByProvider(providerId, providers)[0]?.id || '';
 };
 
-export const getLLMParametersByProvider = (providerId) => {
-  return getLLMProvider(providerId)?.parameters || {};
+export const getLLMParametersByProvider = (providerId, providers = LLM_PROVIDERS) => {
+  return getLLMProvider(providerId, providers)?.parameters || {};
 };
 
-export const getDefaultLLMParameters = (providerId) => {
-  const parameters = getLLMParametersByProvider(providerId);
+export const getDefaultLLMParameters = (providerId, providers = LLM_PROVIDERS) => {
+  const parameters = getLLMParametersByProvider(providerId, providers);
 
   return {
     thinking: parameters.thinking?.enabled

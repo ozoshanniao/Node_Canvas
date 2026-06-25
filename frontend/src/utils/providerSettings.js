@@ -13,6 +13,10 @@ export const normalizeProviderStatus = (provider) => ({
   missingEnv: normalizeStringList(provider?.missingEnv),
   missingDependencyEnv: normalizeStringList(provider?.missingDependencyEnv),
   requiredSettings: normalizeStringList(provider?.requiredSettings),
+  settingsFields: normalizeStringList(provider?.settingsFields),
+  publicSettings: provider?.publicSettings && typeof provider.publicSettings === 'object'
+    ? Object.fromEntries(Object.entries(provider.publicSettings).filter(([key, value]) => typeof value === 'string' && !['apiKey', 'accessKey', 'secretKey', 'secretAccessKey'].includes(key)))
+    : {},
   missingSettings: normalizeStringList(provider?.missingSettings),
 });
 
