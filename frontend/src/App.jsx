@@ -71,6 +71,7 @@ import { normalizeImageInputEdgeLabels } from './utils/edgeLabels';
 import { uploadImageToInput } from './utils/uploadToInput';
 import { useAppSettings } from './utils/appSettings';
 import { useI18n } from './hooks/useI18n';
+import { sanitizePastedNodeData } from './utils/nodeClipboard';
 //import { ButtonEdge } from './edges/ButtonEdge';
 
 const nodeTypes = {
@@ -545,26 +546,9 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
       const newId = `${oldNode.type}-${now}-${index}-${Math.random().toString(36).substr(2, 5)}`;
       oldToNewIdMap[oldNode.id] = newId;
 
-      const cleanedData = { ...(oldNode.data || {}) };
+      const cleanedData = sanitizePastedNodeData(oldNode.type, oldNode.data);
       cleanedData.projectPath = projectPath;
-
-      // Clean running, error, outputs and temporary resource fields
-      delete cleanedData.runRequestId;
-      delete cleanedData.progress;
-      delete cleanedData.status;
-      delete cleanedData.error;
-      delete cleanedData.errorMessage;
-      delete cleanedData.outputText;
-      delete cleanedData.outputVideo;
-      delete cleanedData.outputVideoWarning;
-      delete cleanedData.outputMetadata;
-      delete cleanedData.outputs;
-      delete cleanedData.slices;
-      delete cleanedData.outputImages;
-      delete cleanedData.dataUrl;
       delete cleanedData.groupId;
-
-      cleanedData.status = 'idle';
 
       return {
         ...oldNode,
