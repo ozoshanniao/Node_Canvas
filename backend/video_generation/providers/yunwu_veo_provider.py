@@ -120,8 +120,7 @@ class YunwuVeoProvider(BaseVideoProvider):
 
         raise ValueError(f"Unsupported video mode: {request.videoMode}")
 
-    async def create_task(self, request: VideoGenerateRequest) -> dict:
-        headers = self._headers()
+    async def build_create_payload(self, request: VideoGenerateRequest) -> dict:
         payload = self._base_payload(request)
 
         if request.videoMode == "image-to-video":
@@ -141,6 +140,12 @@ class YunwuVeoProvider(BaseVideoProvider):
             payload["veo_fl_close"] = bool(request.customParams.get("veoFlClose", True))
         elif request.videoMode != "text-to-video":
             raise ValueError(f"Unsupported video mode: {request.videoMode}")
+
+        return payload
+
+    async def create_task(self, request: VideoGenerateRequest) -> dict:
+        headers = self._headers()
+        payload = await self.build_create_payload(request)
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(YUNWU_CREATE_URL, headers=headers, json=payload)

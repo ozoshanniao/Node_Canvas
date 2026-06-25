@@ -1,70 +1,172 @@
-import asyncio
 import os
-import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
+from llm.providers.anthropic_provider import AnthropicLLMProvider
 from llm.providers.base import LLMProviderError
 from llm.providers.deepseek_provider import DeepSeekLLMProvider
+from llm.providers.openai_provider import OpenAILLMProvider
 from llm.providers.yunwu_provider import YunwuLLMProvider
-from settings_store import SettingsStore
+from settings_resolver import resolve_google_studio_api_key, resolve_provider_secret, resolve_provider_setting
 
 
-def run(coro):
-    return asyncio.run(coro)
+class FakeSettingsStore:
+    def __init__(self, providers=None):
+        self.providers = providers or {}
+
+    def get_provider(self, provider_id):
+        return dict(self.providers.get(provider_id, {}))
+
+    def set_provider(self, provider_id, values):
+        self.providers[provider_id] = dict(values)
 
 
 class ProviderSettingsTest(unittest.TestCase):
-    def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.store = SettingsStore(Path(self.temp_dir.name) / "settings.json")
-        self.store_patch = patch("settings_resolver.SettingsStore", return_value=self.store)
-        self.store_patch.start()
+    def test_openai_resolver_env_has_priority_over_fake_settings(self):
+        store = FakeSettingsStore({"openai": {"apiKey": "settings-openai"}})
 
-    def tearDown(self):
-        self.store_patch.stop()
-        self.temp_dir.cleanup()
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "env-openai"}, clear=False):
+            value = resolve_provider_secret("openai", "apiKey", "OPENAI_API_KEY", store)
 
-    def test_deepseek_env_has_priority_over_settings(self):
-        self.store.set_provider("deepseek", {"apiKey": "settings-deepseek"})
-        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "env-deepseek"}, clear=False):
-            headers = DeepSeekLLMProvider()._headers()
+        self.assertEqual(value, "env-openai")
+        self.assertNotEqual(value, "settings-openai")
 
-        self.assertEqual(headers["Authorization"], "Bearer env-deepseek")
-        self.assertNotIn("settings-deepseek", str(headers))
+    def test_openai_resolver_uses_fake_settings_when_env_is_missing(self):
+        store = FakeSettingsStore({"openai": {"apiKey": "settings-openai"}})
 
-    def test_deepseek_uses_settings_when_env_is_missing(self):
-        self.store.set_provider("deepseek", {"apiKey": "settings-deepseek"})
+        with patch.dict(os.environ, {"OPENAI_API_KEY": ""}, clear=False):
+            value = resolve_provider_secret("openai", "apiKey", "OPENAI_API_KEY", store)
+
+        self.assertEqual(value, "settings-openai")
+
+    def test_openai_base_url_uses_fake_settings_when_env_is_missing(self):
+        store = FakeSettingsStore({
+            "openai": {
+                "apiKey": "settings-openai",
+                "baseUrl": "https://proxy.example.test/v1",
+            }
+        })
+
+        with patch.dict(os.environ, {"OPENAI_BASE_URL": ""}, clear=False):
+            value = resolve_provider_setting(
+                "openai",
+                "baseUrl",
+                "OPENAI_BASE_URL",
+                "https://api.openai.com/v1",
+                store,
+            )
+
+        self.assertEqual(value, "https://proxy.example.test/v1")
+
+    def test_openai_base_url_default_is_used_when_env_and_settings_are_missing(self):
+        store = FakeSettingsStore({"openai": {"apiKey": "settings-openai"}})
+
+        with patch.dict(os.environ, {"OPENAI_BASE_URL": ""}, clear=False):
+            value = resolve_provider_setting(
+                "openai",
+                "baseUrl",
+                "OPENAI_BASE_URL",
+                "https://api.openai.com/v1",
+                store,
+            )
+
+        self.assertEqual(value, "https://api.openai.com/v1")
+
+    def test_anthropic_resolver_env_has_priority_over_fake_settings(self):
+        store = FakeSettingsStore({"anthropic": {"apiKey": "settings-anthropic"}})
+
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "env-anthropic"}, clear=False):
+            value = resolve_provider_secret("anthropic", "apiKey", "ANTHROPIC_API_KEY", store)
+
+        self.assertEqual(value, "env-anthropic")
+        self.assertNotEqual(value, "settings-anthropic")
+
+    def test_anthropic_resolver_uses_fake_settings_when_env_is_missing(self):
+        store = FakeSettingsStore({"anthropic": {"apiKey": "settings-anthropic"}})
+
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}, clear=False):
+            value = resolve_provider_secret("anthropic", "apiKey", "ANTHROPIC_API_KEY", store)
+
+        self.assertEqual(value, "settings-anthropic")
+
+    def test_google_studio_resolver_precedence(self):
+        store = FakeSettingsStore({"google_studio": {"apiKey": "settings-studio"}})
+        env = {"GOOGLE_API_KEY": "env-google", "GEMINI_API_KEY": "env-gemini"}
+        with patch.dict(os.environ, env, clear=False):
+            self.assertEqual(resolve_google_studio_api_key(store), "env-google")
+
+        env = {"GOOGLE_API_KEY": "", "GEMINI_API_KEY": "env-gemini"}
+        with patch.dict(os.environ, env, clear=False):
+            self.assertEqual(resolve_google_studio_api_key(store), "env-gemini")
+
+        env = {"GOOGLE_API_KEY": "", "GEMINI_API_KEY": ""}
+        with patch.dict(os.environ, env, clear=False):
+            self.assertEqual(resolve_google_studio_api_key(store), "settings-studio")
+
+    def test_google_studio_does_not_use_google_cloud_key(self):
+        store = FakeSettingsStore({"google_studio": {}})
+        env = {"GOOGLE_API_KEY": "", "GEMINI_API_KEY": "", "GOOGLE_CLOUD_API_KEY": "cloud-only"}
+        with patch.dict(os.environ, env, clear=False):
+            self.assertIsNone(resolve_google_studio_api_key(store))
+
+    def test_google_cloud_does_not_use_google_studio_keys(self):
+        store = FakeSettingsStore({"google": {}})
+        env = {"GOOGLE_API_KEY": "studio-google", "GEMINI_API_KEY": "studio-gemini", "GOOGLE_CLOUD_API_KEY": ""}
+        with patch.dict(os.environ, env, clear=False):
+            self.assertIsNone(resolve_provider_secret("google", "apiKey", "GOOGLE_CLOUD_API_KEY", store))
+
+    def test_google_and_google_studio_use_different_settings_namespaces(self):
+        store = FakeSettingsStore({
+            "google": {"apiKey": "settings-cloud"},
+            "google_studio": {"apiKey": "settings-studio"},
+        })
+        env = {"GOOGLE_API_KEY": "", "GEMINI_API_KEY": "", "GOOGLE_CLOUD_API_KEY": ""}
+        with patch.dict(os.environ, env, clear=False):
+            self.assertEqual(resolve_provider_secret("google", "apiKey", "GOOGLE_CLOUD_API_KEY", store), "settings-cloud")
+            self.assertEqual(resolve_google_studio_api_key(store), "settings-studio")
+
+    def test_provider_headers_use_patched_resolvers_without_real_settings(self):
+        with patch("llm.providers.openai_provider.resolve_provider_secret", return_value="settings-openai"):
+            openai_headers = OpenAILLMProvider()._headers()
+        with patch("llm.providers.anthropic_provider.resolve_provider_secret", return_value="settings-anthropic"):
+            anthropic_headers = AnthropicLLMProvider()._headers()
+
+        self.assertEqual(openai_headers["Authorization"], "Bearer settings-openai")
+        self.assertEqual(anthropic_headers["x-api-key"], "settings-anthropic")
+
+    def test_missing_provider_credentials_are_clear_without_leaking_fake_keys(self):
+        with patch("llm.providers.openai_provider.resolve_provider_secret", return_value=None):
+            with self.assertRaises(LLMProviderError) as openai_ctx:
+                OpenAILLMProvider()._headers()
+        with patch("llm.providers.anthropic_provider.resolve_provider_secret", return_value=None):
+            with self.assertRaises(LLMProviderError) as anthropic_ctx:
+                AnthropicLLMProvider()._headers()
+
+        self.assertIn("Settings -> Providers", str(openai_ctx.exception))
+        self.assertIn("Settings -> Providers", str(anthropic_ctx.exception))
+        self.assertNotIn("settings-openai", str(openai_ctx.exception))
+        self.assertNotIn("settings-anthropic", str(anthropic_ctx.exception))
+
+    def test_existing_deepseek_and_yunwu_resolvers_can_use_fake_settings(self):
+        deepseek_store = FakeSettingsStore({"deepseek": {"apiKey": "settings-deepseek"}})
+        yunwu_store = FakeSettingsStore({"yunwu": {"apiKey": "settings-yunwu"}})
+
         with patch.dict(os.environ, {"DEEPSEEK_API_KEY": ""}, clear=False):
-            headers = DeepSeekLLMProvider()._headers()
-
-        self.assertEqual(headers["Authorization"], "Bearer settings-deepseek")
-
-    def test_deepseek_missing_credentials_is_clear(self):
-        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": ""}, clear=False):
-            with self.assertRaisesRegex(LLMProviderError, "Settings -> Providers"):
-                DeepSeekLLMProvider()._headers()
-
-    def test_yunwu_llm_env_has_priority_over_settings(self):
-        self.store.set_provider("yunwu", {"apiKey": "settings-yunwu"})
-        with patch.dict(os.environ, {"YUNWU_API_KEY": "env-yunwu"}, clear=False):
-            headers = YunwuLLMProvider()._headers()
-
-        self.assertEqual(headers["Authorization"], "Bearer env-yunwu")
-        self.assertNotIn("settings-yunwu", str(headers))
-
-    def test_yunwu_llm_uses_settings_when_env_is_missing(self):
-        self.store.set_provider("yunwu", {"apiKey": "settings-yunwu"})
+            deepseek_key = resolve_provider_secret("deepseek", "apiKey", "DEEPSEEK_API_KEY", deepseek_store)
         with patch.dict(os.environ, {"YUNWU_API_KEY": ""}, clear=False):
-            headers = YunwuLLMProvider()._headers()
+            yunwu_key = resolve_provider_secret("yunwu", "apiKey", "YUNWU_API_KEY", yunwu_store)
 
-        self.assertEqual(headers["Authorization"], "Bearer settings-yunwu")
+        self.assertEqual(deepseek_key, "settings-deepseek")
+        self.assertEqual(yunwu_key, "settings-yunwu")
 
-    def test_yunwu_llm_missing_credentials_is_clear(self):
-        with patch.dict(os.environ, {"YUNWU_API_KEY": ""}, clear=False):
-            with self.assertRaisesRegex(LLMProviderError, "Settings -> Providers"):
-                YunwuLLMProvider()._headers()
+    def test_existing_provider_header_tests_do_not_read_real_settings(self):
+        with patch("llm.providers.deepseek_provider.resolve_provider_secret", return_value="settings-deepseek"):
+            deepseek_headers = DeepSeekLLMProvider()._headers()
+        with patch("llm.providers.yunwu_provider.resolve_provider_secret", return_value="settings-yunwu"):
+            yunwu_headers = YunwuLLMProvider()._headers()
+
+        self.assertEqual(deepseek_headers["Authorization"], "Bearer settings-deepseek")
+        self.assertEqual(yunwu_headers["Authorization"], "Bearer settings-yunwu")
 
 
 if __name__ == "__main__":

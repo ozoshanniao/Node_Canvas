@@ -26,6 +26,7 @@ from image_generation.service import ImageGenerationService
 from llm.providers.base import LLMProviderError
 from llm.schemas import LLMGenerateRequest
 from llm.service import LLMService
+from llm.specs import get_llm_specs as get_llm_model_specs
 from llm.skills.loader import public_soft_skills, scan_soft_skills
 from video_generation.schemas import VideoGenerateRequest
 from video_generation.service import VideoGenerationService
@@ -53,6 +54,7 @@ image_generation_service = ImageGenerationService(engines)
 llm_service = LLMService(
     google_api_key=os.getenv("GOOGLE_CLOUD_API_KEY"),
     deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL"),
+    openai_base_url=os.getenv("OPENAI_BASE_URL"),
 )
 
 video_generation_service = VideoGenerationService()
@@ -217,6 +219,10 @@ async def get_video(filename: str, projectPath: Optional[str] = None):
     response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
     return response
 
+@app.get("/api/llm/specs")
+async def get_llm_specs():
+    return get_llm_model_specs()
+
 @app.post("/api/llm/generate")
 async def generate_llm(payload: LLMGenerateRequest):
     try:
@@ -227,7 +233,7 @@ async def generate_llm(payload: LLMGenerateRequest):
             "inputTextLength": len(payload.inputText or ""),
         })
         text = await llm_service.generate(payload)
-        return {"status": "success", "data": {"text": text}}
+        return {"status": "success", "success": True, "data": {"text": text, "provider": payload.provider, "model": payload.model}, "text": text, "provider": payload.provider, "model": payload.model}
     except NotImplementedError as e:
         raise HTTPException(status_code=501, detail=str(e))
     except LLMProviderError as e:

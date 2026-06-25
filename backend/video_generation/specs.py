@@ -1,3 +1,6 @@
+from copy import deepcopy
+
+
 COMMON_SEED_PARAM = {
     "type": "number",
     "label": "Seed",
@@ -5,6 +8,220 @@ COMMON_SEED_PARAM = {
     "max": 99999999,
     "default": -1,
 }
+
+def kie_video_mode_param(modes):
+    options = modes if isinstance(modes, list) else [modes]
+    return {
+        "type": "select",
+        "label": "Video Mode",
+        "options": options,
+        "default": options[0],
+    }
+
+
+KIE_WAN_DURATION_OPTIONS = [f"{value}s" for value in range(2, 16)]
+KIE_KLING_30_DURATION_OPTIONS = [f"{value}s" for value in range(3, 16)]
+KIE_SEEDANCE_DURATION_OPTIONS = [f"{value}s" for value in range(4, 16)]
+KIE_WAN_RATIO_OPTIONS = ["16:9", "9:16", "1:1", "4:3", "3:4"]
+KIE_SEEDANCE_RATIO_OPTIONS = ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
+
+
+def kie_wan_params(modes):
+    params = {
+        "videoMode": kie_video_mode_param(modes),
+        "duration": {
+            "type": "select",
+            "label": "Duration",
+            "options": KIE_WAN_DURATION_OPTIONS,
+            "default": "5s",
+        },
+        "durationSeconds": {
+            "type": "number",
+            "label": "Duration Seconds",
+            "min": 2,
+            "max": 15,
+            "default": 5,
+        },
+        "resolution": {
+            "type": "select",
+            "label": "Resolution",
+            "options": ["720p", "1080p"],
+            "default": "720p",
+        },
+        "negativePrompt": {
+            "type": "text",
+            "label": "Negative Prompt",
+            "default": "",
+        },
+        "seed": COMMON_SEED_PARAM,
+    }
+    supported_modes = modes if isinstance(modes, list) else [modes]
+    if "text-to-video" in supported_modes:
+        params["aspectRatio"] = {
+            "type": "select",
+            "label": "Aspect Ratio",
+            "options": KIE_WAN_RATIO_OPTIONS,
+            "default": "16:9",
+        }
+    return params
+
+
+def kie_kling_26_params(modes):
+    return {
+        "videoMode": kie_video_mode_param(modes),
+        "aspectRatio": {
+            "type": "select",
+            "label": "Aspect Ratio",
+            "options": ["1:1", "16:9", "9:16"],
+            "default": "16:9",
+        },
+        "duration": {
+            "type": "select",
+            "label": "Duration",
+            "options": ["5s", "10s"],
+            "default": "5s",
+        },
+        "generateAudio": {
+            "type": "boolean",
+            "label": "Sound",
+            "default": True,
+        },
+    }
+
+
+def kie_kling_30_params(modes):
+    return {
+        "videoMode": kie_video_mode_param(modes),
+        "aspectRatio": {
+            "type": "select",
+            "label": "Aspect Ratio",
+            "options": ["16:9", "9:16", "1:1"],
+            "default": "16:9",
+        },
+        "duration": {
+            "type": "select",
+            "label": "Duration",
+            "options": KIE_KLING_30_DURATION_OPTIONS,
+            "default": "5s",
+        },
+        "qualityMode": {
+            "type": "select",
+            "label": "Quality",
+            "options": ["std", "pro", "4K"],
+            "default": "pro",
+        },
+        "generateAudio": {
+            "type": "boolean",
+            "label": "Sound",
+            "default": True,
+        },
+    }
+
+
+def kie_seedance_params(modes, resolution_options):
+    return {
+        "videoMode": kie_video_mode_param(modes),
+        "aspectRatio": {
+            "type": "select",
+            "label": "Ratio",
+            "options": KIE_SEEDANCE_RATIO_OPTIONS,
+            "default": "adaptive",
+        },
+        "duration": {
+            "type": "select",
+            "label": "Duration",
+            "options": KIE_SEEDANCE_DURATION_OPTIONS,
+            "default": "5s",
+        },
+        "durationSeconds": {
+            "type": "number",
+            "label": "Duration Seconds",
+            "min": 4,
+            "max": 15,
+            "default": 5,
+        },
+        "resolution": {
+            "type": "select",
+            "label": "Resolution",
+            "options": resolution_options,
+            "default": "720p",
+        },
+        "generateAudio": {
+            "type": "boolean",
+            "label": "Generate Audio",
+            "default": False,
+        },
+        "returnLastFrame": {
+            "type": "boolean",
+            "label": "Return Last Frame",
+            "default": False,
+        },
+        "seed": COMMON_SEED_PARAM,
+    }
+
+
+KIE_PARAMS_BY_MODEL = {
+    "wan/2-7": kie_wan_params(["text-to-video", "image-to-video"]),
+    "kling-3.0/video": kie_kling_30_params(["text-to-video", "image-to-video"]),
+    "kling-2.6": kie_kling_26_params(["text-to-video", "image-to-video"]),
+    "bytedance/seedance-2": kie_seedance_params(["text-to-video", "frame", "multimodal-reference"], ["480p", "720p", "1080p"]),
+    "bytedance/seedance-2-fast": kie_seedance_params(["text-to-video", "frame", "multimodal-reference"], ["480p", "720p"]),
+}
+
+KIE_VIDEO_MODEL_WHITELIST = [
+    ("wan/2-7", "Wan 2.7 (KIE)", "wan", ["text-to-video", "image-to-video"]),
+    ("kling-3.0/video", "Kling 3.0 (KIE)", "kling", ["text-to-video", "image-to-video"]),
+    ("kling-2.6", "Kling 2.6 (KIE)", "kling", ["text-to-video", "image-to-video"]),
+    ("bytedance/seedance-2", "Seedance 2.0 (KIE)", "seedance", ["text-to-video", "frame", "multimodal-reference"]),
+    ("bytedance/seedance-2-fast", "Seedance 2.0 Fast (KIE)", "seedance", ["text-to-video", "frame", "multimodal-reference"]),
+]
+
+
+def kie_video_model(model_id: str, label: str, family: str, modes):
+    supported_modes = modes if isinstance(modes, list) else [modes]
+    supports_i2v = "image-to-video" in supported_modes or "frame" in supported_modes
+    supports_reference = "multimodal-reference" in supported_modes or "reference-video" in supported_modes
+    supports_last_frame_input = supports_i2v and (
+        model_id.startswith("bytedance/seedance-2")
+        or model_id == "kling-3.0/video"
+        or model_id == "wan/2-7"
+    )
+    params = deepcopy(KIE_PARAMS_BY_MODEL[model_id])
+    quick_params = ["videoMode", "duration"]
+    if "aspectRatio" in params:
+        quick_params.insert(1, "aspectRatio")
+    if "qualityMode" in params:
+        quick_params.append("qualityMode")
+    if "resolution" in params:
+        quick_params.append("resolution")
+    return {
+        "id": model_id,
+        "label": label,
+        "family": family,
+        "adapterKey": "kie_wan",
+        "supportedModes": supported_modes,
+        "inputCapabilities": {
+            "text": True,
+            "promptRequired": "text-to-video" in supported_modes and len(supported_modes) == 1,
+            "images": supports_i2v,
+            "firstFrame": supports_i2v,
+            "firstFrameRequired": supports_i2v and len(supported_modes) == 1,
+            "endFrame": supports_last_frame_input,
+            "lastFrame": supports_last_frame_input,
+            "referenceImages": supports_reference,
+            "referenceVideos": supports_reference,
+            "referenceAudios": supports_reference,
+            "maxImages": 9 if supports_reference else (1 if supports_i2v else 0),
+            "maxReferenceImages": 9 if supports_reference else 0,
+            "maxVideos": 3 if supports_reference else 0,
+            "maxAudios": 3 if supports_reference else 0,
+            **({"maxInputImageSizeMb": 10} if supports_i2v else {}),
+        },
+        "quickParams": quick_params,
+        "params": params,
+        "customParams": {},
+    }
+
 
 SEEDANCE_MODES = ["frame", "multimodal-reference"]
 SEEDANCE_RATIO_OPTIONS = ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
@@ -349,7 +566,7 @@ VIDEO_GENERATION_REGISTRY = {
         },
         {
             "id": "google",
-            "label": "Google",
+            "label": "Google Cloud",
             "models": [
                 {
                     "id": "veo-3.1-generate-001",
@@ -610,9 +827,33 @@ VIDEO_GENERATION_REGISTRY = {
         },
         kling_provider("kling", "Kling"),
         kling_provider("yunwu-kling", "Yunwu Kling"),
+        {
+            "id": "kie",
+            "label": "KIE",
+            "models": [
+                kie_video_model(model_id, label, family, mode)
+                for model_id, label, family, mode in KIE_VIDEO_MODEL_WHITELIST
+            ],
+        },
     ]
 }
 
 
 def get_video_model_specs():
-    return VIDEO_GENERATION_REGISTRY
+    from video_generation.capabilities import list_video_model_capabilities
+
+    legacy_registry = deepcopy(VIDEO_GENERATION_REGISTRY)
+    capabilities = list_video_model_capabilities(legacy_registry)
+    # Phase 1 temporary bridge: providers/models preserves the current frontend
+    # contract. Phase 2/3 should remove legacy fields after VideoNode consumes
+    # capabilities directly.
+    return {
+        "schemaVersion": 1,
+        "providers": legacy_registry["providers"],
+        "models": legacy_registry["providers"],
+        "capabilities": capabilities,
+    }
+
+
+def get_legacy_video_model_specs():
+    return deepcopy(VIDEO_GENERATION_REGISTRY)

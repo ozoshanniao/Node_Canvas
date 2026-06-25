@@ -1,3 +1,5 @@
+import { sanitizeProjectForSave } from './projectSanitize.js';
+
 export const describeImageValue = (value) => {
   if (!value) return { type: 'empty', length: 0 };
   if (typeof value !== 'string') return { type: typeof value, length: 0 };
@@ -26,6 +28,12 @@ export const sanitizeNodesForSave = (nodes = []) =>
     }
     delete data.hover;
     delete data.resolvedText;
+    delete data.apiKey;
+    delete data.baseUrl;
+    delete data.endpoint;
+    delete data.project;
+    delete data.location;
+    delete data.vertexai;
 
     // Strip base64 image fields - images are now stored as relative paths
     delete data.dataUrl;
@@ -92,9 +100,11 @@ export const sanitizeEdgesForSave = (edges = []) =>
   });
 
 export const sanitizeProjectBeforeSave = ({ nodes = [], edges = [], groups = {} }) => ({
-  nodes: sanitizeNodesForSave(nodes),
-  edges: sanitizeEdgesForSave(edges),
-  groups: groups || {},
+  ...sanitizeProjectForSave({
+    nodes: sanitizeNodesForSave(nodes),
+    edges: sanitizeEdgesForSave(edges),
+    groups: groups || {},
+  }),
 });
 
 export const saveProjectCore = async ({

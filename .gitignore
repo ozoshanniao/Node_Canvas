@@ -7,9 +7,12 @@ build/
 
 # Python cache
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
+backend/tests/.tmp/
 
 # env files
 .env
@@ -34,3 +37,6 @@ Thumbs.db
 
 # claude
 .claude
+
+# Ignore local docs directory
+docs/

@@ -11,8 +11,10 @@ import {
   fetchImageGenerationRegistry,
   getImageAspectRatioOptions,
   getImageModelConfig,
+  getImageModelLabel,
   getImageModelOptions,
   getImageModelSwitchPatch,
+  getImageProviderLabel,
   getImageProviderOptions,
   getImageResolutionOptions,
   normalizeImageGenerationSettings,
@@ -50,13 +52,15 @@ export function ImageNode({ id, data }) {
   const normalizedGenerationSettings = normalizeImageGenerationSettings(data, registry);
   const provider = normalizedGenerationSettings.provider;
   const providerOptions = getImageProviderOptions(registry);
-  const availableModels = getImageModelOptions(provider, registry).map((item) => item.id);
+  const modelOptions = getImageModelOptions(provider, registry);
   const model = normalizedGenerationSettings.model;
+  const providerLabel = getImageProviderLabel(provider);
+  const modelLabel = getImageModelLabel(provider, model, registry);
 
   const currentSpec = getImageModelConfig(provider, model, registry) || {};
 
   const availableRatios = getImageAspectRatioOptions(provider, model, registry).map((item) => item.id);
-  const availableResolutions = getImageResolutionOptions(provider, model, registry).map((item) => item.id);
+  const availableResolutions = getImageResolutionOptions(provider, model, registry, normalizedGenerationSettings).map((item) => item.id);
   const ratio = normalizedGenerationSettings.aspectRatio || getImageNodeAspectRatio(data);
   const resolution = normalizedGenerationSettings.resolution;
 
@@ -74,25 +78,30 @@ export function ImageNode({ id, data }) {
   // 【唯一保留的局部状态】控制当前打开的下拉菜单（因为画布主壳不需要关心谁的菜单开了）
   const [activeMenu, setActiveMenu] = useState(null);
 
-  const handleRatioChange = (ratioStr) => {
+  const syncNodeSizeToRatio = (ratioStr) => {
     const { width, height } = getImageNodeSizeByAspectRatio(ratioStr);
-
-    // 1. 同步数据状态
-    updateNodeData({ ratio: ratioStr, aspectRatio: ratioStr });
-
-    // 2. 物理调整节点尺寸
     setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === id) {
-          return {
-            ...node,
-            width,
-            height,
-          };
-        }
-        return node;
-      })
+      nds.map((node) => (
+        node.id === id
+          ? { ...node, width, height }
+          : node
+      ))
     );
+  };
+
+  const applyGenerationPatch = (patch, { syncSize = false } = {}) => {
+    const normalized = normalizeImageGenerationSettings({ ...normalizedGenerationSettings, ...patch }, registry);
+    updateNodeData({
+      ...patch,
+      ratio: normalized.aspectRatio,
+      aspectRatio: normalized.aspectRatio,
+      resolution: normalized.resolution,
+    });
+    if (syncSize) syncNodeSizeToRatio(normalized.aspectRatio);
+  };
+
+  const handleRatioChange = (ratioStr) => {
+    applyGenerationPatch({ ratio: ratioStr, aspectRatio: ratioStr }, { syncSize: true });
   };
 
   const updateNodeData = (newData) => {
@@ -113,17 +122,23 @@ export function ImageNode({ id, data }) {
 
   // 服务商切换联动
   const handleProviderSelect = (value) => {
-    updateNodeData(getImageModelSwitchPatch({
+    const patch = getImageModelSwitchPatch({
       ...data,
       ratio: undefined,
       aspectRatio: undefined,
       resolution: undefined,
-    }, value, undefined, registry));
+    }, value, undefined, registry);
+    updateNodeData(patch);
+    syncNodeSizeToRatio(patch.aspectRatio);
     setActiveMenu(null);
   };
 
   const handleModelSelect = (value) => {
-    updateNodeData(getImageModelSwitchPatch(data, provider, value, registry));
+    const patch = getImageModelSwitchPatch(data, provider, value, registry);
+    updateNodeData(patch);
+    if (patch.aspectRatio !== getImageNodeAspectRatio(data)) {
+      syncNodeSizeToRatio(patch.aspectRatio);
+    }
     setActiveMenu(null);
   };
 
@@ -204,6 +219,7 @@ export function ImageNode({ id, data }) {
       const sourceNode = allNodes.find((n) => n.id === edge.source);
       // 优先取单图 url，如果没有则取多图数组的第一张
       const urls = getNodeImageOutput(sourceNode, edge.sourceHandle, edge, allNodes, allEdges);
+      // Deferred: ImageNode currently forwards one image per connected edge; future work should preserve array-level multi-image inputs.
       const url = await imageUrlForBackend(urls[0]);
       return { index, url };
     }));
@@ -330,7 +346,7 @@ export function ImageNode({ id, data }) {
             onClick={() => toggleMenu('provider')}
             className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'provider' ? 'text-white' : 'hover:text-white'}`}
           >
-            {provider}
+            {providerLabel}
           </div>
           {activeMenu === 'provider' && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[100px] text-center animate-in fade-in zoom-in-95 duration-150">
@@ -355,17 +371,17 @@ export function ImageNode({ id, data }) {
             onClick={() => toggleMenu('model')}
             className={`cursor-pointer transition-colors flex items-center gap-1.5 ${activeMenu === 'model' ? 'text-white' : 'hover:text-white'}`}
           >
-            {model}
+            {modelLabel}
           </div>
           {activeMenu === 'model' && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3.5 bg-[#141414] border border-white/5 rounded-[14px] py-1.5 shadow-2xl min-w-[140px] text-center animate-in fade-in zoom-in-95 duration-150">
-              {availableModels.map((item) => (
+              {modelOptions.map((item) => (
                 <div 
-                  key={item}
-                  onClick={() => handleModelSelect(item)}
-                  className={`px-4 py-2 text-xs cursor-pointer transition-colors ${model === item ? 'text-white bg-white/5 font-normal' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
+                  key={item.id}
+                  onClick={() => handleModelSelect(item.id)}
+                  className={`px-4 py-2 text-xs cursor-pointer transition-colors ${model === item.id ? 'text-white bg-white/5 font-normal' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
                 >
-                  {item}
+                  {item.label}
                 </div>
               ))}
             </div>
@@ -415,7 +431,7 @@ export function ImageNode({ id, data }) {
               {availableResolutions.map((item) => (
                 <div 
                   key={item}
-                  onClick={() => { updateNodeData({ resolution: item }); setActiveMenu(null); }}
+                  onClick={() => { applyGenerationPatch({ resolution: item }, { syncSize: true }); setActiveMenu(null); }}
                   className={`px-4 py-2 text-xs cursor-pointer transition-colors ${resolution === item ? 'text-white bg-white/5 font-normal' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
                 >
                   {item}

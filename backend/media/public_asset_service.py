@@ -333,6 +333,21 @@ class PublicAssetService:
         self.cache_db_path = cache_db_path or str(Path(__file__).resolve().parents[1] / ".cache" / "public_assets" / "cache.db")
         self._memory_conn = None
 
+    def close(self) -> None:
+        if self._memory_conn is not None:
+            self._memory_conn.close()
+            self._memory_conn = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        self.close()
+        return False
+
+    def __del__(self):
+        self.close()
+
     def _resolve_storage_provider(self, storage_provider: str | None = None) -> str:
         provider = (storage_provider or self.storage or "r2").strip().lower()
         if provider not in {"r2", "tos"}:

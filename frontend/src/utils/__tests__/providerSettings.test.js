@@ -17,6 +17,8 @@ assert.deepEqual(
     missingEnv: ['KLING_ACCESS_KEY', 'KLING_SECRET_KEY'],
     missingDependencyEnv: [],
     requiredSettings: ['accessKey', 'secretKey'],
+    settingsFields: ['baseUrl'],
+    publicSettings: { baseUrl: 'https://api.openai.com/v1' },
     missingSettings: [],
     accessKey: 'must-not-be-preserved',
   }),
@@ -30,11 +32,29 @@ assert.deepEqual(
     missingEnv: ['KLING_ACCESS_KEY', 'KLING_SECRET_KEY'],
     missingDependencyEnv: [],
     requiredSettings: ['accessKey', 'secretKey'],
+    settingsFields: ['baseUrl'],
+    publicSettings: { baseUrl: 'https://api.openai.com/v1' },
     missingSettings: [],
   },
   'provider status normalization should preserve status metadata only'
 );
 
+const googleStudioStatus = normalizeProviderStatus({
+  id: 'google_studio',
+  name: 'Google Studio',
+  configured: true,
+  source: 'settings',
+  supportsSettings: true,
+  requiredEnv: ['GOOGLE_API_KEY or GEMINI_API_KEY'],
+  requiredSettings: ['apiKey'],
+  settingsFields: [],
+  publicSettings: { apiKey: 'secret', project: 'must-not-exist', location: 'must-not-exist', baseUrl: 'must-not-exist' },
+});
+assert.equal(googleStudioStatus.id, 'google_studio');
+assert.equal(googleStudioStatus.name, 'Google Studio');
+assert.deepEqual(googleStudioStatus.requiredSettings, ['apiKey']);
+assert.deepEqual(googleStudioStatus.settingsFields, []);
+assert.equal(Object.prototype.hasOwnProperty.call(googleStudioStatus.publicSettings, 'apiKey'), false);
 const providers = await fetchProviderSettings(async () => ({
   ok: true,
   json: async () => ({
@@ -83,3 +103,41 @@ await assert.rejects(
 );
 
 console.log('providerSettings tests passed');
+
+
+let openAISaveRequest;
+await saveProviderSettings('openai', { apiKey: 'fake-key', baseUrl: 'https://api.openai.com/v1' }, async (url, options) => {
+  openAISaveRequest = { url, options, body: JSON.parse(options.body) };
+  return {
+    ok: true,
+    json: async () => ({
+      status: 'success',
+      provider: {
+        id: 'openai',
+        name: 'OpenAI',
+        configured: true,
+        source: 'settings',
+        publicSettings: { baseUrl: 'https://api.openai.com/v1' },
+      },
+    }),
+  };
+});
+assert.equal(openAISaveRequest.body.apiKey, 'fake-key');
+assert.equal(openAISaveRequest.body.baseUrl, 'https://api.openai.com/v1');
+assert.equal(globalThis.localStorage?.getItem?.('OPENAI_API_KEY'), undefined);
+
+
+let googleStudioSaveRequest;
+await saveProviderSettings('google_studio', { apiKey: 'fake-studio-key' }, async (url, options) => {
+  googleStudioSaveRequest = { url, options, body: JSON.parse(options.body) };
+  return {
+    ok: true,
+    json: async () => ({
+      status: 'success',
+      provider: { id: 'google_studio', name: 'Google Studio', configured: true, source: 'settings' },
+    }),
+  };
+});
+assert.deepEqual(googleStudioSaveRequest.body, { apiKey: 'fake-studio-key' });
+assert.equal(globalThis.localStorage?.getItem?.('GOOGLE_API_KEY'), undefined);
+assert.equal(globalThis.sessionStorage?.getItem?.('GOOGLE_API_KEY'), undefined);
