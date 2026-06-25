@@ -1,5 +1,37 @@
 const PROVIDER_SETTINGS_URL = 'http://127.0.0.1:8000/api/settings/providers';
 
+const API_KEY_FIELD = {
+  id: 'apiKey',
+  labelKey: 'settings.providers.apiKey',
+  placeholderKey: 'settings.providers.enterApiKey',
+  secret: true,
+  required: true,
+};
+
+export const PROVIDER_FIELDS = {
+  deepseek: [API_KEY_FIELD],
+  google: [API_KEY_FIELD],
+  google_studio: [API_KEY_FIELD],
+  openai: [
+    API_KEY_FIELD,
+    { id: 'baseUrl', label: 'Base URL', placeholder: 'https://api.openai.com/v1', secret: false, required: false },
+  ],
+  anthropic: [API_KEY_FIELD],
+  yunwu: [API_KEY_FIELD],
+  seedance: [API_KEY_FIELD],
+  kie: [API_KEY_FIELD],
+  fal: [API_KEY_FIELD],
+  wavespeed: [API_KEY_FIELD],
+  kling: [
+    { id: 'accessKey', labelKey: 'settings.providers.accessKey', placeholderKey: 'settings.providers.enterAccessKey', secret: true, required: true },
+    { id: 'secretKey', labelKey: 'settings.providers.secretKey', placeholderKey: 'settings.providers.enterSecretKey', secret: true, required: true },
+  ],
+  'cloudflare-r2': [
+    { id: 'accessKeyId', labelKey: 'settings.providers.accessKeyId', placeholderKey: 'settings.providers.enterAccessKeyId', secret: true, required: true },
+    { id: 'secretAccessKey', labelKey: 'settings.providers.secretAccessKey', placeholderKey: 'settings.providers.enterSecretAccessKey', secret: true, required: true },
+  ],
+};
+
 const normalizeStringList = (value) =>
   Array.isArray(value) ? value.filter((item) => typeof item === 'string') : [];
 
@@ -15,7 +47,7 @@ export const normalizeProviderStatus = (provider) => ({
   requiredSettings: normalizeStringList(provider?.requiredSettings),
   settingsFields: normalizeStringList(provider?.settingsFields),
   publicSettings: provider?.publicSettings && typeof provider.publicSettings === 'object'
-    ? Object.fromEntries(Object.entries(provider.publicSettings).filter(([key, value]) => typeof value === 'string' && !['apiKey', 'accessKey', 'secretKey', 'secretAccessKey'].includes(key)))
+    ? Object.fromEntries(Object.entries(provider.publicSettings).filter(([key, value]) => typeof value === 'string' && !['apiKey', 'accessKey', 'accessKeyId', 'secretKey', 'secretAccessKey'].includes(key)))
     : {},
   missingSettings: normalizeStringList(provider?.missingSettings),
 });

@@ -3,29 +3,11 @@ import { useI18n } from '../../hooks/useI18n';
 import {
   clearProviderSettings,
   fetchProviderSettings,
+  PROVIDER_FIELDS,
   saveProviderSettings,
 } from '../../utils/providerSettings';
 
-const PROVIDER_FIELDS = {
-  deepseek: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
-  google: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
-  google_studio: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
-  openai: [
-    { id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true },
-    { id: 'baseUrl', label: 'Base URL', placeholder: 'https://api.openai.com/v1', secret: false, required: false },
-  ],
-  anthropic: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
-  yunwu: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
-  seedance: [{ id: 'apiKey', labelKey: 'settings.providers.apiKey', placeholderKey: 'settings.providers.enterApiKey', secret: true, required: true }],
-  kling: [
-    { id: 'accessKey', labelKey: 'settings.providers.accessKey', placeholderKey: 'settings.providers.enterAccessKey', secret: true, required: true },
-    { id: 'secretKey', labelKey: 'settings.providers.secretKey', placeholderKey: 'settings.providers.enterSecretKey', secret: true, required: true },
-  ],
-  'cloudflare-r2': [
-    { id: 'accessKeyId', labelKey: 'settings.providers.accessKeyId', placeholderKey: 'settings.providers.enterAccessKeyId', secret: true, required: true },
-    { id: 'secretAccessKey', labelKey: 'settings.providers.secretAccessKey', placeholderKey: 'settings.providers.enterSecretAccessKey', secret: true, required: true },
-  ],
-};
+
 
 export function ProvidersSettings() {
   const { t } = useI18n();
