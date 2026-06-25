@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
+import { GenerationPreviewOverlay } from '../components/GenerationPreviewOverlay';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { useImageAspect } from '../hooks/useImageAspect';
 import { getNodeImageOutput, getNodeTextOutput } from '../utils/nodeOutputs';
@@ -24,7 +25,7 @@ import { useI18n } from '../hooks/useI18n';
 // 1. 追加解构 id
 export function ImageNode({ id, data }) {
   countRender('ImageNode');
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const containerRef = useRef(null);
   const lastHandledRunRequestRef = useRef(data?.runRequestId);
   const { setNodes, getNodes, getEdges, setEdges } = useReactFlow();
@@ -144,6 +145,7 @@ export function ImageNode({ id, data }) {
 
   // 1. 在组件顶部添加状态
   const [isLoading, setIsLoading] = useState(false);
+  const runSequenceRef = useRef(0);
 
   const getFlowingEdgeIds = (edges) =>
     edges
@@ -155,6 +157,8 @@ export function ImageNode({ id, data }) {
     if (isLoading) return;
     e.stopPropagation(); // 防止点击按钮触发节点的选中状态
 
+    const runSequence = runSequenceRef.current + 1;
+    runSequenceRef.current = runSequence;
     setIsLoading(true);
 
     setEdges((eds) => {
@@ -188,23 +192,25 @@ export function ImageNode({ id, data }) {
 
     if (!activePath) {
       console.error("❌ 运行失败：未检测到有效的项目路径");
-      setIsLoading(false);
-      setEdges((eds) => {
-        const flowingEdgeIds = getFlowingEdgeIds(eds);
-        console.log('[ImageNode flowing:clear]', {
-          nodeId: id,
-          totalEdges: eds.length,
-          matchedCount: flowingEdgeIds.length,
-          edgeIds: flowingEdgeIds,
-          reason: 'missing-project-path',
-        });
+      if (runSequenceRef.current === runSequence) {
+        setIsLoading(false);
+        setEdges((eds) => {
+          const flowingEdgeIds = getFlowingEdgeIds(eds);
+          console.log('[ImageNode flowing:clear]', {
+            nodeId: id,
+            totalEdges: eds.length,
+            matchedCount: flowingEdgeIds.length,
+            edgeIds: flowingEdgeIds,
+            reason: 'missing-project-path',
+          });
 
-        return eds.map((edge) =>
-          flowingEdgeIds.includes(edge.id)
-            ? { ...edge, className: '', data: { ...edge.data, flowing: false } }
-            : edge
-        );
-      });
+          return eds.map((edge) =>
+            flowingEdgeIds.includes(edge.id)
+              ? { ...edge, className: '', data: { ...edge.data, flowing: false } }
+              : edge
+          );
+        });
+      }
       return;
     }
 
@@ -259,25 +265,27 @@ export function ImageNode({ id, data }) {
     } catch (error) {
       console.error(" 渲染失败:", error);
     } finally {
+      if (runSequenceRef.current === runSequence) {
         setIsLoading(false);
 
-      setEdges((eds) => {
-        const flowingEdgeIds = getFlowingEdgeIds(eds);
-        console.log('[ImageNode flowing:clear]', {
-          nodeId: id,
-          totalEdges: eds.length,
-          matchedCount: flowingEdgeIds.length,
-          edgeIds: flowingEdgeIds,
-          reason: 'finally',
-        });
+        setEdges((eds) => {
+          const flowingEdgeIds = getFlowingEdgeIds(eds);
+          console.log('[ImageNode flowing:clear]', {
+            nodeId: id,
+            totalEdges: eds.length,
+            matchedCount: flowingEdgeIds.length,
+            edgeIds: flowingEdgeIds,
+            reason: 'finally',
+          });
 
-        return eds.map((edge) => {
-          if (flowingEdgeIds.includes(edge.id)) {
-            return { ...edge, className: '', data: { ...edge.data, flowing: false } }; // 移除类名，恢复静态
-          }
-          return edge;
+          return eds.map((edge) => {
+            if (flowingEdgeIds.includes(edge.id)) {
+              return { ...edge, className: '', data: { ...edge.data, flowing: false } };
+            }
+            return edge;
+          });
         });
-      });
+      }
     }
   };
 
@@ -508,6 +516,15 @@ export function ImageNode({ id, data }) {
             {t('node.image.noImage')}
           </div>
         )}
+        <GenerationPreviewOverlay
+          active={isLoading}
+          hasExistingPreview={Boolean(displayUrl)}
+          label={
+            displayUrl
+              ? (language === 'en-US' ? 'Regenerating image...' : '正在重新生成图像...')
+              : (language === 'en-US' ? 'Generating image...' : '正在生成图像...')
+          }
+        />
       </div>
 
 

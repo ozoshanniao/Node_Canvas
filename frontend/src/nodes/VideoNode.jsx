@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, useEdges, useNodes, useReactFlow, useUpdateNodeInternals } from '@xyflow/react';
+import { GenerationPreviewOverlay } from '../components/GenerationPreviewOverlay';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import CustomSelect from '../components/CustomSelect';
 import { DynamicAdvancedParams } from '../components/DynamicAdvancedParams';
@@ -221,7 +222,7 @@ export function VideoNode({ id, data }) {
   const [videoMetadataRatioState, setVideoMetadataRatioState] = useState({ url: '', ratio: null });
   const [inputImageRatioState, setInputImageRatioState] = useState({ key: '', url: '', ratio: null });
   const [appSettings] = useAppSettings();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const toolbarRef = useRef(null);
   const lastHandledRunRequestRef = useRef(data?.runRequestId);
   const lastAutoSizeSourceRef = useRef(null);
@@ -1274,6 +1275,15 @@ export function VideoNode({ id, data }) {
 
       <div className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-[24px]">
         {renderPreview()}
+        <GenerationPreviewOverlay
+          active={isTaskActive}
+          hasExistingPreview={Boolean(videoUrl)}
+          label={
+            videoUrl
+              ? (language === 'en-US' ? 'Regenerating video...' : '正在重新生成视频...')
+              : (language === 'en-US' ? 'Generating video...' : '正在生成视频...')
+          }
+        />
       </div>
 
       {LEGACY_BRIDGE_INPUT_HANDLES.map((handle) => (
