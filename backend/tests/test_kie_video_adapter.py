@@ -429,7 +429,8 @@ class KieVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_kie_seedance_base_model_reference_payload(self):
         client = FakeKieClient()
-        adapter = KieVideoAdapter(client=client, asset_router=FakeAssetRouter())
+        router = FakeAssetRouter()
+        adapter = KieVideoAdapter(client=client, asset_router=router)
         await adapter.create(
             VideoCreateRequest(
                 provider="kie",
@@ -452,6 +453,10 @@ class KieVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["input"]["reference_video_urls"], ["https://kie-cdn.test/input.png"])
         self.assertEqual(payload["input"]["reference_audio_urls"], ["https://kie-cdn.test/input.png"])
         self.assertNotIn("first_frame_url", payload["input"])
+        self.assertEqual(
+            [call["purpose"] for call in router.calls],
+            ["image:references", "video:references", "audio:references"],
+        )
 
     async def test_kie_legacy_suffix_models_map_to_base_models(self):
         client = FakeKieClient()

@@ -211,6 +211,22 @@ const migratedKling = normalizeVideoGenerationSettings(
 assert.equal(migratedKling.model, 'kling-3.0/video');
 assert.equal(migratedKling.videoMode, 'image-to-video');
 assert.equal(migratedKling.params?.videoMode, 'image-to-video');
+const migratedKlingWithParams = normalizeVideoGenerationSettings(
+  {
+    provider: 'kie',
+    model: 'kling-3.0/video/image-to-video',
+    videoMode: 'text-to-video',
+    params: { videoMode: 'text-to-video', duration: '4s', qualityMode: '4K' },
+    customParams: { kie: { preserve: true } },
+  },
+  kieAggregatedRegistry
+);
+assert.equal(migratedKlingWithParams.model, 'kling-3.0/video');
+assert.equal(migratedKlingWithParams.videoMode, 'image-to-video');
+assert.equal(migratedKlingWithParams.params?.videoMode, 'image-to-video');
+assert.equal(migratedKlingWithParams.params?.duration, '4s');
+assert.equal(migratedKlingWithParams.params?.qualityMode, '4K');
+assert.deepEqual(migratedKlingWithParams.customParams, { kie: { preserve: true } });
 const migratedSeedance = normalizeVideoGenerationSettings(
   { provider: 'kie', model: 'bytedance/seedance-2/image-to-video', videoMode: 'text-to-video' },
   kieAggregatedRegistry
@@ -379,10 +395,49 @@ const google1080pSettings = normalizeVideoGenerationSettings({
   },
 });
 assert.equal(google1080pSettings.duration, '8s', '1080p should force 8s duration');
+assert.equal(google1080pSettings.durationSeconds, 8, '1080p should force durationSeconds to 8');
 assert.equal(google1080pSettings.params.duration, '8s', 'forced duration should be reflected in canonical params');
+assert.equal(google1080pSettings.params.durationSeconds, 8, 'forced durationSeconds should be reflected in canonical params');
 assert.equal(google1080pSettings.params.resolution, '1080p');
+const googleRootConflictSettings = normalizeVideoGenerationSettings({
+  provider: 'google',
+  model: 'veo-3.1-generate-001',
+  videoMode: 'text-to-video',
+  resolution: '720p',
+  duration: '4s',
+  durationSeconds: 4,
+  params: {
+    videoMode: 'text-to-video',
+    resolution: '1080p',
+    duration: '6s',
+    durationSeconds: 6,
+  },
+});
+assert.equal(googleRootConflictSettings.resolution, '1080p', 'params should override legacy root resolution');
+assert.equal(googleRootConflictSettings.duration, '8s', 'params-driven 1080p constraint should override root duration');
+assert.equal(googleRootConflictSettings.durationSeconds, 8, 'params-driven 1080p constraint should override root durationSeconds');
+assert.equal(googleRootConflictSettings.params.duration, '8s');
+assert.equal(googleRootConflictSettings.params.durationSeconds, 8);
 
 const googleVeo31 = getVideoModelConfig('google', 'veo-3.1-generate-001');
+const googleVeoLite = getVideoModelConfig('google', 'veo-3.1-lite-generate-001');
+assert.equal(googleVeoLite.supportedModes.includes('reference-video'), false, 'Veo Lite should not expose reference mode');
+const googleLiteFallbackSettings = normalizeVideoGenerationSettings({
+  provider: 'google',
+  model: 'veo-3.1-lite-generate-001',
+  customParams: { google: { preserve: true } },
+  params: {
+    videoMode: 'reference-video',
+    resolution: '1080p',
+    duration: '4s',
+    durationSeconds: 4,
+  },
+});
+assert.equal(googleLiteFallbackSettings.videoMode, 'text-to-video', 'Veo Lite should fall back from incompatible reference mode');
+assert.equal(googleLiteFallbackSettings.params.videoMode, 'text-to-video');
+assert.equal(googleLiteFallbackSettings.duration, '8s', 'Veo Lite 1080p should still force 8s after fallback');
+assert.equal(googleLiteFallbackSettings.params.duration, '8s');
+assert.deepEqual(googleLiteFallbackSettings.customParams, { google: { preserve: true } });
 const googleI2vHandles = getActiveVideoHandlesForMode('image-to-video', googleVeo31, {
   provider: 'google',
   model: googleVeo31.id,
@@ -448,8 +503,62 @@ assert.equal(
   true,
   'Seedance advanced panel should show Custom Params when raw params are enabled'
 );
+const seedanceDefaults = normalizeVideoGenerationSettings({
+  provider: 'seedance_official',
+  model: seedanceModel.id,
+  params: { videoMode: 'frame' },
+});
+assert.equal(seedanceDefaults.params.generateAudio, false, 'Seedance generateAudio should default false in params');
+assert.equal(seedanceDefaults.params.returnLastFrame, false, 'Seedance returnLastFrame should default false in params');
+assert.equal(seedanceDefaults.params.seed, -1, 'Seedance seed should default to -1 in params');
+assert.equal(seedanceDefaults.params.watermark, undefined, 'Seedance watermark should not be a user standard param');
+const seedanceRetained = normalizeVideoGenerationSettings({
+  provider: 'seedance_official',
+  model: seedanceModel.id,
+  params: {
+    videoMode: 'frame',
+    generateAudio: true,
+    returnLastFrame: true,
+    resolution: '1080p',
+  },
+});
+assert.equal(seedanceRetained.params.generateAudio, true, 'Seedance generateAudio should retain explicit standard param');
+assert.equal(seedanceRetained.params.returnLastFrame, true, 'Seedance returnLastFrame should retain explicit standard param');
+assert.equal(seedanceRetained.params.resolution, '1080p');
 
 const klingV3Model = getVideoModelConfig('kling', 'kling-v3');
+const klingV26Fallback = normalizeVideoGenerationSettings({
+  provider: 'kling',
+  model: 'kling-v2-6',
+  customParams: { kling: { preserve: true } },
+  params: {
+    videoMode: 'reference-video',
+    qualityMode: 'pro',
+    duration: '10s',
+    generateAudio: true,
+  },
+});
+assert.equal(klingV26Fallback.videoMode, 'text-to-video', 'Kling V2.6 should fall back to a supported standard mode');
+assert.equal(klingV26Fallback.params.videoMode, 'text-to-video');
+assert.equal(klingV26Fallback.params.qualityMode, 'pro', 'Kling qualityMode should remain standard params');
+assert.equal(klingV26Fallback.params.generateAudio, true, 'Kling generateAudio should remain standard params');
+assert.deepEqual(klingV26Fallback.customParams, { kling: { preserve: true } });
+const klingOmniFallback = normalizeVideoGenerationSettings({
+  provider: 'kling',
+  model: 'kling-v3-omni',
+  customParams: { kling: { preserve: true } },
+  params: {
+    videoMode: 'image-to-video',
+    qualityMode: 'pro',
+    duration: '15s',
+    generateAudio: false,
+  },
+});
+assert.equal(klingOmniFallback.videoMode, 'omni-video', 'Kling Omni should fall back to omni-video');
+assert.equal(klingOmniFallback.params.videoMode, 'omni-video');
+assert.equal(klingOmniFallback.params.qualityMode, 'pro');
+assert.equal(klingOmniFallback.params.generateAudio, false);
+assert.deepEqual(klingOmniFallback.customParams, { kling: { preserve: true } });
 assert.deepEqual(
   getVideoAdvancedParamEntries(klingV3Model).map(([key]) => key),
   ['generateAudio', 'shotMode', 'cfgScale'],

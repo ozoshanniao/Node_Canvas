@@ -122,6 +122,25 @@ class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["mode"], "std")
         self.assertEqual(payload["sound"], "off")
 
+    async def test_standard_quality_and_audio_params_reach_payload_for_kling_variants(self):
+        adapter = KlingVideoAdapter(KlingVideoProvider(provider_type="kling"))
+        for model in ("kling-v2-6", "kling-v3"):
+            with self.subTest(model=model):
+                request = VideoCreateRequest(
+                    provider="kling",
+                    model=model,
+                    task_type="text-to-video",
+                    prompt="A comet over the ocean",
+                    params={"duration": "5s", "qualityMode": "pro", "generateAudio": True},
+                )
+
+                payload = await adapter.build_create_payload(request, self._capability(model=model))
+
+                self.assertEqual(payload["model_name"], model)
+                self.assertEqual(payload["duration"], "5")
+                self.assertEqual(payload["mode"], "pro")
+                self.assertEqual(payload["sound"], "on")
+
     async def test_build_multi_shot_payload_preserves_multi_prompt(self):
         adapter = KlingVideoAdapter(KlingVideoProvider(provider_type="kling"))
         request = VideoCreateRequest(

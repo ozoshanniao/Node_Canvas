@@ -152,6 +152,33 @@ class SeedancePayloadBuilderTest(unittest.TestCase):
             "reference_audio",
         ])
 
+    def test_standard_audio_last_frame_defaults_and_watermark_contract(self):
+        builder = SeedancePayloadBuilder(PassthroughPublicAssets())
+        request = VideoGenerateRequest(
+            provider="seedance_official",
+            model="doubao-seedance-2-0-260128",
+            videoMode="frame",
+            prompt="Animate @image_1",
+            duration="5s",
+            resolution="720p",
+            customParams={
+                "seedance": {
+                    "mode": "frame",
+                    "firstFrame": "https://public.test/first.png",
+                    "images": [],
+                    "videos": [],
+                    "audios": [],
+                }
+            },
+        )
+
+        payload = run(builder.build_payload(request, "/project"))
+
+        self.assertIs(payload["generate_audio"], False)
+        self.assertIs(payload["return_last_frame"], False)
+        self.assertIs(payload["watermark"], False)
+        self.assertNotIn("watermark", request.customParams["seedance"])
+
     def test_seed_is_omitted_until_non_negative(self):
         builder = SeedancePayloadBuilder(PassthroughPublicAssets())
 

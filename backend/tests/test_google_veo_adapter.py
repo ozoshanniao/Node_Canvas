@@ -167,6 +167,30 @@ class GoogleVeoVideoAdapterTest(unittest.TestCase):
         self.assertEqual(serialized["config"]["duration_seconds"], 8)
         self.assertEqual(len(serialized["config"]["reference_images"]), 2)
 
+    def test_forced_1080p_params_reach_payload_config(self):
+        adapter = GoogleVeoVideoAdapter()
+        request = VideoCreateRequest(
+            provider="google",
+            model="veo-3.1-generate-001",
+            task_type="text-to-video",
+            prompt="A waterfall at sunrise",
+            params={
+                "videoMode": "text-to-video",
+                "aspectRatio": "16:9",
+                "duration": "8s",
+                "durationSeconds": 8,
+                "resolution": "1080p",
+            },
+        )
+
+        payload = run(adapter.build_create_payload(request, {}))
+        serialized = adapter._legacy_provider._serialize(payload)
+
+        self.assertEqual(serialized["source"], {"prompt": "A waterfall at sunrise"})
+        self.assertEqual(serialized["config"]["aspect_ratio"], "16:9")
+        self.assertEqual(serialized["config"]["duration_seconds"], 8)
+        self.assertEqual(serialized["config"]["resolution"], "1080p")
+
     def test_none_params_keep_legacy_defaults(self):
         adapter = GoogleVeoVideoAdapter()
         request = VideoCreateRequest(
