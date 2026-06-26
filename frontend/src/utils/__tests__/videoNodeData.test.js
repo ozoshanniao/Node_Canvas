@@ -157,4 +157,34 @@ assert.equal(sanitized.outputs.video.rawProviderResponse, undefined);
 assert.equal(sanitized.outputs.lastFrame.path, undefined);
 assert.equal(sanitized.outputs.lastFrame.url, undefined);
 
+const sanitizedOmniCustomParams = sanitizeVideoNodeDataForSave({
+  provider: 'kling',
+  model: 'kling-v3-omni',
+  videoMode: 'omni-video',
+  params: {
+    customParams: {
+      kling: {
+        omniParams: {
+          images: [
+            {
+              alias: 'image_1',
+              role: 'reference',
+              sourceNodeId: 'source-1',
+              sourceHandle: 'image:out',
+              url: 'http://127.0.0.1:8000/api/input/raw.png?token=secret',
+              index: 0,
+            },
+            { alias: 'image_2', role: 'reference', path: 'C:/secret/raw.png' },
+          ],
+        },
+      },
+    },
+  },
+});
+assert.equal(JSON.stringify(sanitizedOmniCustomParams).includes('127.0.0.1'), false);
+assert.equal(JSON.stringify(sanitizedOmniCustomParams).includes('C:/secret'), false);
+assert.deepEqual(sanitizedOmniCustomParams.params.customParams.kling.omniParams.images, [
+  { alias: 'image_1', role: 'reference', sourceNodeId: 'source-1', sourceHandle: 'image:out' },
+]);
+
 console.log('videoNodeData tests passed');

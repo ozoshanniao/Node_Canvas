@@ -41,6 +41,7 @@ import {
   getStableVideoHandles,
   getVideoCapability,
 } from '../utils/videoCapabilities';
+import { buildRuntimeKlingOmniReferences } from '../utils/klingOmniReferences';
 import { shouldShowRawCustomParams, useAppSettings } from '../utils/appSettings';
 import { countRender } from '../utils/perfDebug';
 import { useI18n } from '../hooks/useI18n';
@@ -723,6 +724,12 @@ export function VideoNode({ id, data }) {
     }
 
     const omniElements = resolveKlingOmniElements(omniParamsOutput);
+    const runtimeOmniReferences = isOmniModel
+      ? buildRuntimeKlingOmniReferences({
+          ...omniParamsOutput,
+          elements: omniElements,
+        })
+      : null;
     const klingParams = settings.customParams?.kling || {};
     const videoNodeKlingParams = {
       ...(klingParams.cfgScale !== undefined || settings.cfgScale !== undefined
@@ -759,16 +766,12 @@ export function VideoNode({ id, data }) {
       publicAssetStorage: appSettings.publicAssetStorage || undefined,
       seed: settings.seed ?? -1,
       numberOfVideos: settings.numberOfVideos ?? 1,
-      images: isOmniModel ? [] : images,
+      images: isOmniModel ? runtimeOmniReferences.images : images,
       endImage: isOmniModel ? null : endImage || null,
       customParams: isOmniModel
         ? {
-            ...(settings.customParams || {}),
             kling: {
-              omniParams: {
-                ...omniParamsOutput,
-                elements: omniElements,
-              },
+              omniParams: runtimeOmniReferences.omniParams,
             },
           }
         : isSeedance

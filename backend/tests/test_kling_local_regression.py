@@ -201,14 +201,15 @@ class KlingPayloadRegressionTest(unittest.TestCase):
             videoMode="omni-video",
             prompt="",
             durationSeconds=5,
+            images=["https://example.test/ref1.png", "https://example.test/ref2.png"],
             customParams={
                 "kling": {
                     "omniParams": {
                         "prompt": "",
                         "shotMode": "customize",
                         "images": [
-                            {"alias": "image_1", "url": "https://example.test/ref1.png", "role": "reference"},
-                            {"alias": "image_2", "url": "https://example.test/ref2.png", "role": "reference"},
+                            {"alias": "image_1", "index": 0, "role": "reference"},
+                            {"alias": "image_2", "index": 1, "role": "reference"},
                         ],
                         "elements": [],
                         "videos": [],
@@ -235,6 +236,43 @@ class KlingPayloadRegressionTest(unittest.TestCase):
             {"image_url": "https://example.test/ref2.png"},
         ])
 
+    def test_kling_omni_rejects_raw_url_and_invalid_index(self):
+        builder = KlingOmniPayloadBuilder()
+        base_request = VideoGenerateRequest(
+            provider="kling",
+            model="kling-v3-omni",
+            videoMode="omni-video",
+            prompt="",
+            images=["https://example.test/ref1.png"],
+            customParams={
+                "kling": {
+                    "omniParams": {
+                        "prompt": "Use @image_1.",
+                        "images": [{"alias": "image_1", "index": 0, "role": "reference"}],
+                        "elements": [],
+                    }
+                }
+            },
+        )
+
+        payload = run(builder.build_omni_payload(base_request, None))
+        self.assertEqual(payload["image_list"], [{"image_url": "https://example.test/ref1.png"}])
+
+        for forbidden_key in ("url", "uri", "path", "endpoint", "token", "key"):
+            request = base_request.model_copy(deep=True)
+            request.customParams["kling"]["omniParams"]["images"] = [
+                {"alias": "image_1", "index": 0, forbidden_key: "https://secret.example/ref.png"}
+            ]
+            with self.assertRaisesRegex(ValueError, "obsolete"):
+                run(builder.build_omni_payload(request, None))
+
+        for bad_index in (None, True, -1, 1):
+            request = base_request.model_copy(deep=True)
+            request.customParams["kling"]["omniParams"]["images"] = [
+                {"alias": "image_1", "index": bad_index, "role": "reference"}
+            ]
+            with self.assertRaisesRegex(ValueError, "index|unavailable"):
+                run(builder.build_omni_payload(request, None))
     def test_kling_provider_payload_branch_selection(self):
         provider = KlingVideoProvider(provider_type="kling")
         calls = []

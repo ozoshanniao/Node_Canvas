@@ -1,5 +1,6 @@
 import { DEFAULT_VIDEO_GENERATION_SETTINGS } from './videoGenerationOptions.js';
 import { buildVideoSchemaSnapshot } from './videoCapabilities.js';
+import { sanitizePersistedKlingOmniReferences } from './klingOmniReferences.js';
 
 const VIDEO_PARAM_KEYS = [
   'aspectRatio',
@@ -175,6 +176,9 @@ const sanitizeValue = (value, key = '') => {
 export const sanitizeVideoNodeDataForSave = (data = {}, capability = null) => {
   const normalized = normalizeVideoNodeData(data, capability);
   const sanitizedParams = sanitizeValue(normalized.params) || {};
+  if (sanitizedParams.customParams) {
+    sanitizedParams.customParams = sanitizePersistedKlingOmniReferences(sanitizedParams.customParams);
+  }
   const sanitizedOutputs = sanitizeValue(normalized.outputs) || {};
   const snapshot = sanitizeValue(normalized.schemaSnapshot) || null;
 

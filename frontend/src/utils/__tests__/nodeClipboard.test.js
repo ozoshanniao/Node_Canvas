@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { sanitizePastedNodeData } from '../nodeClipboard.js';
+import { sanitizeNodeDefaults } from '../nodeDefaults.js';
+import { buildRuntimeKlingOmniReferences, sanitizePersistedKlingOmniReferences } from '../klingOmniReferences.js';
 
 const imageSource = {
   provider: 'google-studio',
@@ -118,3 +120,65 @@ assert.equal('task' in mixedNodes[1].data, false);
 assert.equal(mixedNodes[2].data.url, imageInputSource.url);
 
 console.log('nodeClipboard tests passed');
+const legacyOmniCustomParams = {
+  kling: {
+    omniParams: {
+      images: [
+        {
+          alias: 'image_1',
+          role: 'reference',
+          sourceNodeId: 'node-a',
+          sourceHandle: 'image:out',
+          url: 'https://example.test/raw.png?token=secret',
+          index: 0,
+        },
+        { alias: 'image_2', role: 'reference', url: 'blob:http://127.0.0.1/raw' },
+      ],
+    },
+  },
+};
+
+assert.deepEqual(
+  sanitizePersistedKlingOmniReferences(legacyOmniCustomParams).kling.omniParams.images,
+  [{ alias: 'image_1', role: 'reference', sourceNodeId: 'node-a', sourceHandle: 'image:out' }],
+  'persisted Kling Omni references should keep only trusted descriptors'
+);
+
+const runtimeSource = {
+  prompt: 'Use @image_1 and @image_2',
+  resolvedPrompt: 'Use <<<image_1>>> and <<<image_2>>>',
+  shotMode: 'single',
+  images: [
+    { alias: 'image_1', role: 'reference', url: 'https://example.test/a.png', sourceNodeId: 'a', sourceHandle: 'image:out' },
+    { alias: 'image_2', role: 'end_frame', url: 'https://example.test/b.png', sourceNodeId: 'b', sourceHandle: 'image:out' },
+  ],
+  elements: [{ alias: 'element_1', elementId: 123 }],
+};
+const runtimeSourceSnapshot = structuredClone(runtimeSource);
+const runtimeRefs = buildRuntimeKlingOmniReferences(runtimeSource);
+assert.deepEqual(runtimeRefs.images, ['https://example.test/a.png', 'https://example.test/b.png']);
+assert.deepEqual(runtimeRefs.omniParams.images, [
+  { alias: 'image_1', role: 'reference', index: 0 },
+  { alias: 'image_2', role: 'end_frame', index: 1 },
+]);
+assert.equal(JSON.stringify(runtimeRefs.omniParams).includes('https://example.test'), false);
+assert.deepEqual(runtimeSource, runtimeSourceSnapshot, 'runtime helper must not mutate source output');
+
+const videoWithLegacyOmni = {
+  provider: 'kling',
+  model: 'kling-v3-omni',
+  params: { customParams: legacyOmniCustomParams },
+  customParams: legacyOmniCustomParams,
+};
+const sanitizedLegacyOmni = sanitizePastedNodeData('videoNode', videoWithLegacyOmni);
+assert.equal(JSON.stringify(sanitizedLegacyOmni).includes('https://example.test/raw.png'), false);
+assert.equal(JSON.stringify(sanitizedLegacyOmni).includes('blob:http://127.0.0.1/raw'), false);
+assert.deepEqual(sanitizedLegacyOmni.customParams.kling.omniParams.images, [
+  { alias: 'image_1', role: 'reference', sourceNodeId: 'node-a', sourceHandle: 'image:out' },
+]);
+
+const defaultParams = sanitizeNodeDefaults('videoGeneration', { customParams: legacyOmniCustomParams });
+assert.equal(JSON.stringify(defaultParams).includes('token=secret'), false);
+assert.deepEqual(defaultParams.customParams.kling.omniParams.images, [
+  { alias: 'image_1', role: 'reference', sourceNodeId: 'node-a', sourceHandle: 'image:out' },
+]);

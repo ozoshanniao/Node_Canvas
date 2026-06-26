@@ -169,11 +169,14 @@ class YunwuKlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
                     "kling": {
                         "omniParams": {
                             "prompt": "Move @image_1 around @element_1",
-                            "images": [{"url": "https://cdn.example.test/ref.png", "role": "reference"}],
+                            "images": [{"index": 0, "role": "reference"}],
                             "elements": [{"elementId": "123"}],
                         }
                     }
                 },
+            },
+            inputs={
+                "image:references": [VideoInputAsset(kind="image", role="reference", url="https://cdn.example.test/ref.png")],
             },
         )
 

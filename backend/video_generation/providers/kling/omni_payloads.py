@@ -6,6 +6,8 @@ from video_generation.schemas import VideoGenerateRequest
 
 OMNI_ALIAS_PATTERN = re.compile(r"@(image|element|video)_(\d+)")
 OMNI_RESOLVED_ALIAS_PATTERN = re.compile(r"<<<(image|element|video)_(\d+)>>>")
+RAW_IMAGE_REFERENCE_KEYS = {"url", "uri", "path", "endpoint", "token", "key"}
+OBSOLETE_REFERENCE_ERROR = "Kling Omni reference format is obsolete. Please reconnect or reselect your reference media."
 
 
 class KlingOmniPayloadBuilder(KlingPayloadBuilder):
@@ -79,7 +81,20 @@ class KlingOmniPayloadBuilder(KlingPayloadBuilder):
             raise ValueError("Kling element_list supports at most 3 elements.")
         return element_list
 
-    async def _image_list(self, omni_params: dict, project_path: str | None) -> tuple[list[dict], bool]:
+    def _runtime_image_ref(self, request: VideoGenerateRequest, item: dict) -> str:
+        if any(key in item for key in RAW_IMAGE_REFERENCE_KEYS):
+            raise ValueError(OBSOLETE_REFERENCE_ERROR)
+        index = item.get("index")
+        if isinstance(index, bool) or not isinstance(index, int):
+            raise ValueError("Kling Omni image reference index is invalid.")
+        if index < 0 or index >= len(request.images or []):
+            raise ValueError("Kling Omni image reference index is out of range.")
+        image_ref = request.images[index]
+        if not image_ref:
+            raise ValueError("Kling Omni image reference is unavailable.")
+        return image_ref
+
+    async def _image_list(self, request: VideoGenerateRequest, omni_params: dict, project_path: str | None) -> tuple[list[dict], bool]:
         images = omni_params.get("images")
         if not isinstance(images, list):
             return [], False
@@ -92,11 +107,9 @@ class KlingOmniPayloadBuilder(KlingPayloadBuilder):
         for item in images:
             if not isinstance(item, dict):
                 continue
-            image_url = str(item.get("url") or "").strip()
-            if not image_url:
-                continue
+            image_ref = self._runtime_image_ref(request, item)
             role = str(item.get("role") or "reference").strip()
-            resolved_image = await self.resolve_image_for_kling(image_url, project_path)
+            resolved_image = await self.resolve_image_for_kling(image_ref, project_path)
             entry = {"image_url": resolved_image}
 
             if role == "first_frame":
@@ -120,7 +133,6 @@ class KlingOmniPayloadBuilder(KlingPayloadBuilder):
             raise ValueError("Kling Omni end_frame requires a first_frame image.")
 
         return image_list, has_frame_role
-
     def _duration_total(self, request: VideoGenerateRequest) -> int:
         raw = request.durationSeconds
         if raw is None:
@@ -206,7 +218,7 @@ class KlingOmniPayloadBuilder(KlingPayloadBuilder):
         if isinstance(videos, list) and videos:
             raise ValueError("Kling Omni video references are not supported yet.")
 
-        image_list, has_frame_role = await self._image_list(omni_params, project_path)
+        image_list, has_frame_role = await self._image_list(request, omni_params, project_path)
         element_list = self._element_list(omni_params)
 
         reference_total = len(image_list) + len(element_list)

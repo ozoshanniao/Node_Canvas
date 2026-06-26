@@ -1,3 +1,5 @@
+import { sanitizePersistedKlingOmniReferences } from './klingOmniReferences.js';
+
 export const DEFAULTS_STORAGE_KEY = 'node-ai-canvas:lastNodeDefaults';
 
 const DEFAULT_FIELDS = {
@@ -65,7 +67,9 @@ const writeDefaultsStore = (store) => {
 export const sanitizeNodeDefaults = (nodeKind, data = {}) => {
   const fields = DEFAULT_FIELDS[nodeKind] || [];
   return fields.reduce((defaults, field) => {
-    const value = data[field];
+    const value = field === 'customParams'
+      ? sanitizePersistedKlingOmniReferences(data[field])
+      : data[field];
     if (value !== undefined && value !== null && value !== '') {
       defaults[field] = value;
     }

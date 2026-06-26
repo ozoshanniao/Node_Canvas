@@ -1,3 +1,5 @@
+import { sanitizePersistedKlingOmniReferences } from './klingOmniReferences.js';
+
 const cloneValue = (value) => {
   if (Array.isArray(value)) return value.map(cloneValue);
   if (value && typeof value === 'object') {
@@ -36,6 +38,14 @@ const VIDEO_RUNTIME_FIELDS = [
 export const sanitizePastedNodeData = (nodeType, sourceData = {}) => {
   const sanitized = cloneValue(sourceData || {});
   if (nodeType === 'imageNode') deleteFields(sanitized, IMAGE_RUNTIME_FIELDS);
-  else if (nodeType === 'videoNode') deleteFields(sanitized, VIDEO_RUNTIME_FIELDS);
+  else if (nodeType === 'videoNode') {
+    deleteFields(sanitized, VIDEO_RUNTIME_FIELDS);
+    if (sanitized.customParams) {
+      sanitized.customParams = sanitizePersistedKlingOmniReferences(sanitized.customParams);
+    }
+    if (sanitized.params?.customParams) {
+      sanitized.params.customParams = sanitizePersistedKlingOmniReferences(sanitized.params.customParams);
+    }
+  }
   return sanitized;
 };
