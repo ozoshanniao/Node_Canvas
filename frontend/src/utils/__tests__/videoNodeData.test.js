@@ -87,6 +87,11 @@ assert.equal(syncedToolbarPatch.params.videoMode, 'image-to-video');
 assert.equal(syncedToolbarPatch.params.aspectRatio, '9:16');
 assert.equal(syncedToolbarPatch.params.duration, '4s');
 assert.equal(syncedToolbarPatch.params.resolution, '720p');
+assert.equal(syncedToolbarPatch.videoMode, undefined);
+assert.equal(syncedToolbarPatch.aspectRatio, undefined);
+assert.equal(syncedToolbarPatch.duration, undefined);
+assert.equal(syncedToolbarPatch.resolution, undefined);
+assert.equal(syncedToolbarPatch.taskType, 'image-to-video');
 
 const normalizedSyncedToolbarPatch = normalizeVideoGenerationSettings(syncedToolbarPatch);
 assert.equal(normalizedSyncedToolbarPatch.videoMode, 'image-to-video');
@@ -118,6 +123,19 @@ assert.equal(normalizedLegacy.taskType, 'image-to-video');
 assert.equal(normalizedLegacy.params.aspectRatio, '9:16');
 assert.equal(normalizedLegacy.params.negativePrompt, 'low quality');
 assert.equal(normalizedLegacy.outputs.video.url, '/api/generation/video.mp4');
+
+const normalizedConflict = normalizeVideoNodeData({
+  provider: 'google',
+  model: 'veo-3.1-generate-001',
+  aspectRatio: '9:16',
+  duration: '4s',
+  params: {
+    aspectRatio: '16:9',
+    duration: '8s',
+  },
+});
+assert.equal(normalizedConflict.params.aspectRatio, '16:9');
+assert.equal(normalizedConflict.params.duration, '8s');
 
 const sanitized = sanitizeVideoNodeDataForSave({
   provider: 'google',
@@ -161,29 +179,28 @@ const sanitizedOmniCustomParams = sanitizeVideoNodeDataForSave({
   provider: 'kling',
   model: 'kling-v3-omni',
   videoMode: 'omni-video',
-  params: {
-    customParams: {
-      kling: {
-        omniParams: {
-          images: [
-            {
-              alias: 'image_1',
-              role: 'reference',
-              sourceNodeId: 'source-1',
-              sourceHandle: 'image:out',
-              url: 'http://127.0.0.1:8000/api/input/raw.png?token=secret',
-              index: 0,
-            },
-            { alias: 'image_2', role: 'reference', path: 'C:/secret/raw.png' },
-          ],
-        },
+  customParams: {
+    kling: {
+      omniParams: {
+        images: [
+          {
+            alias: 'image_1',
+            role: 'reference',
+            sourceNodeId: 'source-1',
+            sourceHandle: 'image:out',
+            url: 'http://127.0.0.1:8000/api/input/raw.png?token=secret',
+            index: 0,
+          },
+          { alias: 'image_2', role: 'reference', path: 'C:/secret/raw.png' },
+        ],
       },
     },
   },
 });
 assert.equal(JSON.stringify(sanitizedOmniCustomParams).includes('127.0.0.1'), false);
 assert.equal(JSON.stringify(sanitizedOmniCustomParams).includes('C:/secret'), false);
-assert.deepEqual(sanitizedOmniCustomParams.params.customParams.kling.omniParams.images, [
+assert.equal('customParams' in sanitizedOmniCustomParams.params, false);
+assert.deepEqual(sanitizedOmniCustomParams.customParams.kling.omniParams.images, [
   { alias: 'image_1', role: 'reference', sourceNodeId: 'source-1', sourceHandle: 'image:out' },
 ]);
 

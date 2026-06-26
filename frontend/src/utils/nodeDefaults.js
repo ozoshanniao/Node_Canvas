@@ -1,4 +1,5 @@
 import { sanitizePersistedKlingOmniReferences } from './klingOmniReferences.js';
+import { stripVideoParamRootFields } from './videoNodeData.js';
 
 export const DEFAULTS_STORAGE_KEY = 'node-ai-canvas:lastNodeDefaults';
 
@@ -19,24 +20,9 @@ const DEFAULT_FIELDS = {
   videoGeneration: [
     'provider',
     'model',
-    'videoMode',
-    'aspectRatio',
-    'duration',
-    'durationSeconds',
-    'resolution',
-    'qualityMode',
-    'seed',
-    'numberOfVideos',
-    'generateAudio',
-    'enableUpsample',
-    'enhancePrompt',
-    'autoFix',
-    'cameraMotion',
-    'motionStrength',
-    'cfgScale',
-    'fps',
-    'negativePrompt',
+    'taskType',
     'customParams',
+    'params',
   ],
   llmProcessor: [
     'provider',
@@ -65,11 +51,12 @@ const writeDefaultsStore = (store) => {
 };
 
 export const sanitizeNodeDefaults = (nodeKind, data = {}) => {
+  const source = nodeKind === 'videoGeneration' ? stripVideoParamRootFields(data) : data;
   const fields = DEFAULT_FIELDS[nodeKind] || [];
   return fields.reduce((defaults, field) => {
     const value = field === 'customParams'
-      ? sanitizePersistedKlingOmniReferences(data[field])
-      : data[field];
+      ? sanitizePersistedKlingOmniReferences(source[field])
+      : source[field];
     if (value !== undefined && value !== null && value !== '') {
       defaults[field] = value;
     }

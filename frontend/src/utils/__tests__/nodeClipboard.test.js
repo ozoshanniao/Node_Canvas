@@ -74,12 +74,18 @@ const sanitizedVideo = sanitizePastedNodeData('videoNode', videoSource);
 
 assert.equal(sanitizedVideo.provider, videoSource.provider);
 assert.equal(sanitizedVideo.model, videoSource.model);
-assert.equal(sanitizedVideo.prompt, videoSource.prompt);
-assert.equal(sanitizedVideo.videoMode, videoSource.videoMode);
-assert.equal(sanitizedVideo.duration, videoSource.duration);
-assert.equal(sanitizedVideo.aspectRatio, videoSource.aspectRatio);
-assert.equal(sanitizedVideo.resolution, videoSource.resolution);
-assert.deepEqual(sanitizedVideo.params, videoSource.params);
+assert.equal(sanitizedVideo.prompt, undefined);
+assert.equal(sanitizedVideo.videoMode, undefined);
+assert.equal(sanitizedVideo.duration, undefined);
+assert.equal(sanitizedVideo.aspectRatio, undefined);
+assert.equal(sanitizedVideo.resolution, undefined);
+assert.deepEqual(sanitizedVideo.params, {
+  prompt: videoSource.prompt,
+  videoMode: videoSource.videoMode,
+  duration: '10s',
+  aspectRatio: '16:9',
+  resolution: '1080p',
+});
 assert.deepEqual(sanitizedVideo.schemaSnapshot, videoSource.schemaSnapshot);
 [
   'task', 'outputs', 'videoUrl', 'outputVideoUrl', 'outputVideoPath',
@@ -176,6 +182,42 @@ assert.equal(JSON.stringify(sanitizedLegacyOmni).includes('blob:http://127.0.0.1
 assert.deepEqual(sanitizedLegacyOmni.customParams.kling.omniParams.images, [
   { alias: 'image_1', role: 'reference', sourceNodeId: 'node-a', sourceHandle: 'image:out' },
 ]);
+
+
+const videoWithLegacyStandardParams = sanitizePastedNodeData('videoNode', {
+  provider: 'google',
+  model: 'veo-3.1-generate-001',
+  videoMode: 'image-to-video',
+  aspectRatio: '9:16',
+  duration: '4s',
+  params: {
+    videoMode: 'text-to-video',
+    aspectRatio: '16:9',
+    duration: '8s',
+  },
+});
+assert.equal(videoWithLegacyStandardParams.videoMode, undefined);
+assert.equal(videoWithLegacyStandardParams.aspectRatio, undefined);
+assert.equal(videoWithLegacyStandardParams.duration, undefined);
+assert.deepEqual(videoWithLegacyStandardParams.params, {
+  videoMode: 'text-to-video',
+  aspectRatio: '16:9',
+  duration: '8s',
+});
+
+const videoDefaultsWithParams = sanitizeNodeDefaults('videoGeneration', {
+  provider: 'google',
+  model: 'veo-3.1-generate-001',
+  aspectRatio: '9:16',
+  duration: '4s',
+  params: {
+    aspectRatio: '16:9',
+    duration: '8s',
+  },
+});
+assert.equal(videoDefaultsWithParams.aspectRatio, undefined);
+assert.equal(videoDefaultsWithParams.duration, undefined);
+assert.deepEqual(videoDefaultsWithParams.params, { aspectRatio: '16:9', duration: '8s' });
 
 const defaultParams = sanitizeNodeDefaults('videoGeneration', { customParams: legacyOmniCustomParams });
 assert.equal(JSON.stringify(defaultParams).includes('token=secret'), false);

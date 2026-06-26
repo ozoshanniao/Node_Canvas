@@ -95,12 +95,14 @@ const dynamicSettings = normalizeVideoGenerationSettings(
   dynamicRegistry
 );
 assert.equal(dynamicSettings.aspectRatio, '1:1', 'dynamic registry should drive normalized select options');
+assert.equal(dynamicSettings.params.aspectRatio, '1:1', 'normalized params should mirror capability-constrained standard values');
 
 const fallbackSettings = normalizeVideoGenerationSettings(
   { provider: 'yunwu', model: 'veo3.1', aspectRatio: '16:9' },
   null
 );
 assert.equal(fallbackSettings.aspectRatio, '16:9', 'missing dynamic registry should use local fallback options');
+assert.equal(fallbackSettings.params.aspectRatio, '16:9', 'fallback normalized params should keep the selected standard value');
 
 const dynamicModel = getVideoModelConfig('yunwu', 'veo3.1', dynamicRegistry);
 assert.deepEqual(dynamicModel.params.aspectRatio.options, ['1:1']);
@@ -367,6 +369,19 @@ assert.deepEqual(
   ['text:prompt', 'image:firstFrame', 'image:lastFrame'],
   'KIE Kling 3.0 I2V visible handles should match official first/last-frame UI'
 );
+const google1080pSettings = normalizeVideoGenerationSettings({
+  provider: 'google',
+  model: 'veo-3.1-generate-001',
+  params: {
+    videoMode: 'text-to-video',
+    resolution: '1080p',
+    duration: '4s',
+  },
+});
+assert.equal(google1080pSettings.duration, '8s', '1080p should force 8s duration');
+assert.equal(google1080pSettings.params.duration, '8s', 'forced duration should be reflected in canonical params');
+assert.equal(google1080pSettings.params.resolution, '1080p');
+
 const googleVeo31 = getVideoModelConfig('google', 'veo-3.1-generate-001');
 const googleI2vHandles = getActiveVideoHandlesForMode('image-to-video', googleVeo31, {
   provider: 'google',

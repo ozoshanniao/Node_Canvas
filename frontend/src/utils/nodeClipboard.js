@@ -1,4 +1,5 @@
 import { sanitizePersistedKlingOmniReferences } from './klingOmniReferences.js';
+import { VIDEO_PARAM_KEYS, pickLegacyVideoParams } from './videoNodeData.js';
 
 const cloneValue = (value) => {
   if (Array.isArray(value)) return value.map(cloneValue);
@@ -40,11 +41,20 @@ export const sanitizePastedNodeData = (nodeType, sourceData = {}) => {
   if (nodeType === 'imageNode') deleteFields(sanitized, IMAGE_RUNTIME_FIELDS);
   else if (nodeType === 'videoNode') {
     deleteFields(sanitized, VIDEO_RUNTIME_FIELDS);
+    const legacyParams = pickLegacyVideoParams(sanitized);
+    const hasLegacyParams = Object.keys(legacyParams).length > 0;
+    if (hasLegacyParams || sanitized.params) {
+      sanitized.params = {
+        ...legacyParams,
+        ...(sanitized.params || {}),
+      };
+    }
+    deleteFields(sanitized, VIDEO_PARAM_KEYS);
     if (sanitized.customParams) {
       sanitized.customParams = sanitizePersistedKlingOmniReferences(sanitized.customParams);
     }
     if (sanitized.params?.customParams) {
-      sanitized.params.customParams = sanitizePersistedKlingOmniReferences(sanitized.params.customParams);
+      delete sanitized.params.customParams;
     }
   }
   return sanitized;
