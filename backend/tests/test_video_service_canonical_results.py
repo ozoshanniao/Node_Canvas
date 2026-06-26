@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from video_generation.adapters.types import VideoCreateResult, VideoQueryResult
+from video_generation.adapters.types import VideoCreateRequest, VideoCreateResult, VideoQueryResult
 from video_generation.schemas import VideoGenerateRequest, VideoTask
 from video_generation.service import VideoGenerationService
 from video_generation.tasks import get_task, upsert_task
@@ -29,6 +29,15 @@ class FakeAdapter:
     async def query(self, request, capability):
         self.queried.append((request, capability))
         return self.query_result
+
+    def create_request_from_generate_request(self, request):
+        return VideoCreateRequest(
+            provider=request.provider,
+            model=request.model,
+            task_type=request.videoMode,
+            prompt=request.prompt,
+            project_dir=request.projectPath,
+        )
 
 
 class VideoServiceCanonicalResultsTest(unittest.TestCase):

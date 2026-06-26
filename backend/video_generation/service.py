@@ -96,41 +96,6 @@ class VideoGenerationService:
             project_dir=request.projectPath,
         )
 
-    def _google_create_request(self, request: VideoGenerateRequest) -> VideoCreateRequest:
-        inputs: dict[str, list[VideoInputAsset]] = {}
-        if request.videoMode == "reference-video":
-            inputs["image:references"] = [
-                VideoInputAsset(kind="image", role="reference", url=image, handle_id="image:references")
-                for image in request.images
-            ]
-        elif request.images:
-            inputs["image:firstFrame"] = [
-                VideoInputAsset(kind="image", role="first_frame", url=request.images[0], handle_id="image:firstFrame")
-            ]
-        if request.endImage:
-            inputs["image:lastFrame"] = [
-                VideoInputAsset(kind="image", role="last_frame", url=request.endImage, handle_id="image:lastFrame")
-            ]
-
-        return VideoCreateRequest(
-            provider=request.provider,
-            model=request.model,
-            task_type=request.videoMode,
-            prompt=request.prompt,
-            params={
-                "negativePrompt": request.negativePrompt,
-                "aspectRatio": request.aspectRatio,
-                "duration": request.duration,
-                "durationSeconds": request.durationSeconds,
-                "resolution": request.resolution,
-                "generateAudio": request.generateAudio,
-                "seed": request.seed,
-                "numberOfVideos": request.numberOfVideos,
-            },
-            inputs=inputs,
-            project_dir=request.projectPath,
-        )
-
     def _kling_create_request(self, request: VideoGenerateRequest) -> VideoCreateRequest:
         inputs: dict[str, list[VideoInputAsset]] = {}
         if request.videoMode in {"reference-video", "omni-video"}:
@@ -318,7 +283,7 @@ class VideoGenerationService:
             create_request = self._yunwu_create_request(request)
         elif request.provider == "google":
             adapter = get_video_adapter("google")
-            create_request = self._google_create_request(request)
+            create_request = adapter.create_request_from_generate_request(request)
         elif request.provider == "kling":
             register_video_adapter(KlingVideoAdapter(provider))
             adapter = get_video_adapter("kling")
