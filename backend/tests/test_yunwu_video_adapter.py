@@ -73,6 +73,9 @@ class FakeServiceAdapter:
         self.created_requests = []
         self.queried_requests = []
 
+    def create_request_from_generate_request(self, request):
+        return YunwuVideoAdapter.create_request_from_generate_request(self, request)
+
     async def create(self, request, capability):
         self.created_requests.append((request, capability))
         return VideoCreateResult(
@@ -115,6 +118,107 @@ class YunwuVideoAdapterTest(unittest.TestCase):
         self.assertTrue(adapter.supports(capability))
         self.assertEqual(capability["adapterHints"]["adapterId"], "yunwu:veo")
         self.assertEqual(capability["adapterHints"]["runtime"], "adapter")
+
+    def test_create_request_matches_legacy_service_field_set(self):
+        adapter = YunwuVideoAdapter()
+        request = VideoGenerateRequest(
+            projectPath="mock-project",
+            provider="yunwu",
+            model="veo3.1",
+            videoMode="text-to-video",
+            prompt="A quiet city street",
+            negativePrompt="low quality",
+            aspectRatio="9:16",
+            duration="8s",
+            durationSeconds=8,
+            resolution="1080p",
+            enableUpsample=True,
+            generateAudio=True,
+            seed=42,
+            numberOfVideos=2,
+            customParams={"enhancePrompt": False, "veoFlClose": True, "futureOption": "kept"},
+        )
+
+        create_request = adapter.create_request_from_generate_request(request)
+
+        self.assertEqual(create_request.provider, "yunwu")
+        self.assertEqual(create_request.model, "veo3.1")
+        self.assertEqual(create_request.task_type, "text-to-video")
+        self.assertEqual(create_request.prompt, "A quiet city street")
+        self.assertEqual(create_request.project_dir, "mock-project")
+        self.assertEqual(create_request.inputs, {})
+        self.assertEqual(create_request.params, {
+            "negativePrompt": "low quality",
+            "aspectRatio": "9:16",
+            "enableUpsample": True,
+            "enhancePrompt": False,
+            "veoFlClose": True,
+            "customParams": {"enhancePrompt": False, "veoFlClose": True, "futureOption": "kept"},
+        })
+
+        legacy_request = adapter._to_legacy_request(create_request)
+        self.assertIsNone(legacy_request.duration)
+        self.assertIsNone(legacy_request.durationSeconds)
+        self.assertIsNone(legacy_request.resolution)
+        self.assertIsNone(legacy_request.generateAudio)
+        self.assertIsNone(legacy_request.seed)
+        self.assertIsNone(legacy_request.numberOfVideos)
+        self.assertEqual(legacy_request.customParams, {
+            "enhancePrompt": False,
+            "veoFlClose": True,
+            "futureOption": "kept",
+        })
+
+    def test_create_request_maps_image_to_video_frames(self):
+        adapter = YunwuVideoAdapter()
+        request = VideoGenerateRequest(
+            projectPath="mock-project",
+            provider="yunwu",
+            model="veo3.1",
+            videoMode="image-to-video",
+            prompt="Animate this frame",
+            images=["mock://first.png", "mock://ignored.png"],
+            endImage="mock://last.png",
+        )
+
+        create_request = adapter.create_request_from_generate_request(request)
+
+        self.assertEqual(create_request.inputs, {
+            "image:firstFrame": [
+                VideoInputAsset(kind="image", role="first_frame", url="mock://first.png", handle_id="image:firstFrame"),
+            ],
+            "image:lastFrame": [
+                VideoInputAsset(kind="image", role="last_frame", url="mock://last.png", handle_id="image:lastFrame"),
+            ],
+        })
+        legacy_request = adapter._to_legacy_request(create_request)
+        self.assertEqual(legacy_request.images, ["mock://first.png"])
+        self.assertEqual(legacy_request.endImage, "mock://last.png")
+
+    def test_create_request_maps_reference_images_without_end_frame(self):
+        adapter = YunwuVideoAdapter()
+        request = VideoGenerateRequest(
+            projectPath="mock-project",
+            provider="yunwu",
+            model="veo3.1-components",
+            videoMode="reference-video",
+            prompt="Combine references",
+            images=["mock://a.png", "mock://b.png"],
+            endImage="mock://not-a-reference.png",
+        )
+
+        create_request = adapter.create_request_from_generate_request(request)
+
+        self.assertEqual(create_request.inputs["image:references"], [
+            VideoInputAsset(kind="image", role="reference", url="mock://a.png", handle_id="image:references"),
+            VideoInputAsset(kind="image", role="reference", url="mock://b.png", handle_id="image:references"),
+        ])
+        self.assertEqual(create_request.inputs["image:lastFrame"], [
+            VideoInputAsset(kind="image", role="last_frame", url="mock://not-a-reference.png", handle_id="image:lastFrame"),
+        ])
+        legacy_request = adapter._to_legacy_request(create_request)
+        self.assertEqual(legacy_request.images, ["mock://a.png", "mock://b.png"])
+        self.assertIsNone(legacy_request.endImage)
 
     def test_text_to_video_payload_matches_legacy_fields(self):
         adapter = YunwuVideoAdapter()
