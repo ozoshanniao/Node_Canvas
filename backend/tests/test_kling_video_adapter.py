@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 from video_generation.adapters.errors import VideoProviderError
 from video_generation.adapters.kling import KlingVideoAdapter
 from video_generation.adapters.registry import get_video_adapter
-from video_generation.adapters.types import VideoCreateRequest, VideoInputAsset, VideoQueryRequest
+from video_generation.adapters.types import VideoCreateRequest, VideoCreateResult, VideoInputAsset, VideoQueryRequest
 from video_generation.adapters.yunwu_kling import YunwuKlingVideoAdapter
 from video_generation.capabilities import build_model_schema_snapshot, list_video_model_capabilities
 from video_generation.providers.kling import KlingVideoProvider
@@ -36,6 +36,20 @@ class FakeLegacyKlingProvider:
         }
 
 
+class CaptureCreateAdapter:
+    def __init__(self):
+        self.created_requests = []
+
+    async def create(self, request, capability):
+        self.created_requests.append(request)
+        return VideoCreateResult(
+            provider=request.provider,
+            model=request.model,
+            task_id="mock-task-1",
+            status="queued",
+        )
+
+
 class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
     def _capability(self, model="kling-v3"):
         return {
@@ -43,6 +57,18 @@ class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
             "model": model,
             "adapterHints": {"adapterId": "kling:official", "runtime": "adapter"},
         }
+
+    async def _capture_standard_create_request(self, request):
+        adapter = CaptureCreateAdapter()
+        service = VideoGenerationService(yunwu_api_key="mock")
+        with (
+            patch("video_generation.service.get_video_adapter", return_value=adapter),
+            patch("video_generation.service.upsert_task", new_callable=AsyncMock),
+        ):
+            await service.create_task("mock-project", request)
+
+        self.assertEqual(len(adapter.created_requests), 1)
+        return adapter.created_requests[0]
 
     async def test_registry_returns_real_kling_adapter(self):
         adapter = get_video_adapter("kling")
@@ -58,6 +84,141 @@ class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(adapter.supports({"provider": "kling"}))
         self.assertTrue(adapter.supports({"provider": "other", "adapterHints": {"adapterId": "kling:official"}}))
         self.assertFalse(adapter.supports({"provider": "google"}))
+
+    async def test_standard_t2v_create_request_matches_historical_field_contract(self):
+        for model in ("kling-v2-6", "kling-v3"):
+            with self.subTest(model=model):
+                custom_params = {"kling": {"shotMode": "single", "cfgScale": 0.6}, "sentinel": "kept"}
+                request = VideoGenerateRequest(
+                    provider="kling",
+                    model=model,
+                    videoMode="text-to-video",
+                    prompt="A mock comet over water",
+                    negativePrompt="blur",
+                    aspectRatio="9:16",
+                    duration="7s",
+                    durationSeconds=7,
+                    resolution="1080p",
+                    qualityMode="pro",
+                    generateAudio=True,
+                    seed=42,
+                    numberOfVideos=2,
+                    customParams=custom_params,
+                )
+
+                create_request = await self._capture_standard_create_request(request)
+
+                self.assertEqual(create_request.provider, "kling")
+                self.assertEqual(create_request.model, model)
+                self.assertEqual(create_request.task_type, "text-to-video")
+                self.assertEqual(create_request.prompt, "A mock comet over water")
+                self.assertEqual(create_request.project_dir, "mock-project")
+                self.assertEqual(create_request.inputs, {})
+                self.assertEqual(create_request.params, {
+                    "negativePrompt": "blur",
+                    "aspectRatio": "9:16",
+                    "duration": "7s",
+                    "durationSeconds": 7,
+                    "qualityMode": "pro",
+                    "generateAudio": True,
+                    "customParams": custom_params,
+                })
+
+    async def test_standard_i2v_create_request_matches_historical_field_and_input_contract(self):
+        for model in ("kling-v2-6", "kling-v3"):
+            with self.subTest(model=model):
+                custom_params = {"kling": {"shotMode": "single"}}
+                request = VideoGenerateRequest(
+                    provider="kling",
+                    model=model,
+                    videoMode="image-to-video",
+                    prompt="Animate mock frames",
+                    negativePrompt="flicker",
+                    aspectRatio="16:9",
+                    duration="10s",
+                    durationSeconds=10,
+                    resolution="720p",
+                    qualityMode="std",
+                    generateAudio=False,
+                    seed=9,
+                    numberOfVideos=3,
+                    images=["mock://first.png", "mock://ignored.png"],
+                    endImage="mock://last.png",
+                    customParams=custom_params,
+                )
+
+                create_request = await self._capture_standard_create_request(request)
+
+                self.assertEqual(create_request.provider, "kling")
+                self.assertEqual(create_request.model, model)
+                self.assertEqual(create_request.task_type, "image-to-video")
+                self.assertEqual(create_request.prompt, "Animate mock frames")
+                self.assertEqual(create_request.project_dir, "mock-project")
+                self.assertEqual(create_request.params, {
+                    "negativePrompt": "flicker",
+                    "aspectRatio": "16:9",
+                    "duration": "10s",
+                    "durationSeconds": 10,
+                    "qualityMode": "std",
+                    "generateAudio": False,
+                    "customParams": custom_params,
+                })
+                self.assertEqual(list(create_request.inputs), ["image:firstFrame", "image:lastFrame"])
+                self.assertEqual(create_request.inputs, {
+                    "image:firstFrame": [
+                        VideoInputAsset(
+                            kind="image",
+                            role="first_frame",
+                            url="mock://first.png",
+                            handle_id="image:firstFrame",
+                        ),
+                    ],
+                    "image:lastFrame": [
+                        VideoInputAsset(
+                            kind="image",
+                            role="last_frame",
+                            url="mock://last.png",
+                            handle_id="image:lastFrame",
+                        ),
+                    ],
+                })
+                self.assertNotIn("image:references", create_request.inputs)
+
+    async def test_yunwu_kling_alias_uses_same_standard_historical_contract(self):
+        custom_params = {"kling": {"shotMode": "single"}}
+        request = VideoGenerateRequest(
+            provider="yunwu-kling",
+            model="kling-v3",
+            videoMode="text-to-video",
+            prompt="Alias contract",
+            negativePrompt="noise",
+            aspectRatio="1:1",
+            duration="5s",
+            durationSeconds=5,
+            resolution="1080p",
+            qualityMode="pro",
+            generateAudio=True,
+            seed=17,
+            numberOfVideos=4,
+            customParams=custom_params,
+        )
+
+        create_request = await self._capture_standard_create_request(request)
+
+        self.assertEqual(create_request.provider, "yunwu-kling")
+        self.assertEqual(create_request.model, "kling-v3")
+        self.assertEqual(create_request.task_type, "text-to-video")
+        self.assertEqual(create_request.prompt, "Alias contract")
+        self.assertEqual(create_request.inputs, {})
+        self.assertEqual(create_request.params, {
+            "negativePrompt": "noise",
+            "aspectRatio": "1:1",
+            "duration": "5s",
+            "durationSeconds": 5,
+            "qualityMode": "pro",
+            "generateAudio": True,
+            "customParams": custom_params,
+        })
 
     async def test_build_text2video_payload_matches_legacy_fields(self):
         adapter = KlingVideoAdapter(KlingVideoProvider(provider_type="kling"))
