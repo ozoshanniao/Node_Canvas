@@ -37,8 +37,14 @@ class FakeLegacyKlingProvider:
 
 
 class CaptureCreateAdapter:
-    def __init__(self):
+    def __init__(self, bridge):
+        self.bridge = bridge
+        self.bridge_calls = 0
         self.created_requests = []
+
+    def create_request_from_generate_request(self, request):
+        self.bridge_calls += 1
+        return self.bridge.create_request_from_generate_request(request)
 
     async def create(self, request, capability):
         self.created_requests.append(request)
@@ -59,7 +65,12 @@ class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
         }
 
     async def _capture_standard_create_request(self, request):
-        adapter = CaptureCreateAdapter()
+        bridge = (
+            YunwuKlingVideoAdapter(FakeLegacyKlingProvider())
+            if request.provider == "yunwu-kling"
+            else KlingVideoAdapter(FakeLegacyKlingProvider())
+        )
+        adapter = CaptureCreateAdapter(bridge)
         service = VideoGenerationService(yunwu_api_key="mock")
         with (
             patch("video_generation.service.get_video_adapter", return_value=adapter),
@@ -68,7 +79,20 @@ class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
             await service.create_task("mock-project", request)
 
         self.assertEqual(len(adapter.created_requests), 1)
+        self.assertEqual(adapter.bridge_calls, 1)
         return adapter.created_requests[0]
+
+    async def test_standard_bridge_rejects_omni_mode(self):
+        adapter = KlingVideoAdapter(FakeLegacyKlingProvider())
+        request = VideoGenerateRequest(
+            provider="kling",
+            model="kling-v3-omni",
+            videoMode="omni-video",
+            prompt="",
+        )
+
+        with self.assertRaisesRegex(ValueError, "does not support mode: omni-video"):
+            adapter.create_request_from_generate_request(request)
 
     async def test_registry_returns_real_kling_adapter(self):
         adapter = get_video_adapter("kling")

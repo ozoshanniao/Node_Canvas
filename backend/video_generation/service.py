@@ -254,11 +254,19 @@ class VideoGenerationService:
         elif request.provider == "kling":
             register_video_adapter(KlingVideoAdapter(provider))
             adapter = get_video_adapter("kling")
-            create_request = self._kling_create_request(request)
+            create_request = (
+                self._kling_create_request(request)
+                if request.videoMode == "omni-video"
+                else adapter.create_request_from_generate_request(request)
+            )
         elif request.provider == "yunwu-kling":
             register_video_adapter(YunwuKlingVideoAdapter(provider))
             adapter = get_video_adapter("yunwu-kling")
-            create_request = self._kling_create_request(request)
+            create_request = (
+                self._kling_create_request(request)
+                if request.videoMode == "omni-video"
+                else adapter.create_request_from_generate_request(request)
+            )
         elif request.provider == "seedance_official":
             register_video_adapter(SeedanceOfficialVideoAdapter(provider))
             adapter = get_video_adapter("seedance_official")
