@@ -85,17 +85,46 @@ class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
     async def _capture_standard_create_request(self, request):
         return await self._capture_service_create_request(request)
 
-    async def test_standard_bridge_rejects_omni_mode(self):
+    async def test_kling_bridge_rejects_unknown_mode(self):
         adapter = KlingVideoAdapter(FakeLegacyKlingProvider())
+        request = VideoGenerateRequest(
+            provider="kling",
+            model="kling-v3-omni",
+            videoMode="reference-video",
+            prompt="",
+        )
+
+        with self.assertRaisesRegex(ValueError, "does not support mode: reference-video"):
+            adapter.create_request_from_generate_request(request)
+
+    async def test_kling_omni_bridge_preserves_duplicate_image_order(self):
+        adapter = KlingVideoAdapter(FakeLegacyKlingProvider())
+        runtime_images = [
+            "https://runtime.invalid/duplicate.png",
+            "https://runtime.invalid/reference.png",
+            "https://runtime.invalid/duplicate.png",
+        ]
         request = VideoGenerateRequest(
             provider="kling",
             model="kling-v3-omni",
             videoMode="omni-video",
             prompt="",
+            images=runtime_images,
         )
 
-        with self.assertRaisesRegex(ValueError, "does not support mode: omni-video"):
-            adapter.create_request_from_generate_request(request)
+        create_request = adapter.create_request_from_generate_request(request)
+
+        self.assertEqual(
+            [asset.url for asset in create_request.inputs["image:references"]],
+            runtime_images,
+        )
+        legacy_request = adapter._to_legacy_request(create_request)
+
+        self.assertEqual(legacy_request.images, runtime_images)
+        self.assertEqual(len(legacy_request.images), len(runtime_images))
+        self.assertEqual(legacy_request.images[0], runtime_images[0])
+        self.assertEqual(legacy_request.images[1], runtime_images[1])
+        self.assertEqual(legacy_request.images[2], runtime_images[2])
 
     async def test_kling_omni_service_request_matches_historical_mapping_and_order(self):
         runtime_images = [
@@ -136,7 +165,7 @@ class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
             customParams=custom_params,
         )
 
-        create_request = await self._capture_service_create_request(request, expected_bridge_calls=0)
+        create_request = await self._capture_service_create_request(request, expected_bridge_calls=1)
 
         self.assertEqual(create_request.provider, "kling")
         self.assertEqual(create_request.model, "kling-v3-omni")
@@ -209,7 +238,7 @@ class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
             customParams=custom_params,
         )
 
-        create_request = await self._capture_service_create_request(request, expected_bridge_calls=0)
+        create_request = await self._capture_service_create_request(request, expected_bridge_calls=1)
 
         self.assertEqual(create_request.provider, "yunwu-kling")
         self.assertEqual(create_request.task_type, "omni-video")

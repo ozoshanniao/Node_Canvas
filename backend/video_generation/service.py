@@ -63,40 +63,6 @@ class VideoGenerationService:
         storage = (value or "").strip().lower()
         return storage or None
 
-    def _kling_create_request(self, request: VideoGenerateRequest) -> VideoCreateRequest:
-        inputs: dict[str, list[VideoInputAsset]] = {}
-        if request.videoMode in {"reference-video", "omni-video"}:
-            inputs["image:references"] = [
-                VideoInputAsset(kind="image", role="reference", url=image, handle_id="image:references")
-                for image in request.images
-            ]
-        elif request.images:
-            inputs["image:firstFrame"] = [
-                VideoInputAsset(kind="image", role="first_frame", url=request.images[0], handle_id="image:firstFrame")
-            ]
-        if request.endImage:
-            inputs["image:lastFrame"] = [
-                VideoInputAsset(kind="image", role="last_frame", url=request.endImage, handle_id="image:lastFrame")
-            ]
-
-        return VideoCreateRequest(
-            provider=request.provider,
-            model=request.model,
-            task_type=request.videoMode,
-            prompt=request.prompt,
-            params={
-                "negativePrompt": request.negativePrompt,
-                "aspectRatio": request.aspectRatio,
-                "duration": request.duration,
-                "durationSeconds": request.durationSeconds,
-                "qualityMode": request.qualityMode,
-                "generateAudio": request.generateAudio,
-                "customParams": dict(request.customParams or {}),
-            },
-            inputs=inputs,
-            project_dir=request.projectPath,
-        )
-
     def _seedance_create_request(self, request: VideoGenerateRequest) -> VideoCreateRequest:
         raw_seedance_params = (request.customParams or {}).get("seedance")
         seedance_params = dict(raw_seedance_params) if isinstance(raw_seedance_params, dict) else {}
@@ -254,19 +220,11 @@ class VideoGenerationService:
         elif request.provider == "kling":
             register_video_adapter(KlingVideoAdapter(provider))
             adapter = get_video_adapter("kling")
-            create_request = (
-                self._kling_create_request(request)
-                if request.videoMode == "omni-video"
-                else adapter.create_request_from_generate_request(request)
-            )
+            create_request = adapter.create_request_from_generate_request(request)
         elif request.provider == "yunwu-kling":
             register_video_adapter(YunwuKlingVideoAdapter(provider))
             adapter = get_video_adapter("yunwu-kling")
-            create_request = (
-                self._kling_create_request(request)
-                if request.videoMode == "omni-video"
-                else adapter.create_request_from_generate_request(request)
-            )
+            create_request = adapter.create_request_from_generate_request(request)
         elif request.provider == "seedance_official":
             register_video_adapter(SeedanceOfficialVideoAdapter(provider))
             adapter = get_video_adapter("seedance_official")

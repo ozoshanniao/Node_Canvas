@@ -27,11 +27,16 @@ class KlingVideoAdapter:
         return capability.get("provider") == self.provider or hints.get("adapterId") == self.adapter_id
 
     def create_request_from_generate_request(self, request: VideoGenerateRequest) -> VideoCreateRequest:
-        if request.videoMode not in {"text-to-video", "image-to-video"}:
-            raise ValueError(f"Standard Kling create request bridge does not support mode: {request.videoMode}")
+        if request.videoMode not in {"text-to-video", "image-to-video", "omni-video"}:
+            raise ValueError(f"Kling create request bridge does not support mode: {request.videoMode}")
 
         inputs: dict[str, list[VideoInputAsset]] = {}
-        if request.images:
+        if request.videoMode == "omni-video":
+            inputs["image:references"] = [
+                VideoInputAsset(kind="image", role="reference", url=image, handle_id="image:references")
+                for image in request.images
+            ]
+        elif request.images:
             inputs["image:firstFrame"] = [
                 VideoInputAsset(kind="image", role="first_frame", url=request.images[0], handle_id="image:firstFrame")
             ]
