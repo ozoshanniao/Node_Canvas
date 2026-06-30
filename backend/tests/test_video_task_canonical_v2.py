@@ -165,22 +165,39 @@ class VideoTaskCanonicalV2Test(unittest.TestCase):
         self.assertEqual(api_data["outputs"]["videoUrl"], f"/api/video/{task.id}.mp4")
 
     def test_path_safety_rejects_urls_absolute_escape_unc_and_query(self):
-        invalid = [
-            "C:/project/generation/videos/a.mp4",
-            "file:///project/generation/videos/a.mp4",
-            "https://example.test/a.mp4",
-            "generation/videos/a.mp4?token=x",
-            "generation/videos/../a.mp4",
-            "../generation/videos/a.mp4",
-            "//server/share/a.mp4",
-            r"\\server\share\a.mp4",
-            "",
+        invalid_cases = [
+            (r"C:\temp\video.mp4", None, {}),
+            (r"\\server\share\video.mp4", None, {}),
+            ("/etc/passwd", None, {}),
+            ("../escape.mp4", None, {}),
+            ("generation/../../escape.mp4", None, {}),
+            ("https://example.invalid/video.mp4", None, {}),
+            ("https://example.invalid/video.mp4?X-Amz-Signature=fake", None, {}),
+            ("file:///project/generation/videos/a.mp4", None, {}),
+            ("generation/videos/a.mp4?token=x", None, {}),
+            ("generation/videos/../a.mp4", None, {}),
+            ("//server/share/a.mp4", None, {}),
+            ("", None, {}),
         ]
-        for value in invalid:
+        for index, (value, expected_normalized, expected_outputs) in enumerate(invalid_cases):
             with self.subTest(value=value):
-                self.assertIsNone(normalize_relative_artifact_path(
-                    str(self.project), value, kind="video", require_exists=False
-                ))
+                self.assertEqual(
+                    normalize_relative_artifact_path(
+                        str(self.project), value, kind="video", require_exists=False
+                    ),
+                    expected_normalized,
+                )
+                task = self.canonical_task(
+                    id=f"invalid-artifact-{index}",
+                    status="success",
+                    progress=100,
+                    outputs={"video": {"relativePath": value}},
+                )
+                stored_task = run(upsert_task(str(self.project), task))
+                stored = self.read_store()[task.id]
+                self.assertEqual(stored_task.status, "interrupted")
+                self.assertEqual(stored["status"], "interrupted")
+                self.assertEqual(stored["outputs"], expected_outputs)
         self.assertEqual(
             normalize_relative_artifact_path(
                 str(self.project), "generation/videos/a.mp4", kind="video", require_exists=False

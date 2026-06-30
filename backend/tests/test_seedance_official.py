@@ -713,7 +713,7 @@ class SeedanceLastFrameQueryTest(unittest.TestCase):
             "remoteVideoUrl": "https://seedance.test/video.mp4",
             "lastFrameRemoteUrl": "https://seedance.test/last.png",
         }
-        service, _stored, get_task, upsert_task = self._service_with_task(response)
+        service, stored, get_task, upsert_task = self._service_with_task(response)
 
         with patch("video_generation.service.get_task", get_task), patch(
             "video_generation.service.upsert_task", upsert_task
@@ -732,6 +732,95 @@ class SeedanceLastFrameQueryTest(unittest.TestCase):
         self.assertIsNone(updated.outputs.get("lastFrame"))
         self.assertNotIn("lastFrameWarning", updated.outputs)
         self.assertIn("last frame is unavailable", updated.message.lower())
+        self.assertIs(stored["task"], updated)
+        stored_dict = updated.model_dump(exclude_none=True)
+        self.assertEqual(stored_dict["status"], "success")
+        self.assertEqual(stored_dict["providerTaskId"], "official/task:42")
+        self.assertEqual(stored_dict["outputs"], {"video": {"relativePath": "generation/videos/video_local_task.mp4"}})
+        serialized = json.dumps(stored_dict)
+        for forbidden in ("https://seedance.test/video.mp4", "https://seedance.test/last.png", "network down"):
+            self.assertNotIn(forbidden, serialized)
+
+    def test_service_success_when_last_frame_url_is_missing(self):
+        response = {
+            "status": "success",
+            "remoteVideoUrl": "https://seedance.test/video.mp4",
+            "lastFrameRemoteUrl": None,
+        }
+        service, stored, get_task, upsert_task = self._service_with_task(response)
+
+        with patch("video_generation.service.get_task", get_task), patch(
+            "video_generation.service.upsert_task", upsert_task
+        ), patch(
+            "video_generation.service.download_video_to_project", AsyncMock(return_value="/api/video/video_local_task.mp4")
+        ), patch(
+            "video_generation.service.download_image_to_generation", AsyncMock()
+        ) as download_last_frame:
+            updated = run(service.query_task("/project", "video_local_task"))
+
+        expected_video_path = "generation/videos/video_local_task.mp4"
+        self.assertEqual(updated.status, "success")
+        self.assertEqual(updated.outputs, {"video": {"relativePath": expected_video_path}})
+        download_last_frame.assert_not_called()
+        self.assertEqual(updated.providerTaskId, "official/task:42")
+
+        stored_task = stored["task"]
+        self.assertEqual(stored_task.status, "success")
+        self.assertEqual(stored_task.outputs, {"video": {"relativePath": expected_video_path}})
+        serialized = json.dumps(stored_task.model_dump(exclude_none=True))
+        for forbidden in ("http://", "https://", "last.png", "lastFrame"):
+            self.assertNotIn(forbidden, serialized)
+
+    def test_success_warning_state_query_is_idempotent(self):
+        task = VideoTask(
+            id="video_local_task",
+            provider="seedance_official",
+            model="doubao-seedance-2-0-260128",
+            videoMode="frame",
+            status="success",
+            progress=100,
+            message="Video generation completed; last frame is unavailable.",
+            providerTaskId="official/task:42",
+            outputs={"video": {"relativePath": "generation/videos/video_local_task.mp4"}},
+            request={},
+            createdAt=1,
+            updatedAt=1,
+        )
+        stored = {"task": task}
+
+        async def get_task(_project_path, _task_id):
+            return task
+
+        async def upsert_task(_project_path, updated_task):
+            stored["task"] = updated_task
+            return updated_task
+
+        response = {
+            "status": "success",
+            "remoteVideoUrl": "https://seedance.test/video.mp4",
+            "lastFrameRemoteUrl": "https://seedance.test/last.png",
+        }
+        service = VideoGenerationService(yunwu_api_key="mock")
+        service.providers["seedance_official"] = FakeSeedanceProvider(response)
+
+        with patch("video_generation.service.get_task", get_task), patch(
+            "video_generation.service.upsert_task", upsert_task
+        ) as upsert, patch(
+            "video_generation.service.download_video_to_project"
+        ) as download, patch(
+            "video_generation.service.download_image_to_generation"
+        ) as download_last_frame, patch(
+            "video_generation.service.save_video_bytes_to_project"
+        ) as save:
+            updated = run(service.query_task("/project", task.id))
+
+        self.assertEqual(updated.status, "success")
+        self.assertEqual(updated.outputs, {"video": {"relativePath": "generation/videos/video_local_task.mp4"}})
+        self.assertEqual(updated.message, "Video generation completed; last frame is unavailable.")
+        download.assert_not_called()
+        download_last_frame.assert_not_called()
+        save.assert_not_called()
+        upsert.assert_not_called()
 
 
 if __name__ == "__main__":
