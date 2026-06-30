@@ -7,7 +7,7 @@ from video_generation.adapters.google_veo import GoogleVeoVideoAdapter
 from video_generation.adapters.kling import KlingVideoAdapter
 from video_generation.adapters.registry import get_video_adapter
 from video_generation.adapters.seedance import SeedanceOfficialVideoAdapter
-from video_generation.adapters.types import VideoCreateRequest, VideoInputAsset, VideoQueryRequest
+from video_generation.adapters.types import VideoCreateRequest, VideoCreateResult, VideoInputAsset, VideoQueryRequest
 from video_generation.adapters.yunwu import YunwuVideoAdapter
 from video_generation.adapters.yunwu_kling import YunwuKlingVideoAdapter
 from video_generation.capabilities import build_model_schema_snapshot, list_video_model_capabilities
@@ -76,6 +76,26 @@ class FakeLegacySeedanceProvider:
         }
 
 
+class CaptureSeedanceCreateAdapter:
+    def __init__(self, bridge):
+        self.bridge = bridge
+        self.bridge_calls = 0
+        self.created_requests = []
+
+    def create_request_from_generate_request(self, request):
+        self.bridge_calls += 1
+        return self.bridge.create_request_from_generate_request(request)
+
+    async def create(self, request, capability):
+        self.created_requests.append(request)
+        return VideoCreateResult(
+            provider=request.provider,
+            model=request.model,
+            task_id="mock-seedance-task-1",
+            status="queued",
+        )
+
+
 class SeedanceOfficialVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
     def _provider(self, public_assets=None, client=None):
         return SeedanceOfficialProvider(
@@ -89,6 +109,301 @@ class SeedanceOfficialVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
             "model": model,
             "adapterHints": {"adapterId": "seedance:official", "runtime": "adapter"},
         }
+
+    async def _capture_service_create_request(self, request):
+        adapter = CaptureSeedanceCreateAdapter(
+            SeedanceOfficialVideoAdapter(FakeLegacySeedanceProvider())
+        )
+        service = VideoGenerationService(yunwu_api_key="mock")
+        with (
+            patch("video_generation.service.get_video_adapter", return_value=adapter),
+            patch("video_generation.service.upsert_task", new_callable=AsyncMock),
+        ):
+            await service.create_task("mock-project", request)
+
+        self.assertEqual(len(adapter.created_requests), 1)
+        self.assertEqual(adapter.bridge_calls, 1)
+        return adapter.created_requests[0]
+
+    async def test_seedance_bridge_rejects_unknown_mode(self):
+        adapter = SeedanceOfficialVideoAdapter(FakeLegacySeedanceProvider())
+        request = VideoGenerateRequest(
+            provider="seedance_official",
+            model="doubao-seedance-2-0-260128",
+            videoMode="unsupported-mode",
+            prompt="",
+        )
+
+        with self.assertRaisesRegex(ValueError, "does not support mode: unsupported-mode"):
+            adapter.create_request_from_generate_request(request)
+
+    async def test_seedance_frame_bridge_round_trips_historical_legacy_asset_locations(self):
+        adapter = SeedanceOfficialVideoAdapter(FakeLegacySeedanceProvider())
+        request = VideoGenerateRequest(
+            provider="seedance_official",
+            model="doubao-seedance-2-0-260128",
+            videoMode="frame",
+            prompt="Round-trip frame assets",
+            negativePrompt="not historically mapped",
+            numberOfVideos=2,
+            images=["input/seedance/first.png"],
+            endImage="input/seedance/last.png",
+            watermark=True,
+            cfgScale=0.75,
+            motionStrength=0.8,
+            fps=30,
+        )
+
+        create_request = adapter.create_request_from_generate_request(request)
+        legacy_request = adapter._to_legacy_request(create_request)
+
+        self.assertEqual(
+            request.images[0],
+            create_request.inputs["image:firstFrame"][0].url,
+        )
+        self.assertEqual(request.images[0], legacy_request.images[0])
+        self.assertEqual(
+            request.endImage,
+            create_request.inputs["image:lastFrame"][0].url,
+        )
+        self.assertEqual(request.endImage, legacy_request.endImage)
+        self.assertEqual(legacy_request.videoMode, request.videoMode)
+        self.assertEqual(legacy_request.provider, request.provider)
+        self.assertEqual(legacy_request.model, request.model)
+        self.assertIsNone(legacy_request.negativePrompt)
+        self.assertIsNone(legacy_request.numberOfVideos)
+        for field in ("watermark", "cfgScale", "motionStrength", "fps"):
+            self.assertFalse(hasattr(legacy_request, field))
+
+    async def test_seedance_multimodal_bridge_round_trips_historical_legacy_asset_locations(self):
+        adapter = SeedanceOfficialVideoAdapter(FakeLegacySeedanceProvider())
+        images = [
+            "input/seedance/reference-0.png",
+            "input/seedance/reference-1.png",
+            "input/seedance/reference-0.png",
+        ]
+        videos = [
+            "input/seedance/reference-0.mp4",
+            "input/seedance/reference-1.mp4",
+            "input/seedance/reference-0.mp4",
+        ]
+        audios = [
+            "input/seedance/reference-0.mp3",
+            "input/seedance/reference-1.mp3",
+            "input/seedance/reference-0.mp3",
+        ]
+        request = VideoGenerateRequest(
+            provider="seedance_official",
+            model="doubao-seedance-2-0-260128",
+            videoMode="multimodal-reference",
+            prompt="Keep @image_1, @video_1, and @audio_1 unchanged",
+            images=images,
+            customParams={
+                "seedance": {
+                    "videos": videos,
+                    "audios": audios,
+                    "motionMode": "cinematic",
+                    "referenceDescriptors": [
+                        {"kind": "image", "index": 0, "role": "reference"},
+                        {"kind": "video", "index": 1, "role": "reference"},
+                        {"kind": "audio", "index": 2, "role": "reference"},
+                    ],
+                },
+                "sentinel": "kept",
+            },
+        )
+
+        create_request = adapter.create_request_from_generate_request(request)
+        legacy_request = adapter._to_legacy_request(create_request)
+
+        canonical_images = [asset.url for asset in create_request.inputs["image:references"]]
+        canonical_videos = [asset.url for asset in create_request.inputs["video:references"]]
+        canonical_audios = [asset.url for asset in create_request.inputs["audio:references"]]
+        legacy_seedance = legacy_request.customParams["seedance"]
+
+        self.assertEqual(request.images, canonical_images)
+        self.assertEqual(request.images, legacy_seedance["images"])
+        self.assertEqual(videos, canonical_videos)
+        self.assertEqual(videos, legacy_seedance["videos"])
+        self.assertEqual(audios, canonical_audios)
+        self.assertEqual(audios, legacy_seedance["audios"])
+        for original, canonical, legacy in (
+            (images, canonical_images, legacy_seedance["images"]),
+            (videos, canonical_videos, legacy_seedance["videos"]),
+            (audios, canonical_audios, legacy_seedance["audios"]),
+        ):
+            self.assertEqual(len(original), len(canonical))
+            self.assertEqual(len(original), len(legacy))
+            self.assertEqual(original[0], canonical[0])
+            self.assertEqual(original[0], canonical[2])
+            self.assertEqual(original[0], legacy[0])
+            self.assertEqual(original[0], legacy[2])
+        self.assertEqual([asset.kind for asset in create_request.inputs["image:references"]], ["image"] * 3)
+        self.assertEqual([asset.kind for asset in create_request.inputs["video:references"]], ["video"] * 3)
+        self.assertEqual([asset.kind for asset in create_request.inputs["audio:references"]], ["audio"] * 3)
+        self.assertEqual(create_request.prompt, request.prompt)
+        self.assertEqual(legacy_request.prompt, request.prompt)
+        self.assertEqual(legacy_seedance["motionMode"], "cinematic")
+        self.assertEqual(legacy_request.customParams["sentinel"], "kept")
+        self.assertTrue(all(value.startswith("input/seedance/") for value in images + videos + audios))
+
+    async def test_seedance_frame_service_request_matches_historical_mapping_contract(self):
+        custom_params = {
+            "seedance": {"cameraFixed": True},
+            "sentinel": "kept",
+        }
+        request = VideoGenerateRequest(
+            provider="seedance_official",
+            model="doubao-seedance-2-0-260128",
+            videoMode="frame",
+            prompt="Animate the historical frame pair",
+            negativePrompt="not historically mapped",
+            aspectRatio="16:9",
+            duration="7s",
+            durationSeconds=7,
+            resolution="1080p",
+            generateAudio=False,
+            returnLastFrame=True,
+            publicAssetStorage="r2",
+            seed=123,
+            numberOfVideos=2,
+            images=["input/seedance/first.png"],
+            endImage="input/seedance/last.png",
+            customParams=custom_params,
+            watermark=True,
+            cfgScale=0.75,
+            motionStrength=0.8,
+            fps=30,
+        )
+
+        create_request = await self._capture_service_create_request(request)
+
+        self.assertEqual(create_request.provider, "seedance_official")
+        self.assertEqual(create_request.model, "doubao-seedance-2-0-260128")
+        self.assertEqual(create_request.task_type, "frame")
+        self.assertEqual(create_request.prompt, "Animate the historical frame pair")
+        self.assertEqual(create_request.project_dir, "mock-project")
+        self.assertEqual(create_request.params, {
+            "aspectRatio": "16:9",
+            "duration": "7s",
+            "durationSeconds": 7,
+            "resolution": "1080p",
+            "generateAudio": False,
+            "returnLastFrame": True,
+            "publicAssetStorage": "r2",
+            "seed": 123,
+            "customParams": custom_params,
+        })
+        self.assertEqual(create_request.inputs, {
+            "image:firstFrame": [
+                VideoInputAsset(
+                    kind="image",
+                    role="first_frame",
+                    url="input/seedance/first.png",
+                    handle_id="image:firstFrame",
+                ),
+            ],
+            "image:lastFrame": [
+                VideoInputAsset(
+                    kind="image",
+                    role="last_frame",
+                    url="input/seedance/last.png",
+                    handle_id="image:lastFrame",
+                ),
+            ],
+        })
+        for field in ("negativePrompt", "numberOfVideos", "watermark", "cfgScale", "motionStrength", "fps"):
+            self.assertNotIn(field, create_request.params)
+
+    async def test_seedance_reference_service_request_matches_historical_multimodal_contract(self):
+        image_references = [
+            "input/seedance/reference-1.png",
+            "input/seedance/reference-0.png",
+            "input/seedance/reference-1.png",
+        ]
+        video_references = [
+            "input/seedance/reference-1.mp4",
+            "input/seedance/reference-0.mp4",
+            "input/seedance/reference-1.mp4",
+        ]
+        audio_references = [
+            "input/seedance/reference-1.mp3",
+            "input/seedance/reference-0.mp3",
+            "input/seedance/reference-1.mp3",
+        ]
+        custom_params = {
+            "seedance": {
+                "videos": video_references,
+                "audios": audio_references,
+                "referenceDescriptors": [
+                    {"kind": "image", "index": 1, "role": "reference"},
+                    {"kind": "video", "index": 0, "role": "reference"},
+                    {"kind": "audio", "index": 2, "role": "reference"},
+                ],
+                "motionMode": "cinematic",
+            },
+            "sentinel": "kept",
+        }
+        request = VideoGenerateRequest(
+            provider="seedance_official",
+            model="doubao-seedance-2-0-260128",
+            videoMode="multimodal-reference",
+            prompt="Use safe multimodal references",
+            negativePrompt="not historically mapped",
+            aspectRatio="adaptive",
+            duration="6s",
+            durationSeconds=6,
+            resolution="720p",
+            generateAudio=True,
+            returnLastFrame=False,
+            publicAssetStorage="tos",
+            seed=456,
+            numberOfVideos=3,
+            images=image_references,
+            customParams=custom_params,
+            watermark=True,
+            cfgScale=0.5,
+            motionStrength=0.6,
+            fps=24,
+        )
+
+        create_request = await self._capture_service_create_request(request)
+
+        self.assertEqual(create_request.provider, "seedance_official")
+        self.assertEqual(create_request.model, "doubao-seedance-2-0-260128")
+        self.assertEqual(create_request.task_type, "multimodal-reference")
+        self.assertEqual(create_request.prompt, "Use safe multimodal references")
+        self.assertEqual(create_request.project_dir, "mock-project")
+        self.assertEqual(create_request.params, {
+            "aspectRatio": "adaptive",
+            "duration": "6s",
+            "durationSeconds": 6,
+            "resolution": "720p",
+            "generateAudio": True,
+            "returnLastFrame": False,
+            "publicAssetStorage": "tos",
+            "seed": 456,
+            "customParams": custom_params,
+        })
+        self.assertEqual(create_request.inputs, {
+            "image:references": [
+                VideoInputAsset(kind="image", role="reference", url="input/seedance/reference-1.png", handle_id="image:references"),
+                VideoInputAsset(kind="image", role="reference", url="input/seedance/reference-0.png", handle_id="image:references"),
+                VideoInputAsset(kind="image", role="reference", url="input/seedance/reference-1.png", handle_id="image:references"),
+            ],
+            "video:references": [
+                VideoInputAsset(kind="video", role="reference", url="input/seedance/reference-1.mp4", handle_id="video:references"),
+                VideoInputAsset(kind="video", role="reference", url="input/seedance/reference-0.mp4", handle_id="video:references"),
+                VideoInputAsset(kind="video", role="reference", url="input/seedance/reference-1.mp4", handle_id="video:references"),
+            ],
+            "audio:references": [
+                VideoInputAsset(kind="audio", role="reference", url="input/seedance/reference-1.mp3", handle_id="audio:references"),
+                VideoInputAsset(kind="audio", role="reference", url="input/seedance/reference-0.mp3", handle_id="audio:references"),
+                VideoInputAsset(kind="audio", role="reference", url="input/seedance/reference-1.mp3", handle_id="audio:references"),
+            ],
+        })
+        for field in ("negativePrompt", "numberOfVideos", "watermark", "cfgScale", "motionStrength", "fps"):
+            self.assertNotIn(field, create_request.params)
 
     async def test_registry_returns_real_seedance_adapter(self):
         adapter = get_video_adapter("seedance_official")

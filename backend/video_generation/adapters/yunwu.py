@@ -26,6 +26,39 @@ class YunwuVideoAdapter:
         hints = capability.get("adapterHints") if isinstance(capability.get("adapterHints"), Mapping) else {}
         return capability.get("provider") == self.provider or hints.get("adapterId") == self.adapter_id
 
+    def create_request_from_generate_request(self, request: VideoGenerateRequest) -> VideoCreateRequest:
+        inputs: dict[str, list[VideoInputAsset]] = {}
+        if request.videoMode == "reference-video":
+            inputs["image:references"] = [
+                VideoInputAsset(kind="image", role="reference", url=image, handle_id="image:references")
+                for image in request.images
+            ]
+        elif request.images:
+            inputs["image:firstFrame"] = [
+                VideoInputAsset(kind="image", role="first_frame", url=request.images[0], handle_id="image:firstFrame")
+            ]
+        if request.endImage:
+            inputs["image:lastFrame"] = [
+                VideoInputAsset(kind="image", role="last_frame", url=request.endImage, handle_id="image:lastFrame")
+            ]
+
+        return VideoCreateRequest(
+            provider=request.provider,
+            model=request.model,
+            task_type=request.videoMode,
+            prompt=request.prompt,
+            params={
+                "negativePrompt": request.negativePrompt,
+                "aspectRatio": request.aspectRatio,
+                "enableUpsample": request.enableUpsample,
+                "enhancePrompt": request.customParams.get("enhancePrompt"),
+                "veoFlClose": request.customParams.get("veoFlClose"),
+                "customParams": dict(request.customParams or {}),
+            },
+            inputs=inputs,
+            project_dir=request.projectPath,
+        )
+
     async def build_create_payload(self, request: VideoCreateRequest, capability: Mapping[str, Any]) -> Mapping[str, Any]:
         legacy_request = self._to_legacy_request(request)
         return await self._legacy_provider.build_create_payload(legacy_request)

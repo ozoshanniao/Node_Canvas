@@ -319,12 +319,14 @@ export const getNodeMultiPromptOutput = (node) => {
   };
 };
 
-const replaceOmniPromptAliases = (prompt = '') =>
-  String(prompt || '').replace(/@(image|element|video)_(\d+)/g, (_, type, index) => `<<<${type}_${index}>>>`);
+const OMNI_PROMPT_ALIAS_PATTERN = /@(image|element|video)_?(\d+)(?![A-Za-z0-9_])/g;
+
+export const normalizeOmniPromptAliases = (prompt = '') =>
+  String(prompt || '').replace(OMNI_PROMPT_ALIAS_PATTERN, (_, type, index) => `<<<${type}_${index}>>>`);
 
 const getOmniPromptReferences = (prompt = '') => {
   const references = [];
-  String(prompt || '').replace(/@(image|element|video)_(\d+)/g, (match, type, index) => {
+  String(prompt || '').replace(OMNI_PROMPT_ALIAS_PATTERN, (match, type, index) => {
     references.push({ token: match, alias: `${type}_${index}` });
     return match;
   });
@@ -458,7 +460,7 @@ export const getNodeOmniParamsOutput = (node, edges = [], nodes = []) => {
           validatePromptReferences(shot.prompt);
           return {
             ...shot,
-            resolvedPrompt: replaceOmniPromptAliases(shot.prompt),
+            resolvedPrompt: normalizeOmniPromptAliases(shot.prompt),
           };
         });
       }
@@ -468,7 +470,7 @@ export const getNodeOmniParamsOutput = (node, edges = [], nodes = []) => {
   return {
     type: 'omniParams',
     prompt,
-    resolvedPrompt: replaceOmniPromptAliases(prompt),
+    resolvedPrompt: normalizeOmniPromptAliases(prompt),
     shotMode,
     multiShot,
     multiPrompt,

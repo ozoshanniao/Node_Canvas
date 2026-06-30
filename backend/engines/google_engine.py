@@ -1,15 +1,29 @@
 import os, uuid, base64
 from google import genai
 from google.genai import types
+from settings_resolver import resolve_provider_secret
 from .base import BaseEngine
 
 class GoogleEngine(BaseEngine):
-    def __init__(self, api_key: str):
-        self.client = genai.Client(vertexai=True, api_key=api_key)
+    def __init__(self, api_key: str | None = None):
+        self.api_key = api_key
+        self.client = None
+        self._client_api_key = None
+
+    def _client(self):
+        api_key = self.api_key or resolve_provider_secret("google", "apiKey", "GOOGLE_CLOUD_API_KEY")
+        if not api_key:
+            raise ValueError("GOOGLE_CLOUD_API_KEY is missing")
+        if self.client is not None and self._client_api_key is None:
+            return self.client
+        if self.client is None or self._client_api_key != api_key:
+            self.client = genai.Client(vertexai=True, api_key=api_key)
+            self._client_api_key = api_key
+        return self.client
 
     async def generate(self, config: dict, prompt: str, save_dir: str) -> str:
         try:
-            response = self.client.models.generate_content(
+            response = self._client().models.generate_content(
                 model=config.get("model", "gemini-3.1-flash-image-preview"),
                 contents=prompt,
                 config=types.GenerateContentConfig(

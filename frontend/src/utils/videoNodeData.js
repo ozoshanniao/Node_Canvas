@@ -1,7 +1,10 @@
 import { DEFAULT_VIDEO_GENERATION_SETTINGS } from './videoGenerationOptions.js';
 import { buildVideoSchemaSnapshot } from './videoCapabilities.js';
+import { sanitizePersistedKlingOmniReferences } from './klingOmniReferences.js';
 
-const VIDEO_PARAM_KEYS = [
+export const VIDEO_PARAM_KEYS = [
+  'prompt',
+  'videoMode',
   'aspectRatio',
   'duration',
   'durationSeconds',
@@ -14,11 +17,30 @@ const VIDEO_PARAM_KEYS = [
   'negativePrompt',
   'enableUpsample',
   'enhancePrompt',
+  'autoFix',
+  'cameraMotion',
+  'motionStrength',
   'cfgScale',
+  'fps',
   'cameraControl',
+  'multiShot',
   'serviceTier',
   'watermark',
 ];
+
+export const pickLegacyVideoParams = (data = {}) =>
+  VIDEO_PARAM_KEYS.reduce((params, key) => {
+    if (data[key] !== undefined) params[key] = data[key];
+    return params;
+  }, {});
+
+export const stripVideoParamRootFields = (data = {}) => {
+  const stripped = { ...(data || {}) };
+  VIDEO_PARAM_KEYS.forEach((key) => {
+    delete stripped[key];
+  });
+  return stripped;
+};
 
 const TRANSIENT_KEYS = new Set([
   'task',
@@ -64,12 +86,6 @@ export const createDefaultVideoNodeData = (capability = null) => ({
   outputs: {},
 });
 
-const pickLegacyParams = (data = {}) =>
-  VIDEO_PARAM_KEYS.reduce((params, key) => {
-    if (data[key] !== undefined) params[key] = data[key];
-    return params;
-  }, {});
-
 const normalizeOutputs = (outputs = {}, data = {}) => {
   const normalized = {};
   const videoUrl = outputs.video?.url || outputs.videoUrl || data.videoUrl || data.localVideoUrl;
@@ -101,10 +117,11 @@ export const normalizeVideoNodeData = (data = {}, capability = null) => {
     provider: data.provider || defaults.provider,
     model: data.model || defaults.model,
     taskType: data.taskType || data.videoMode || defaults.taskType,
+    customParams: data.customParams,
     params: {
       ...defaults.params,
+      ...pickLegacyVideoParams(data),
       ...(data.params || {}),
-      ...pickLegacyParams(data),
     },
     schemaSnapshot: data.schemaSnapshot || defaults.schemaSnapshot,
     outputs: normalizeOutputs(data.outputs || {}, data),
@@ -138,8 +155,11 @@ export const buildSyncedVideoParamsPatch = ({
     }
   });
 
+  const patch = stripVideoParamRootFields(nextSettings);
+  const videoMode = nextParams.videoMode || nextSettings.taskType || nextSettings.videoMode;
   return {
-    ...nextSettings,
+    ...patch,
+    ...(videoMode ? { taskType: videoMode } : {}),
     params: nextParams,
   };
 };
@@ -175,10 +195,14 @@ const sanitizeValue = (value, key = '') => {
 export const sanitizeVideoNodeDataForSave = (data = {}, capability = null) => {
   const normalized = normalizeVideoNodeData(data, capability);
   const sanitizedParams = sanitizeValue(normalized.params) || {};
+  if (sanitizedParams.customParams) {
+    delete sanitizedParams.customParams;
+  }
+  const sanitizedCustomParams = sanitizeValue(normalized.customParams) || null;
   const sanitizedOutputs = sanitizeValue(normalized.outputs) || {};
   const snapshot = sanitizeValue(normalized.schemaSnapshot) || null;
 
-  return {
+  const sanitized = {
     provider: normalized.provider,
     model: normalized.model,
     taskType: normalized.taskType,
@@ -186,4 +210,8 @@ export const sanitizeVideoNodeDataForSave = (data = {}, capability = null) => {
     schemaSnapshot: snapshot,
     outputs: sanitizedOutputs,
   };
+  if (sanitizedCustomParams) {
+    sanitized.customParams = sanitizePersistedKlingOmniReferences(sanitizedCustomParams);
+  }
+  return sanitized;
 };

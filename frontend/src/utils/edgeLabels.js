@@ -1,8 +1,29 @@
-const isImageLabelTargetHandle = (targetHandle) =>
+export const isImageLabelTargetHandle = (targetHandle) =>
   targetHandle === 'image:in' ||
   targetHandle === 'image:images' ||
   targetHandle === 'image:references' ||
+  targetHandle === 'image:firstFrame' ||
+  targetHandle === 'image:lastFrame' ||
   targetHandle === 'image:end';
+
+const IMAGE_FRAME_LABELS = {
+  'image:firstFrame': {
+    imageIndex: 0,
+    inputLabel: 'image1',
+  },
+  'image:lastFrame': {
+    imageIndex: 1,
+    inputLabel: 'image2',
+  },
+};
+
+export const shouldShowImageInputEdgeLabel = (targetHandle, inputLabel, showEdgeControls = false) =>
+  isImageLabelTargetHandle(targetHandle) &&
+  Boolean(inputLabel) &&
+  (/^image\d+$/.test(inputLabel) || showEdgeControls);
+
+export const shouldShowEdgeControls = ({ selected, sourceSelected, targetSelected } = {}) =>
+  Boolean(selected || sourceSelected || targetSelected);
 
 const MEDIA_REFERENCE_LABELS = {
   'video:references': {
@@ -47,6 +68,12 @@ export function normalizeImageInputEdgeLabels(edges = []) {
       if ('imageIndex' in nextData) {
         delete nextData.imageIndex;
       }
+    } else if (IMAGE_FRAME_LABELS[targetHandle]) {
+      nextData = {
+        ...(edge.data || {}),
+        kind: 'image',
+        ...IMAGE_FRAME_LABELS[targetHandle],
+      };
     } else {
       const groupKey = `${edge.target}:${targetHandle}`;
       const imageIndex = groupCounters.get(groupKey) || 0;

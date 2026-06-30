@@ -75,6 +75,15 @@ class FakeServiceAdapter:
             raw_response={"status": "running", "raw": {"done": False}},
         )
 
+    def create_request_from_generate_request(self, request):
+        return VideoCreateRequest(
+            provider=request.provider,
+            model=request.model,
+            task_type=request.videoMode,
+            prompt=request.prompt,
+            project_dir=request.projectPath,
+        )
+
 
 class GoogleVeoVideoAdapterTest(unittest.TestCase):
     def test_registry_returns_google_veo_adapter(self):
@@ -167,6 +176,30 @@ class GoogleVeoVideoAdapterTest(unittest.TestCase):
         self.assertEqual(serialized["config"]["duration_seconds"], 8)
         self.assertEqual(len(serialized["config"]["reference_images"]), 2)
 
+    def test_forced_1080p_params_reach_payload_config(self):
+        adapter = GoogleVeoVideoAdapter()
+        request = VideoCreateRequest(
+            provider="google",
+            model="veo-3.1-generate-001",
+            task_type="text-to-video",
+            prompt="A waterfall at sunrise",
+            params={
+                "videoMode": "text-to-video",
+                "aspectRatio": "16:9",
+                "duration": "8s",
+                "durationSeconds": 8,
+                "resolution": "1080p",
+            },
+        )
+
+        payload = run(adapter.build_create_payload(request, {}))
+        serialized = adapter._legacy_provider._serialize(payload)
+
+        self.assertEqual(serialized["source"], {"prompt": "A waterfall at sunrise"})
+        self.assertEqual(serialized["config"]["aspect_ratio"], "16:9")
+        self.assertEqual(serialized["config"]["duration_seconds"], 8)
+        self.assertEqual(serialized["config"]["resolution"], "1080p")
+
     def test_none_params_keep_legacy_defaults(self):
         adapter = GoogleVeoVideoAdapter()
         request = VideoCreateRequest(
@@ -195,6 +228,61 @@ class GoogleVeoVideoAdapterTest(unittest.TestCase):
         self.assertEqual(serialized["config"]["generate_audio"], False)
         self.assertEqual(serialized["config"]["number_of_videos"], 1)
         self.assertNotIn("negative_prompt", serialized["config"])
+
+    def test_create_request_from_generate_request_maps_google_fields(self):
+        adapter = GoogleVeoVideoAdapter(FakeLegacyGoogleProvider())
+        request = VideoGenerateRequest(
+            projectPath="mock-project",
+            provider="google",
+            model="veo-3.1-generate-001",
+            videoMode="image-to-video",
+            prompt="Animate this",
+            negativePrompt="low quality",
+            aspectRatio="16:9",
+            duration="8s",
+            durationSeconds=8,
+            resolution="1080p",
+            generateAudio=True,
+            seed=123,
+            numberOfVideos=2,
+            images=[DATA_IMAGE],
+            endImage=DATA_IMAGE,
+        )
+
+        create_request = adapter.create_request_from_generate_request(request)
+
+        self.assertEqual(create_request.provider, "google")
+        self.assertEqual(create_request.model, "veo-3.1-generate-001")
+        self.assertEqual(create_request.task_type, "image-to-video")
+        self.assertEqual(create_request.prompt, "Animate this")
+        self.assertEqual(create_request.project_dir, "mock-project")
+        self.assertEqual(create_request.params["negativePrompt"], "low quality")
+        self.assertEqual(create_request.params["aspectRatio"], "16:9")
+        self.assertEqual(create_request.params["duration"], "8s")
+        self.assertEqual(create_request.params["durationSeconds"], 8)
+        self.assertEqual(create_request.params["resolution"], "1080p")
+        self.assertEqual(create_request.params["generateAudio"], True)
+        self.assertEqual(create_request.params["seed"], 123)
+        self.assertEqual(create_request.params["numberOfVideos"], 2)
+        self.assertEqual(create_request.inputs["image:firstFrame"][0].url, DATA_IMAGE)
+        self.assertEqual(create_request.inputs["image:lastFrame"][0].url, DATA_IMAGE)
+
+    def test_create_request_from_generate_request_maps_google_references(self):
+        adapter = GoogleVeoVideoAdapter(FakeLegacyGoogleProvider())
+        request = VideoGenerateRequest(
+            projectPath="mock-project",
+            provider="google",
+            model="veo-3.1-generate-001",
+            videoMode="reference-video",
+            prompt="Use references",
+            images=[DATA_IMAGE, DATA_IMAGE],
+        )
+
+        create_request = adapter.create_request_from_generate_request(request)
+
+        self.assertEqual(create_request.task_type, "reference-video")
+        self.assertEqual([asset.role for asset in create_request.inputs["image:references"]], ["reference", "reference"])
+        self.assertNotIn("image:firstFrame", create_request.inputs)
 
     def test_create_and_query_use_mocked_legacy_provider(self):
         legacy = FakeLegacyGoogleProvider()

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 from video_generation.adapters.errors import VideoProviderError
 from video_generation.adapters.kling import KlingVideoAdapter
 from video_generation.adapters.registry import get_video_adapter
-from video_generation.adapters.types import VideoCreateRequest, VideoInputAsset, VideoQueryRequest
+from video_generation.adapters.types import VideoCreateRequest, VideoCreateResult, VideoInputAsset, VideoQueryRequest
 from video_generation.adapters.yunwu_kling import YunwuKlingVideoAdapter
 from video_generation.capabilities import build_model_schema_snapshot, list_video_model_capabilities
 from video_generation.providers.kling import KlingVideoProvider
@@ -36,6 +36,26 @@ class FakeLegacyKlingProvider:
         }
 
 
+class CaptureCreateAdapter:
+    def __init__(self, bridge):
+        self.bridge = bridge
+        self.bridge_calls = 0
+        self.created_requests = []
+
+    def create_request_from_generate_request(self, request):
+        self.bridge_calls += 1
+        return self.bridge.create_request_from_generate_request(request)
+
+    async def create(self, request, capability):
+        self.created_requests.append(request)
+        return VideoCreateResult(
+            provider=request.provider,
+            model=request.model,
+            task_id="mock-task-1",
+            status="queued",
+        )
+
+
 class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
     def _capability(self, model="kling-v3"):
         return {
@@ -43,6 +63,198 @@ class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
             "model": model,
             "adapterHints": {"adapterId": "kling:official", "runtime": "adapter"},
         }
+
+    async def _capture_service_create_request(self, request, *, expected_bridge_calls=1):
+        bridge = (
+            YunwuKlingVideoAdapter(FakeLegacyKlingProvider())
+            if request.provider == "yunwu-kling"
+            else KlingVideoAdapter(FakeLegacyKlingProvider())
+        )
+        adapter = CaptureCreateAdapter(bridge)
+        service = VideoGenerationService(yunwu_api_key="mock")
+        with (
+            patch("video_generation.service.get_video_adapter", return_value=adapter),
+            patch("video_generation.service.upsert_task", new_callable=AsyncMock),
+        ):
+            await service.create_task("mock-project", request)
+
+        self.assertEqual(len(adapter.created_requests), 1)
+        self.assertEqual(adapter.bridge_calls, expected_bridge_calls)
+        return adapter.created_requests[0]
+
+    async def _capture_standard_create_request(self, request):
+        return await self._capture_service_create_request(request)
+
+    async def test_kling_bridge_rejects_unknown_mode(self):
+        adapter = KlingVideoAdapter(FakeLegacyKlingProvider())
+        request = VideoGenerateRequest(
+            provider="kling",
+            model="kling-v3-omni",
+            videoMode="reference-video",
+            prompt="",
+        )
+
+        with self.assertRaisesRegex(ValueError, "does not support mode: reference-video"):
+            adapter.create_request_from_generate_request(request)
+
+    async def test_kling_omni_bridge_preserves_duplicate_image_order(self):
+        adapter = KlingVideoAdapter(FakeLegacyKlingProvider())
+        runtime_images = [
+            "https://runtime.invalid/duplicate.png",
+            "https://runtime.invalid/reference.png",
+            "https://runtime.invalid/duplicate.png",
+        ]
+        request = VideoGenerateRequest(
+            provider="kling",
+            model="kling-v3-omni",
+            videoMode="omni-video",
+            prompt="",
+            images=runtime_images,
+        )
+
+        create_request = adapter.create_request_from_generate_request(request)
+
+        self.assertEqual(
+            [asset.url for asset in create_request.inputs["image:references"]],
+            runtime_images,
+        )
+        legacy_request = adapter._to_legacy_request(create_request)
+
+        self.assertEqual(legacy_request.images, runtime_images)
+        self.assertEqual(len(legacy_request.images), len(runtime_images))
+        self.assertEqual(legacy_request.images[0], runtime_images[0])
+        self.assertEqual(legacy_request.images[1], runtime_images[1])
+        self.assertEqual(legacy_request.images[2], runtime_images[2])
+
+    async def test_kling_omni_service_request_matches_historical_mapping_and_order(self):
+        runtime_images = [
+            "https://runtime.invalid/first.png",
+            "https://runtime.invalid/reference-a.png",
+            "https://runtime.invalid/reference-b.png",
+        ]
+        descriptors = [
+            {"alias": "reference-b", "role": "reference", "index": 2, "elementId": "element-b"},
+            {"alias": "first", "role": "first_frame", "index": 0, "elementId": "element-first"},
+            {"alias": "reference-a", "role": "reference", "index": 1, "elementId": "element-a"},
+        ]
+        custom_params = {
+            "kling": {
+                "omniParams": {
+                    "prompt": "Move @first past @reference-a",
+                    "images": descriptors,
+                }
+            },
+            "sentinel": "kept",
+        }
+        request = VideoGenerateRequest(
+            provider="kling",
+            model="kling-v3-omni",
+            videoMode="omni-video",
+            prompt="Historical Omni contract",
+            negativePrompt="blur",
+            aspectRatio="16:9",
+            duration="8s",
+            durationSeconds=8,
+            resolution="1080p",
+            qualityMode="pro",
+            generateAudio=True,
+            seed=42,
+            numberOfVideos=3,
+            images=runtime_images,
+            endImage="https://runtime.invalid/end.png",
+            customParams=custom_params,
+        )
+
+        create_request = await self._capture_service_create_request(request, expected_bridge_calls=1)
+
+        self.assertEqual(create_request.provider, "kling")
+        self.assertEqual(create_request.model, "kling-v3-omni")
+        self.assertEqual(create_request.task_type, "omni-video")
+        self.assertEqual(create_request.prompt, "Historical Omni contract")
+        self.assertEqual(create_request.project_dir, "mock-project")
+        self.assertEqual(create_request.params, {
+            "negativePrompt": "blur",
+            "aspectRatio": "16:9",
+            "duration": "8s",
+            "durationSeconds": 8,
+            "qualityMode": "pro",
+            "generateAudio": True,
+            "customParams": custom_params,
+        })
+        self.assertEqual(create_request.inputs, {
+            "image:references": [
+                VideoInputAsset(
+                    kind="image",
+                    role="reference",
+                    url="https://runtime.invalid/first.png",
+                    handle_id="image:references",
+                ),
+                VideoInputAsset(
+                    kind="image",
+                    role="reference",
+                    url="https://runtime.invalid/reference-a.png",
+                    handle_id="image:references",
+                ),
+                VideoInputAsset(
+                    kind="image",
+                    role="reference",
+                    url="https://runtime.invalid/reference-b.png",
+                    handle_id="image:references",
+                ),
+            ],
+            "image:lastFrame": [
+                VideoInputAsset(
+                    kind="image",
+                    role="last_frame",
+                    url="https://runtime.invalid/end.png",
+                    handle_id="image:lastFrame",
+                ),
+            ],
+        })
+        self.assertEqual(create_request.params["customParams"]["kling"]["omniParams"]["images"], descriptors)
+        self.assertTrue(all(
+            forbidden not in {key.lower() for descriptor in descriptors for key in descriptor}
+            for forbidden in ("url", "uri", "path", "endpoint", "token", "key")
+        ))
+
+    async def test_yunwu_kling_omni_alias_preserves_images_and_descriptors(self):
+        runtime_images = [
+            "https://runtime.invalid/alias-first.png",
+            "https://runtime.invalid/alias-second.png",
+            "https://runtime.invalid/alias-third.png",
+        ]
+        descriptors = [
+            {"alias": "alias-third", "role": "reference", "index": 2, "elementId": "alias-element-3"},
+            {"alias": "alias-first", "role": "reference", "index": 0, "elementId": "alias-element-1"},
+            {"alias": "alias-second", "role": "reference", "index": 1, "elementId": "alias-element-2"},
+        ]
+        custom_params = {"kling": {"omniParams": {"images": descriptors}}}
+        request = VideoGenerateRequest(
+            provider="yunwu-kling",
+            model="kling-v3-omni",
+            videoMode="omni-video",
+            prompt="Alias Omni contract",
+            images=runtime_images,
+            customParams=custom_params,
+        )
+
+        create_request = await self._capture_service_create_request(request, expected_bridge_calls=1)
+
+        self.assertEqual(create_request.provider, "yunwu-kling")
+        self.assertEqual(create_request.task_type, "omni-video")
+        self.assertEqual(create_request.inputs["image:references"], [
+            VideoInputAsset(
+                kind="image",
+                role="reference",
+                url=image,
+                handle_id="image:references",
+            )
+            for image in runtime_images
+        ])
+        self.assertEqual(
+            create_request.params["customParams"]["kling"]["omniParams"]["images"],
+            descriptors,
+        )
 
     async def test_registry_returns_real_kling_adapter(self):
         adapter = get_video_adapter("kling")
@@ -58,6 +270,141 @@ class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(adapter.supports({"provider": "kling"}))
         self.assertTrue(adapter.supports({"provider": "other", "adapterHints": {"adapterId": "kling:official"}}))
         self.assertFalse(adapter.supports({"provider": "google"}))
+
+    async def test_standard_t2v_create_request_matches_historical_field_contract(self):
+        for model in ("kling-v2-6", "kling-v3"):
+            with self.subTest(model=model):
+                custom_params = {"kling": {"shotMode": "single", "cfgScale": 0.6}, "sentinel": "kept"}
+                request = VideoGenerateRequest(
+                    provider="kling",
+                    model=model,
+                    videoMode="text-to-video",
+                    prompt="A mock comet over water",
+                    negativePrompt="blur",
+                    aspectRatio="9:16",
+                    duration="7s",
+                    durationSeconds=7,
+                    resolution="1080p",
+                    qualityMode="pro",
+                    generateAudio=True,
+                    seed=42,
+                    numberOfVideos=2,
+                    customParams=custom_params,
+                )
+
+                create_request = await self._capture_standard_create_request(request)
+
+                self.assertEqual(create_request.provider, "kling")
+                self.assertEqual(create_request.model, model)
+                self.assertEqual(create_request.task_type, "text-to-video")
+                self.assertEqual(create_request.prompt, "A mock comet over water")
+                self.assertEqual(create_request.project_dir, "mock-project")
+                self.assertEqual(create_request.inputs, {})
+                self.assertEqual(create_request.params, {
+                    "negativePrompt": "blur",
+                    "aspectRatio": "9:16",
+                    "duration": "7s",
+                    "durationSeconds": 7,
+                    "qualityMode": "pro",
+                    "generateAudio": True,
+                    "customParams": custom_params,
+                })
+
+    async def test_standard_i2v_create_request_matches_historical_field_and_input_contract(self):
+        for model in ("kling-v2-6", "kling-v3"):
+            with self.subTest(model=model):
+                custom_params = {"kling": {"shotMode": "single"}}
+                request = VideoGenerateRequest(
+                    provider="kling",
+                    model=model,
+                    videoMode="image-to-video",
+                    prompt="Animate mock frames",
+                    negativePrompt="flicker",
+                    aspectRatio="16:9",
+                    duration="10s",
+                    durationSeconds=10,
+                    resolution="720p",
+                    qualityMode="std",
+                    generateAudio=False,
+                    seed=9,
+                    numberOfVideos=3,
+                    images=["mock://first.png", "mock://ignored.png"],
+                    endImage="mock://last.png",
+                    customParams=custom_params,
+                )
+
+                create_request = await self._capture_standard_create_request(request)
+
+                self.assertEqual(create_request.provider, "kling")
+                self.assertEqual(create_request.model, model)
+                self.assertEqual(create_request.task_type, "image-to-video")
+                self.assertEqual(create_request.prompt, "Animate mock frames")
+                self.assertEqual(create_request.project_dir, "mock-project")
+                self.assertEqual(create_request.params, {
+                    "negativePrompt": "flicker",
+                    "aspectRatio": "16:9",
+                    "duration": "10s",
+                    "durationSeconds": 10,
+                    "qualityMode": "std",
+                    "generateAudio": False,
+                    "customParams": custom_params,
+                })
+                self.assertEqual(list(create_request.inputs), ["image:firstFrame", "image:lastFrame"])
+                self.assertEqual(create_request.inputs, {
+                    "image:firstFrame": [
+                        VideoInputAsset(
+                            kind="image",
+                            role="first_frame",
+                            url="mock://first.png",
+                            handle_id="image:firstFrame",
+                        ),
+                    ],
+                    "image:lastFrame": [
+                        VideoInputAsset(
+                            kind="image",
+                            role="last_frame",
+                            url="mock://last.png",
+                            handle_id="image:lastFrame",
+                        ),
+                    ],
+                })
+                self.assertNotIn("image:references", create_request.inputs)
+
+    async def test_yunwu_kling_alias_uses_same_standard_historical_contract(self):
+        custom_params = {"kling": {"shotMode": "single"}}
+        request = VideoGenerateRequest(
+            provider="yunwu-kling",
+            model="kling-v3",
+            videoMode="text-to-video",
+            prompt="Alias contract",
+            negativePrompt="noise",
+            aspectRatio="1:1",
+            duration="5s",
+            durationSeconds=5,
+            resolution="1080p",
+            qualityMode="pro",
+            generateAudio=True,
+            seed=17,
+            numberOfVideos=4,
+            customParams=custom_params,
+        )
+
+        create_request = await self._capture_standard_create_request(request)
+
+        self.assertEqual(create_request.provider, "yunwu-kling")
+        self.assertEqual(create_request.model, "kling-v3")
+        self.assertEqual(create_request.task_type, "text-to-video")
+        self.assertEqual(create_request.prompt, "Alias contract")
+        self.assertEqual(create_request.inputs, {})
+        self.assertEqual(create_request.params, {
+            "negativePrompt": "noise",
+            "aspectRatio": "1:1",
+            "duration": "5s",
+            "durationSeconds": 5,
+            "qualityMode": "pro",
+            "generateAudio": True,
+            "customParams": custom_params,
+        })
 
     async def test_build_text2video_payload_matches_legacy_fields(self):
         adapter = KlingVideoAdapter(KlingVideoProvider(provider_type="kling"))
@@ -122,6 +469,25 @@ class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["mode"], "std")
         self.assertEqual(payload["sound"], "off")
 
+    async def test_standard_quality_and_audio_params_reach_payload_for_kling_variants(self):
+        adapter = KlingVideoAdapter(KlingVideoProvider(provider_type="kling"))
+        for model in ("kling-v2-6", "kling-v3"):
+            with self.subTest(model=model):
+                request = VideoCreateRequest(
+                    provider="kling",
+                    model=model,
+                    task_type="text-to-video",
+                    prompt="A comet over the ocean",
+                    params={"duration": "5s", "qualityMode": "pro", "generateAudio": True},
+                )
+
+                payload = await adapter.build_create_payload(request, self._capability(model=model))
+
+                self.assertEqual(payload["model_name"], model)
+                self.assertEqual(payload["duration"], "5")
+                self.assertEqual(payload["mode"], "pro")
+                self.assertEqual(payload["sound"], "on")
+
     async def test_build_multi_shot_payload_preserves_multi_prompt(self):
         adapter = KlingVideoAdapter(KlingVideoProvider(provider_type="kling"))
         request = VideoCreateRequest(
@@ -168,11 +534,14 @@ class KlingVideoAdapterTest(unittest.IsolatedAsyncioTestCase):
                     "kling": {
                         "omniParams": {
                             "prompt": "Move @image_1 around @element_1",
-                            "images": [{"url": "https://cdn.example.test/ref.png", "role": "reference"}],
+                            "images": [{"index": 0, "role": "reference"}],
                             "elements": [{"elementId": "123"}],
                         }
                     }
                 },
+            },
+            inputs={
+                "image:references": [VideoInputAsset(kind="image", role="reference", url="https://cdn.example.test/ref.png")],
             },
         )
 

@@ -3,8 +3,22 @@ import {
   clearProviderSettings,
   fetchProviderSettings,
   normalizeProviderStatus,
+  PROVIDER_FIELDS,
   saveProviderSettings,
 } from '../providerSettings.js';
+
+for (const providerId of ['kie', 'fal', 'wavespeed']) {
+  assert.deepEqual(
+    PROVIDER_FIELDS[providerId].map((field) => field.id),
+    ['apiKey'],
+    `${providerId} should expose only apiKey`
+  );
+  assert.equal(PROVIDER_FIELDS[providerId][0].secret, true);
+  assert.equal(PROVIDER_FIELDS[providerId][0].required, true);
+}
+assert.deepEqual(PROVIDER_FIELDS.google_studio.map((field) => field.id), ['apiKey']);
+assert.deepEqual(PROVIDER_FIELDS.kling.map((field) => field.id), ['accessKey', 'secretKey']);
+assert.deepEqual(PROVIDER_FIELDS['cloudflare-r2'].map((field) => field.id), ['accessKeyId', 'secretAccessKey']);
 
 assert.deepEqual(
   normalizeProviderStatus({
@@ -18,7 +32,7 @@ assert.deepEqual(
     missingDependencyEnv: [],
     requiredSettings: ['accessKey', 'secretKey'],
     settingsFields: ['baseUrl'],
-    publicSettings: { baseUrl: 'https://api.openai.com/v1' },
+    publicSettings: { baseUrl: 'https://api.openai.com/v1', accessKeyId: 'must-not-be-preserved' },
     missingSettings: [],
     accessKey: 'must-not-be-preserved',
   }),

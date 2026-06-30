@@ -14,18 +14,23 @@ class GoogleCloudLLMProviderTest(unittest.TestCase):
             calls.append(kwargs)
             return object()
 
-        with patch("llm.providers.google_provider.genai.Client", side_effect=fake_client):
-            provider = GoogleLLMProvider(api_key="cloud-key")
+        with (
+            patch("llm.providers.google_provider.resolve_provider_secret", return_value="cloud-key"),
+            patch("llm.providers.google_provider.genai.Client", side_effect=fake_client),
+        ):
+            provider = GoogleLLMProvider(api_key=None)
+            client = provider._client()
 
-        self.assertIsNotNone(provider.client)
+        self.assertIsNotNone(client)
         self.assertEqual(calls, [{"vertexai": True, "api_key": "cloud-key"}])
 
     def test_missing_google_cloud_key_uses_google_cloud_error(self):
         provider = GoogleLLMProvider(api_key=None)
-        provider.api_key = None
-        provider.client = None
 
-        with self.assertRaisesRegex(LLMProviderError, "GOOGLE_CLOUD_API_KEY is missing"):
+        with (
+            patch("llm.providers.google_provider.resolve_provider_secret", return_value=None),
+            self.assertRaisesRegex(LLMProviderError, "GOOGLE_CLOUD_API_KEY is missing"),
+        ):
             import asyncio
             asyncio.run(provider.generate(LLMGenerateRequest(provider="google", model="gemini-3.1-flash-lite", inputText="Hi")))
 

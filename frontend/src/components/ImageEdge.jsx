@@ -2,7 +2,11 @@
 import { memo, useCallback, useEffect } from 'react';
 import { getBezierPath, EdgeLabelRenderer, useReactFlow, useStore } from '@xyflow/react';
 import { countRender, DISABLE_EDGE_ANIMATION, PERF_DEBUG } from '../utils/perfDebug';
-import { normalizeImageInputEdgeLabels } from '../utils/edgeLabels';
+import {
+  normalizeImageInputEdgeLabels,
+  shouldShowEdgeControls,
+  shouldShowImageInputEdgeLabel,
+} from '../utils/edgeLabels';
 
 function ImageEdge({
   id,
@@ -25,25 +29,24 @@ function ImageEdge({
   countRender('ImageEdge');
   const { setEdges } = useReactFlow();
   const resolvedTargetHandle = targetHandleId ?? targetHandle;
-  const isImageInputEdge =
-    resolvedTargetHandle === 'image:in' ||
-    resolvedTargetHandle === 'image:images' ||
-    resolvedTargetHandle === 'image:references' ||
-    resolvedTargetHandle === 'image:end';
-
   const sourceSelected = useStore(
     (store) => store.nodeLookup?.get(source)?.selected
   );
   const targetSelected = useStore(
     (store) => store.nodeLookup?.get(target)?.selected
   );
-  const showLabel = selected || sourceSelected || targetSelected;
+  const showEdgeControls = shouldShowEdgeControls({ selected, sourceSelected, targetSelected });
 
   const inputLabel =
     data?.inputLabel ||
     data?.label ||
     (resolvedTargetHandle === 'image:end' ? 'END' : '') ||
     (typeof data?.imageIndex === 'number' ? `image${data.imageIndex + 1}` : '');
+  const showImageLabel = shouldShowImageInputEdgeLabel(
+    resolvedTargetHandle,
+    inputLabel,
+    showEdgeControls
+  );
   const isFlowing = Boolean(data?.flowing);
 
   const [edgePath, labelX, labelY] = getBezierPath({
@@ -101,10 +104,10 @@ function ImageEdge({
         />
       )}
 
-      {showLabel && (
+      {(showImageLabel || showEdgeControls) && (
         <EdgeLabelRenderer>
           <>
-            {isImageInputEdge && inputLabel && (
+            {showImageLabel && (
               <div
                 className="nodrag nopan bg-[#181818] border border-white/20 px-2 py-0.5 rounded-md shadow-2xl"
                 style={{
@@ -119,11 +122,12 @@ function ImageEdge({
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={handleEdgeDelete}
-              className="nodrag nopan w-5 h-5 bg-[#141414] border border-white/5 rounded-full flex items-center justify-center text-white/40 hover:text-red-500 hover:border-red-500 shadow-xl"
-              style={{
+            {showEdgeControls && (
+              <button
+                type="button"
+                onClick={handleEdgeDelete}
+                className="nodrag nopan w-5 h-5 bg-[#141414] border border-white/5 rounded-full flex items-center justify-center text-white/40 hover:text-red-500 hover:border-red-500 shadow-xl"
+                style={{
                 position: 'absolute',
                 zIndex: 25,
                 transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
@@ -138,7 +142,8 @@ function ImageEdge({
                   d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-16v1a1 1 0 001 1h3m-10 0h3m0 0V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"
                 />
               </svg>
-            </button>
+              </button>
+            )}
           </>
         </EdgeLabelRenderer>
       )}

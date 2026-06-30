@@ -32,6 +32,63 @@ class SeedanceOfficialVideoAdapter:
         hints = capability.get("adapterHints") if isinstance(capability.get("adapterHints"), Mapping) else {}
         return capability.get("provider") == self.provider or hints.get("adapterId") == self.adapter_id
 
+    def create_request_from_generate_request(self, request: VideoGenerateRequest) -> VideoCreateRequest:
+        if request.videoMode not in {"frame", "multimodal-reference"}:
+            raise ValueError(f"Seedance create request bridge does not support mode: {request.videoMode}")
+
+        raw_seedance_params = (request.customParams or {}).get("seedance")
+        seedance_params = dict(raw_seedance_params) if isinstance(raw_seedance_params, dict) else {}
+        inputs: dict[str, list[VideoInputAsset]] = {}
+        if request.images:
+            if request.videoMode == "frame":
+                inputs["image:firstFrame"] = [
+                    VideoInputAsset(
+                        kind="image",
+                        role="first_frame",
+                        url=request.images[0],
+                        handle_id="image:firstFrame",
+                    )
+                ]
+            else:
+                inputs["image:references"] = [
+                    VideoInputAsset(kind="image", role="reference", url=image, handle_id="image:references")
+                    for image in request.images
+                ]
+        if request.endImage:
+            inputs["image:lastFrame"] = [
+                VideoInputAsset(kind="image", role="last_frame", url=request.endImage, handle_id="image:lastFrame")
+            ]
+        for key, handle_id, kind, role in (
+            ("videos", "video:references", "video", "reference"),
+            ("audios", "audio:references", "audio", "reference"),
+        ):
+            values = [value for value in seedance_params.get(key, []) if value] if isinstance(seedance_params.get(key), list) else []
+            if values:
+                inputs[handle_id] = [
+                    VideoInputAsset(kind=kind, role=role, url=value, handle_id=handle_id)
+                    for value in values
+                ]
+
+        return VideoCreateRequest(
+            provider=request.provider,
+            model=request.model,
+            task_type=request.videoMode,
+            prompt=request.prompt,
+            params={
+                "aspectRatio": request.aspectRatio,
+                "duration": request.duration,
+                "durationSeconds": request.durationSeconds,
+                "resolution": request.resolution,
+                "generateAudio": request.generateAudio,
+                "returnLastFrame": request.returnLastFrame,
+                "publicAssetStorage": request.publicAssetStorage,
+                "seed": request.seed,
+                "customParams": dict(request.customParams or {}),
+            },
+            inputs=inputs,
+            project_dir=request.projectPath,
+        )
+
     async def build_create_payload(self, request: VideoCreateRequest, capability: Mapping[str, Any]) -> Mapping[str, Any]:
         legacy_request = self._to_legacy_request(request)
         resolved_request = await self.legacy_provider._resolve_request_assets(legacy_request)

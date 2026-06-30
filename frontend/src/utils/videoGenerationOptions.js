@@ -809,7 +809,16 @@ export const normalizeVideoGenerationSettings = (settings = {}, registry) => {
   }
 
   nextSettings.durationSeconds = parseDurationSeconds(nextSettings.duration);
-  return applyModelConstraints(nextSettings, model);
+  const constrainedSettings = applyModelConstraints(nextSettings, model);
+  constrainedSettings.params = {
+    ...(sourceSettings.params || {}),
+  };
+  Object.keys(params).forEach((key) => {
+    if (constrainedSettings[key] !== undefined) {
+      constrainedSettings.params[key] = constrainedSettings[key];
+    }
+  });
+  return constrainedSettings;
 };
 
 export const supportsVideoEndFrame = (modelConfig, settings = {}) => {

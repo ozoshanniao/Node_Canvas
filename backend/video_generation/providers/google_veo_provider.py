@@ -6,6 +6,7 @@ from urllib.parse import unquote, urlparse
 
 from google import genai
 from google.genai import types
+from settings_resolver import resolve_provider_secret
 
 from engines.image_utils import decode_base64_payload, infer_mime_type, prepare_provider_image_input
 from video_generation.providers.base import BaseVideoProvider
@@ -17,7 +18,12 @@ REFERENCE_VIDEO_MODELS = {"veo-3.1-generate-001", "veo-3.1-fast-generate-001"}
 
 
 class GoogleVeoProvider(BaseVideoProvider):
-    def __init__(self, project: str | None = None, location: str | None = None):
+    def __init__(
+        self,
+        project: str | None = None,
+        location: str | None = None,
+        api_key: str | None = None,
+    ):
         self.project = (
             project
             or os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -30,17 +36,26 @@ class GoogleVeoProvider(BaseVideoProvider):
             or os.getenv("GOOGLE_LOCATION")
             or "us-central1"
         )
+        self.api_key = api_key
         self.client = None
+        self._client_api_key = None
 
     def _client(self):
         if not self.project or not self.location:
             raise ValueError("Google credentials/project/location not configured: GOOGLE_CLOUD_PROJECT is missing")
-        if self.client is None:
+        api_key = self.api_key or resolve_provider_secret("google", "apiKey", "GOOGLE_CLOUD_API_KEY")
+        if not api_key:
+            raise ValueError("Google credentials/project/location not configured: GOOGLE_CLOUD_API_KEY is missing")
+        if self.client is not None and self._client_api_key is None:
+            return self.client
+        if self.client is None or self._client_api_key != api_key:
             self.client = genai.Client(
                 vertexai=True,
+                api_key=api_key,
                 project=self.project,
                 location=self.location,
             )
+            self._client_api_key = api_key
         return self.client
 
     def _serialize(self, value):

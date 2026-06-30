@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getNodeAudioOutput, getNodeEaseCurveOutput, getNodeImageOutput, getNodeOmniParamsOutput, getNodeVideoInputOutput, getNodeVideoOutput } from '../nodeOutputs.js';
+import { getNodeAudioOutput, getNodeEaseCurveOutput, getNodeImageOutput, getNodeOmniParamsOutput, getNodeVideoInputOutput, getNodeVideoOutput, normalizeOmniPromptAliases } from '../nodeOutputs.js';
 import {
   createLocalEraserShape,
   eraseAnnotationObjectsAtPoint,
@@ -8,7 +8,7 @@ import {
   pushAnnotationHistory,
   renderAnnotationLayer,
 } from '../annotationUtils.js';
-import { normalizeImageInputEdgeLabels } from '../edgeLabels.js';
+import { isImageLabelTargetHandle, normalizeImageInputEdgeLabels, shouldShowEdgeControls, shouldShowImageInputEdgeLabel } from '../edgeLabels.js';
 
 const makeOmniNode = (data) => ({
   id: 'omni-1',
@@ -45,6 +45,43 @@ const imageEdge = {
   assert.equal(edges[2].data.kind, 'audio');
   assert.equal(edges[2].data.audioIndex, 0);
   assert.equal(edges[2].data.inputLabel, 'audio1');
+}
+
+{
+  assert.equal(isImageLabelTargetHandle('image:references'), true);
+  assert.equal(isImageLabelTargetHandle('image:images'), true);
+  assert.equal(isImageLabelTargetHandle('image:firstFrame'), true);
+  assert.equal(isImageLabelTargetHandle('image:lastFrame'), true);
+  assert.equal(isImageLabelTargetHandle('text:prompt'), false);
+
+  assert.equal(shouldShowImageInputEdgeLabel('image:firstFrame', 'image1'), true);
+  assert.equal(shouldShowImageInputEdgeLabel('image:lastFrame', 'image2'), true);
+  assert.equal(shouldShowImageInputEdgeLabel('image:end', 'END'), false);
+  assert.equal(shouldShowImageInputEdgeLabel('image:end', 'END', true), true);
+  assert.equal(shouldShowImageInputEdgeLabel('text:prompt', 'prompt'), false);
+  assert.equal(shouldShowEdgeControls({ selected: false, sourceSelected: false, targetSelected: false }), false);
+  assert.equal(shouldShowEdgeControls({ selected: true, sourceSelected: false, targetSelected: false }), true);
+
+  const referenceEdges = normalizeImageInputEdgeLabels([
+    { id: 'reference', target: 'omni', targetHandle: 'image:references', data: {} },
+    { id: 'images', target: 'legacy-video', targetHandle: 'image:images', data: {} },
+  ]);
+  assert.equal(referenceEdges[0].data.inputLabel, 'image1');
+  assert.equal(referenceEdges[1].data.inputLabel, 'image1');
+
+  const frameEdges = normalizeImageInputEdgeLabels([
+    { id: 'last', target: 'video', targetHandle: 'image:lastFrame', data: {} },
+    { id: 'first', target: 'video', targetHandle: 'image:firstFrame', data: {} },
+  ]);
+  assert.equal(frameEdges[0].data.imageIndex, 1);
+  assert.equal(frameEdges[0].data.inputLabel, 'image2');
+  assert.equal(frameEdges[1].data.imageIndex, 0);
+  assert.equal(frameEdges[1].data.inputLabel, 'image1');
+
+  const normalizedAgain = normalizeImageInputEdgeLabels(frameEdges);
+  assert.equal(normalizedAgain, frameEdges);
+  assert.equal(normalizedAgain[0].data.imageIndex, 1);
+  assert.equal(normalizedAgain[1].data.imageIndex, 0);
 }
 
 {
@@ -132,6 +169,37 @@ const imageEdge = {
     type: 'videoNode',
     data: { outputs: { lastFrame } },
   }, 'video:out'), []);
+}
+
+{
+  assert.equal(normalizeOmniPromptAliases('@image1'), '<<<image_1>>>');
+  assert.equal(normalizeOmniPromptAliases('@image_1'), '<<<image_1>>>');
+  assert.equal(normalizeOmniPromptAliases('@image10'), '<<<image_10>>>');
+  assert.equal(normalizeOmniPromptAliases('@image_10'), '<<<image_10>>>');
+  assert.equal(normalizeOmniPromptAliases('@element1'), '<<<element_1>>>');
+  assert.equal(normalizeOmniPromptAliases('@element_1'), '<<<element_1>>>');
+  assert.equal(normalizeOmniPromptAliases('@video1'), '<<<video_1>>>');
+  assert.equal(normalizeOmniPromptAliases('@video_1'), '<<<video_1>>>');
+  assert.equal(normalizeOmniPromptAliases('image1 image_1'), 'image1 image_1');
+  assert.equal(
+    normalizeOmniPromptAliases('@image_ @image @imageabc @image1abc'),
+    '@image_ @image @imageabc @image1abc'
+  );
+  assert.equal(normalizeOmniPromptAliases('@image1中的人物'), '<<<image_1>>>中的人物');
+}
+
+{
+  const output = getNodeOmniParamsOutput(
+    makeOmniNode({
+      prompt: 'Use @image1 with @element1',
+      elements: ['123456'],
+    }),
+    [imageEdge],
+    [imageNode]
+  );
+
+  assert.equal(output.isValid, true);
+  assert.equal(output.resolvedPrompt, 'Use <<<image_1>>> with <<<element_1>>>');
 }
 
 {
