@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import unittest
 from pathlib import Path
@@ -786,15 +787,6 @@ class SeedanceLastFrameQueryTest(unittest.TestCase):
             createdAt=1,
             updatedAt=1,
         )
-        stored = {"task": task}
-
-        async def get_task(_project_path, _task_id):
-            return task
-
-        async def upsert_task(_project_path, updated_task):
-            stored["task"] = updated_task
-            return updated_task
-
         response = {
             "status": "success",
             "remoteVideoUrl": "https://seedance.test/video.mp4",
@@ -803,12 +795,16 @@ class SeedanceLastFrameQueryTest(unittest.TestCase):
         service = VideoGenerationService(yunwu_api_key="mock")
         service.providers["seedance_official"] = FakeSeedanceProvider(response)
 
-        with patch("video_generation.service.get_task", get_task), patch(
-            "video_generation.service.upsert_task", upsert_task
+        with patch(
+            "video_generation.service.get_task", AsyncMock(return_value=task)
+        ) as get_task, patch(
+            "video_generation.service.upsert_task", new_callable=AsyncMock
         ) as upsert, patch(
-            "video_generation.service.download_video_to_project"
+            "video_generation.service.get_video_adapter"
+        ) as get_adapter, patch(
+            "video_generation.service.download_video_to_project", new_callable=AsyncMock
         ) as download, patch(
-            "video_generation.service.download_image_to_generation"
+            "video_generation.service.download_image_to_generation", new_callable=AsyncMock
         ) as download_last_frame, patch(
             "video_generation.service.save_video_bytes_to_project"
         ) as save:
@@ -817,10 +813,12 @@ class SeedanceLastFrameQueryTest(unittest.TestCase):
         self.assertEqual(updated.status, "success")
         self.assertEqual(updated.outputs, {"video": {"relativePath": "generation/videos/video_local_task.mp4"}})
         self.assertEqual(updated.message, "Video generation completed; last frame is unavailable.")
-        download.assert_not_called()
-        download_last_frame.assert_not_called()
+        get_task.assert_awaited_once_with("/project", task.id)
+        get_adapter.assert_not_called()
+        download.assert_not_awaited()
+        download_last_frame.assert_not_awaited()
         save.assert_not_called()
-        upsert.assert_not_called()
+        upsert.assert_not_awaited()
 
 
 if __name__ == "__main__":
