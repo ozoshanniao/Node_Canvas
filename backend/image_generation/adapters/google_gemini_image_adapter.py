@@ -63,7 +63,7 @@ class GoogleGeminiImageAdapter:
             ),
         }
 
-        if model == "gemini-3.1-flash-image-preview":
+        if model == "gemini-3.1-flash-image":
             config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="MINIMAL")
 
         return types.GenerateContentConfig(**config_kwargs)

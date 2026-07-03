@@ -123,10 +123,8 @@ MODEL_NAME_MAP = {
     "Nano pro": "pro_image_spec",
     "Nano Pro": "pro_image_spec",
     "Nano Banana Pro": "pro_image_spec",
-    "gemini-3-pro-image-preview": "pro_image_spec",
     "Nano 2": "flash_image_spec",
     "Nano Banana 2": "flash_image_spec",
-    "gemini-3.1-flash-image-preview": "flash_image_spec",
     "gemini-3-pro-image": "google_studio_nano_banana_pro_spec",
     "gemini-3.1-flash-image": "google_studio_nano_banana_2_spec",
     "GPT-2": "gpt_image_spec",
@@ -134,6 +132,22 @@ MODEL_NAME_MAP = {
     "Nano Banana 2 (KIE)": "kie_nano_banana_2_spec",
     "GPT Image 2 (KIE)": "kie_gpt_image_2_spec",
     "GPT Image 2 I2I (KIE)": "kie_gpt_image_2_spec",
+}
+
+PROVIDER_MODEL_NAME_MAP = {
+    "Google": {
+        "Nano pro": "pro_image_spec",
+        "Nano Pro": "pro_image_spec",
+        "Nano Banana Pro": "pro_image_spec",
+        "gemini-3-pro-image": "pro_image_spec",
+        "Nano 2": "flash_image_spec",
+        "Nano Banana 2": "flash_image_spec",
+        "gemini-3.1-flash-image": "flash_image_spec",
+    },
+    "google_studio": {
+        "gemini-3-pro-image": "google_studio_nano_banana_pro_spec",
+        "gemini-3.1-flash-image": "google_studio_nano_banana_2_spec",
+    },
 }
 
 PROVIDER_MODELS = {
@@ -144,10 +158,22 @@ PROVIDER_MODELS = {
 }
 
 
+def get_model_spec(provider, model):
+    provider_map = PROVIDER_MODEL_NAME_MAP.get(provider)
+    if provider_map is None and isinstance(provider, str):
+        provider_map = PROVIDER_MODEL_NAME_MAP.get(provider.capitalize())
+    profile_id = (provider_map or {}).get(model) or MODEL_NAME_MAP.get(model)
+    return CAPABILITY_PROFILES.get(profile_id)
+
+
 def get_frontend_specs():
-    full_specs = {}
-    for ui_name, profile_id in MODEL_NAME_MAP.items():
-        full_specs[ui_name] = CAPABILITY_PROFILES.get(profile_id)
+    full_specs = {
+        ui_name: CAPABILITY_PROFILES.get(profile_id)
+        for ui_name, profile_id in MODEL_NAME_MAP.items()
+    }
+    for provider, model_names in PROVIDER_MODELS.items():
+        for ui_name in model_names:
+            full_specs[ui_name] = get_model_spec(provider, ui_name)
 
     return {
         "models": full_specs,
