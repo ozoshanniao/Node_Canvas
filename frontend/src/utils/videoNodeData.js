@@ -148,6 +148,9 @@ export const buildSyncedVideoParamsPatch = ({
     ...(settings.params || {}),
     ...(nextSettings.params || {}),
   };
+  const isGoogleOmni =
+    (nextSettings.provider || settings.provider || modelConfig.adapterKey) === 'google_omni' &&
+    (nextSettings.model || settings.model || modelConfig.id) === 'gemini-omni-flash-preview';
 
   paramKeys.forEach((key) => {
     if (nextSettings[key] !== undefined) {
@@ -157,10 +160,16 @@ export const buildSyncedVideoParamsPatch = ({
 
   const patch = stripVideoParamRootFields(nextSettings);
   const videoMode = nextParams.videoMode || nextSettings.taskType || nextSettings.videoMode;
+  const syncedParams = isGoogleOmni
+    ? Object.fromEntries(
+        Object.entries(nextParams).filter(([key]) => ['prompt', 'videoMode', 'aspectRatio', 'duration'].includes(key))
+      )
+    : nextParams;
   return {
     ...patch,
+    ...(isGoogleOmni ? { customParams: undefined } : {}),
     ...(videoMode ? { taskType: videoMode } : {}),
-    params: nextParams,
+    params: syncedParams,
   };
 };
 
@@ -194,7 +203,14 @@ const sanitizeValue = (value, key = '') => {
 
 export const sanitizeVideoNodeDataForSave = (data = {}, capability = null) => {
   const normalized = normalizeVideoNodeData(data, capability);
-  const sanitizedParams = sanitizeValue(normalized.params) || {};
+  let sanitizedParams = sanitizeValue(normalized.params) || {};
+  const isGoogleOmni =
+    normalized.provider === 'google_omni' && normalized.model === 'gemini-omni-flash-preview';
+  if (isGoogleOmni) {
+    sanitizedParams = Object.fromEntries(
+      Object.entries(sanitizedParams).filter(([key]) => ['prompt', 'videoMode', 'aspectRatio', 'duration'].includes(key))
+    );
+  }
   if (sanitizedParams.customParams) {
     delete sanitizedParams.customParams;
   }
@@ -210,7 +226,7 @@ export const sanitizeVideoNodeDataForSave = (data = {}, capability = null) => {
     schemaSnapshot: snapshot,
     outputs: sanitizedOutputs,
   };
-  if (sanitizedCustomParams) {
+  if (sanitizedCustomParams && !isGoogleOmni) {
     sanitized.customParams = sanitizePersistedKlingOmniReferences(sanitizedCustomParams);
   }
   return sanitized;

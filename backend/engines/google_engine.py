@@ -24,7 +24,7 @@ class GoogleEngine(BaseEngine):
     async def generate(self, config: dict, prompt: str, save_dir: str) -> str:
         try:
             response = self._client().models.generate_content(
-                model=config.get("model", "gemini-3.1-flash-image-preview"),
+                model=config.get("model", "gemini-3.1-flash-image"),
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_modalities=["IMAGE"],

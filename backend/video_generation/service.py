@@ -1,8 +1,12 @@
+import re
 import time
+from dataclasses import replace
 import uuid
+from typing import Any
 
 from video_generation.adapters.registry import get_video_adapter, register_video_adapter
 from video_generation.adapters.types import VideoCreateRequest, VideoInputAsset, VideoQueryRequest
+from video_generation.adapters.google_omni import GoogleOmniVideoAdapter
 from video_generation.adapters.google_veo import GoogleVeoVideoAdapter
 from video_generation.adapters.kie import KieVideoAdapter
 from video_generation.adapters.kling import KlingVideoAdapter
@@ -10,6 +14,11 @@ from video_generation.adapters.seedance import SeedanceOfficialVideoAdapter
 from video_generation.adapters.yunwu import YunwuVideoAdapter
 from video_generation.adapters.yunwu_kling import YunwuKlingVideoAdapter
 from video_generation.providers.yunwu_veo_provider import YunwuVeoProvider
+from video_generation.providers.google_omni_provider import (
+    SAFE_FAILURE_MESSAGE,
+    GoogleOmniProvider,
+    VideoCreateDiagnostics,
+)
 from video_generation.providers.google_veo_provider import GoogleVeoProvider
 from video_generation.providers.kling import KlingVideoProvider
 from video_generation.providers.seedance_official import SeedanceOfficialProvider
@@ -20,12 +29,16 @@ from video_generation.tasks import get_task, normalize_relative_artifact_path, u
 from image_generation.storage import download_image_to_generation, safe_generation_filename_stem
 
 
+GOOGLE_OMNI_DURATION_PATTERN = re.compile(r"^(?:[3-9]|10)s$")
+
 
 class VideoGenerationService:
     def __init__(self, yunwu_api_key: str | None = None):
+        self.last_create_diagnostics: VideoCreateDiagnostics | None = None
         self.providers = {
             "yunwu": YunwuVeoProvider(api_key=yunwu_api_key),
             "google": GoogleVeoProvider(),
+            "google_omni": GoogleOmniProvider(),
             "seedance_official": SeedanceOfficialProvider(),
             "kling": KlingVideoProvider(provider_type="kling"),
             "yunwu-kling": KlingVideoProvider(provider_type="yunwu-kling"),
@@ -33,6 +46,7 @@ class VideoGenerationService:
         }
         register_video_adapter(YunwuVideoAdapter(self.providers["yunwu"]))
         register_video_adapter(GoogleVeoVideoAdapter(self.providers["google"]))
+        register_video_adapter(GoogleOmniVideoAdapter(self.providers["google_omni"]))
         register_video_adapter(KlingVideoAdapter(self.providers["kling"]))
         register_video_adapter(YunwuKlingVideoAdapter(self.providers["yunwu-kling"]))
         register_video_adapter(SeedanceOfficialVideoAdapter(self.providers["seedance_official"]))
@@ -58,6 +72,45 @@ class VideoGenerationService:
             raise ValueError(f"Unsupported video mode for model: {request.videoMode}")
         if request.provider == "yunwu" and request.videoMode == "reference-video" and request.model != "veo3.1-components":
             raise ValueError("reference-video requires veo3.1-components")
+        if request.provider == "google_omni":
+            self._validate_google_omni_request(request)
+
+    def _validate_google_omni_request(self, request: VideoGenerateRequest) -> None:
+        if request.model != "gemini-omni-flash-preview":
+            raise ValueError(f"Unsupported Google Omni model: {request.model}")
+        if not str(request.prompt or "").strip():
+            raise ValueError("Google Omni prompt is required")
+        if request.aspectRatio not in {"16:9", "9:16"}:
+            raise ValueError("Google Omni aspectRatio must be 16:9 or 9:16")
+        duration = str(request.duration or "").strip()
+        if not GOOGLE_OMNI_DURATION_PATTERN.fullmatch(duration):
+            raise ValueError("Google Omni duration must be an integer from 3s to 10s")
+        image_count = len(request.images)
+        if request.videoMode == "text-to-video" and image_count != 0:
+            raise ValueError("Google Omni text-to-video does not accept images")
+        if request.videoMode == "image-to-video" and image_count != 1:
+            raise ValueError("Google Omni image-to-video requires exactly one first-frame image")
+        if request.videoMode == "reference-video" and not 1 <= image_count <= 10:
+            raise ValueError("Google Omni reference-video requires between 1 and 10 reference images")
+        if request.endImage:
+            raise ValueError("Google Omni does not support an end frame")
+        forbidden = {
+            "negativePrompt": request.negativePrompt,
+            "durationSeconds": request.durationSeconds,
+            "resolution": request.resolution,
+            "qualityMode": request.qualityMode,
+            "enableUpsample": request.enableUpsample,
+            "generateAudio": request.generateAudio,
+            "returnLastFrame": request.returnLastFrame,
+            "publicAssetStorage": request.publicAssetStorage,
+            "seed": request.seed,
+            "numberOfVideos": request.numberOfVideos,
+        }
+        supplied = [name for name, value in forbidden.items() if value is not None]
+        if supplied:
+            raise ValueError(f"Google Omni does not support request parameters: {', '.join(supplied)}")
+        if request.customParams:
+            raise ValueError("Google Omni does not support customParams")
 
     def _normalize_public_asset_storage(self, value: str | None) -> str | None:
         storage = (value or "").strip().lower()
@@ -89,6 +142,7 @@ class VideoGenerationService:
     def _provider_label(self, provider_id: str | None) -> str:
         return {
             "google": "Google Cloud",
+            "google_omni": "Google Cloud Omni",
             "kling": "Kling",
             "yunwu-kling": "Yunwu-Kling",
             "seedance_official": "Seedance",
@@ -150,7 +204,41 @@ class VideoGenerationService:
             "updatedAt": int(time.time()),
         }
 
+    async def _materialize_create_video(self, project_path: str, adapter_result, task_id: str) -> str:
+        mime_type = str(adapter_result.video_mime_type or "").split(";", 1)[0].strip().lower()
+        if mime_type and mime_type not in {"video/mp4", "application/octet-stream", "binary/octet-stream"}:
+            raise ValueError("Synchronous video result has an unsupported MIME type")
+
+        if adapter_result.video_bytes:
+            save_video_bytes_to_project(
+                project_path,
+                adapter_result.video_bytes,
+                task_id,
+                validate_mp4=True,
+            )
+        elif adapter_result.video_url:
+            await download_video_to_project(
+                project_path,
+                adapter_result.video_url,
+                task_id,
+                require_https=True,
+                validate_mp4=True,
+            )
+        else:
+            raise ValueError("Synchronous video result did not include video bytes or an HTTPS URL")
+        return video_relative_path(task_id)
+
+    def _google_omni_materialization_category(self, adapter_result: Any) -> str:
+        mime_type = str(adapter_result.video_mime_type or "").split(";", 1)[0].strip().lower()
+        if mime_type and mime_type not in {"video/mp4", "application/octet-stream", "binary/octet-stream"}:
+            return "artifact_validation"
+        video_bytes = adapter_result.video_bytes
+        if video_bytes is not None and (len(video_bytes) < 8 or video_bytes[4:8] != b"ftyp"):
+            return "artifact_validation"
+        return "artifact_materialization"
+
     async def create_task(self, project_path: str, request: VideoGenerateRequest) -> VideoTask:
+        self.last_create_diagnostics = None
         if not project_path:
             raise ValueError("projectPath is required")
         self._validate_request(request)
@@ -167,6 +255,9 @@ class VideoGenerationService:
             create_request = adapter.create_request_from_generate_request(request)
         elif request.provider == "google":
             adapter = get_video_adapter("google")
+            create_request = adapter.create_request_from_generate_request(request)
+        elif request.provider == "google_omni":
+            adapter = get_video_adapter("google_omni")
             create_request = adapter.create_request_from_generate_request(request)
         elif request.provider == "kling":
             register_video_adapter(KlingVideoAdapter(provider))
@@ -187,26 +278,73 @@ class VideoGenerationService:
             raise ValueError(f"Unsupported provider: {request.provider}")
 
         adapter_result = await adapter.create(create_request, capability)
+        if request.provider == "google_omni":
+            self.last_create_diagnostics = adapter_result.diagnostics or VideoCreateDiagnostics(
+                error_category="unknown" if adapter_result.status == "failed" else None
+            )
         now = int(time.time())
+        task_id = f"video_{uuid.uuid4().hex[:12]}"
         status = self._service_status(adapter_result.status)
-        if status not in {"queued", "running"}:
-            status = "queued"
+        outputs: dict[str, Any] = {}
+        error = None
+        message = sanitize_task_text(adapter_result.message, fallback="") or ""
+
+        if status == "success":
+            if request.provider == "google_omni":
+                self.last_create_diagnostics = replace(
+                    self.last_create_diagnostics or VideoCreateDiagnostics(),
+                    materialization_entered=True,
+                )
+            try:
+                relative_path = await self._materialize_create_video(project_path, adapter_result, task_id)
+                outputs = {"video": {"relativePath": relative_path}}
+                message = "Video generation completed."
+            except Exception as exc:
+                status = "error"
+                if request.provider == "google_omni":
+                    category = self._google_omni_materialization_category(adapter_result)
+                    self.last_create_diagnostics = replace(
+                        self.last_create_diagnostics or VideoCreateDiagnostics(),
+                        error_category=category,
+                        materialization_entered=True,
+                    )
+                    error = SAFE_FAILURE_MESSAGE
+                    message = SAFE_FAILURE_MESSAGE
+                else:
+                    safe_error = sanitize_task_text(exc, fallback="Video artifact localization failed.") or "Video artifact localization failed."
+                    error = safe_error
+                    message = sanitize_task_text(
+                        f"Video completed, but localization failed: {safe_error}",
+                        fallback="Video completed, but localization failed.",
+                    ) or "Video completed, but localization failed."
+        elif status in {"queued", "running"}:
+            if not message:
+                message = "Google video task started." if request.provider == "google" else "Video task queued."
+        elif status == "error":
+            if request.provider == "google_omni":
+                message = SAFE_FAILURE_MESSAGE
+                error = SAFE_FAILURE_MESSAGE
+            else:
+                message = message or "Video task failed."
+                error = message
+        elif status == "cancelled":
+            message = message or "Video task cancelled."
+
         task = VideoTask(
-            id=f"video_{uuid.uuid4().hex[:12]}",
+            id=task_id,
             schemaVersion="v2",
             provider=request.provider,
             model=request.model,
             videoMode=request.videoMode,
             status=status,
             progress=self._progress_for_status(status),
-            message=adapter_result.message or (
-                "Google video task started." if request.provider == "google" else "Video task queued."
-            ),
+            message=message,
             providerTaskId=adapter_result.task_id,
-            outputs={},
+            outputs=outputs,
             requestSnapshot={},
             createdAt=now,
             updatedAt=now,
+            error=error,
         )
         await upsert_task(project_path, task)
         return task

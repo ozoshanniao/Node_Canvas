@@ -283,7 +283,7 @@ def _advanced_params(parameters: dict[str, dict[str, Any]], quick_params: list[s
 
 def _model_feature_flags(provider_id: str, model: dict[str, Any]) -> tuple[bool, bool, bool]:
     model_id = str(model.get("id") or "")
-    featured = provider_id in {"yunwu", "google", "seedance_official", "kling", "kie"} and not model_id.endswith("-lite-generate-001")
+    featured = provider_id in {"yunwu", "google", "google_omni", "seedance_official", "kling", "kie"} and not model_id.endswith("-lite-generate-001")
     return featured, False, False
 
 
@@ -310,12 +310,13 @@ def build_model_capability(provider: dict[str, Any], model: dict[str, Any]) -> d
         "advancedParams": _advanced_params(parameters, quick_params),
         "hiddenParams": {},
         "uiHints": {
+            **deepcopy(model.get("uiHints") or {}),
             "legacyProviderLabel": provider.get("label", provider_id),
             "phase": "phase-1-schema-only",
         },
         "adapterHints": {
             "adapterId": legacy_adapter_id_for_provider(provider_id),
-            "runtime": "adapter" if provider_id in {"yunwu", "google", "kling", "yunwu-kling", "seedance_official", "kie"} else "legacy",
+            "runtime": "adapter" if provider_id in {"yunwu", "google", "google_omni", "kling", "yunwu-kling", "seedance_official", "kie"} else "legacy",
             "adapterKey": adapter_key,
             "legacyModelId": model_id,
             "constraints": deepcopy(model.get("constraints") or {}),

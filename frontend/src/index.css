@@ -164,12 +164,6 @@ html, body, #root {
   z-index: 10 !important;
 }
 
-.node-canvas-flow .react-flow__edge-labels,
-.node-canvas-flow .react-flow__edgelabel-renderer {
-  z-index: 25 !important;
-  pointer-events: none;
-}
-
 .node-canvas-flow .react-flow__nodes {
   z-index: 20 !important;
 }

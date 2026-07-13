@@ -118,7 +118,7 @@ class ProviderRuntimeSettingsContractTest(unittest.TestCase):
         self.assertTrue(all(client.kwargs["vertexai"] is True for client in llm_clients))
 
         FakeGoogleImageAdapter.api_keys = []
-        image_request = SimpleNamespace(model="gemini-3.1-flash-image-preview", config={})
+        image_request = SimpleNamespace(model="gemini-3.1-flash-image", config={})
         with patch("image_generation.providers.google_provider.GoogleGeminiImageAdapter", FakeGoogleImageAdapter):
             image_provider = GoogleImageProvider()
             run(image_provider.generate(image_request))

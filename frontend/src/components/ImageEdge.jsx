@@ -1,12 +1,15 @@
 // src/components/ImageEdge.jsx
-import { memo, useCallback, useEffect } from 'react';
-import { getBezierPath, EdgeLabelRenderer, useReactFlow, useStore } from '@xyflow/react';
+import { memo, useEffect } from 'react';
+import { getBezierPath, useStore } from '@xyflow/react';
+import { EdgeActionToolbar } from './EdgeActionToolbar';
 import { countRender, DISABLE_EDGE_ANIMATION, PERF_DEBUG } from '../utils/perfDebug';
 import {
-  normalizeImageInputEdgeLabels,
-  shouldShowEdgeControls,
-  shouldShowImageInputEdgeLabel,
+  getDerivedImageInputEdgeLabel,
+  getImageEdgeUiVisibility,
 } from '../utils/edgeLabels';
+
+const EDGE_LOCAL_UI_WIDTH = 112;
+const EDGE_LOCAL_UI_HEIGHT = 32;
 
 function ImageEdge({
   id,
@@ -27,26 +30,32 @@ function ImageEdge({
   ...props
 }) {
   countRender('ImageEdge');
-  const { setEdges } = useReactFlow();
   const resolvedTargetHandle = targetHandleId ?? targetHandle;
   const sourceSelected = useStore(
-    (store) => store.nodeLookup?.get(source)?.selected
+    (store) => Boolean(store.nodeLookup?.get(source)?.selected)
   );
   const targetSelected = useStore(
-    (store) => store.nodeLookup?.get(target)?.selected
+    (store) => Boolean(store.nodeLookup?.get(target)?.selected)
   );
-  const showEdgeControls = shouldShowEdgeControls({ selected, sourceSelected, targetSelected });
-
-  const inputLabel =
-    data?.inputLabel ||
-    data?.label ||
-    (resolvedTargetHandle === 'image:end' ? 'END' : '') ||
-    (typeof data?.imageIndex === 'number' ? `image${data.imageIndex + 1}` : '');
-  const showImageLabel = shouldShowImageInputEdgeLabel(
-    resolvedTargetHandle,
+  const inputLabel = useStore((store) =>
+    getDerivedImageInputEdgeLabel(
+      {
+        id,
+        source,
+        target,
+        targetHandle: resolvedTargetHandle,
+        data,
+      },
+      store.edges || []
+    )
+  );
+  const { showImageLabel, showDeleteControl } = getImageEdgeUiVisibility({
+    selected,
+    sourceSelected,
+    targetSelected,
+    targetHandle: resolvedTargetHandle,
     inputLabel,
-    showEdgeControls
-  );
+  });
   const isFlowing = Boolean(data?.flowing);
 
   const [edgePath, labelX, labelY] = getBezierPath({
@@ -57,23 +66,17 @@ function ImageEdge({
     sourcePosition,
     targetPosition,
   });
-
-  const handleEdgeDelete = useCallback(
-    (event) => {
-      event.stopPropagation();
-      setEdges((edges) => normalizeImageInputEdgeLabels(edges.filter((edge) => edge.id !== id)));
-    },
-    [id, setEdges]
-  );
+  const localUiX = labelX;
+  const localUiY = labelY;
 
   useEffect(() => {
     if (PERF_DEBUG && isFlowing) {
       console.log('[ImageEdge flowing]', id, {
         inputLabel,
-        imageIndex: data?.imageIndex,
+        connectionOrder: data?.connectionOrder,
       });
     }
-  }, [data?.imageIndex, id, inputLabel, isFlowing]);
+  }, [data?.connectionOrder, id, inputLabel, isFlowing]);
 
   return (
     <>
@@ -89,9 +92,9 @@ function ImageEdge({
       <path
         id={id}
         style={style}
-        className={`react-flow__edge-path pointer-events-none ${
+        className={'react-flow__edge-path pointer-events-none ' + (
           selected || isFlowing ? 'stroke-white/55' : 'stroke-white/20'
-        }`}
+        )}
         d={edgePath}
         markerEnd={markerEnd ?? props.markerEnd}
       />
@@ -104,48 +107,51 @@ function ImageEdge({
         />
       )}
 
-      {(showImageLabel || showEdgeControls) && (
-        <EdgeLabelRenderer>
-          <>
+      {(showImageLabel || showDeleteControl) && (
+        <foreignObject
+          x={localUiX - EDGE_LOCAL_UI_WIDTH / 2}
+          y={localUiY - EDGE_LOCAL_UI_HEIGHT / 2}
+          width={EDGE_LOCAL_UI_WIDTH}
+          height={EDGE_LOCAL_UI_HEIGHT}
+          overflow="visible"
+          data-edge-local-ui="true"
+          className="overflow-visible pointer-events-none"
+          style={{ overflow: 'visible', pointerEvents: 'none' }}
+        >
+          <div
+            xmlns="http://www.w3.org/1999/xhtml"
+            data-edge-local-content="true"
+            className="flex w-full h-full items-center justify-center gap-1 box-border pointer-events-none"
+          >
             {showImageLabel && (
-              <div
-                className="nodrag nopan bg-[#181818] border border-white/20 px-2 py-0.5 rounded-md shadow-2xl"
-                style={{
-                  position: 'absolute',
-                  transform: `translate(-50%, -50%) translate(${labelX * 0.6 + sourceX * 0.4}px, ${
-                    labelY * 0.6 + sourceY * 0.4
-                  }px)`,
-                  pointerEvents: 'none',
-                }}
+              <span
+                data-edge-local-label-slot="true"
+                className={showDeleteControl
+                  ? 'flex flex-1 min-w-0 items-center justify-end pointer-events-none'
+                  : 'contents'}
               >
-                <span className="text-[11px] font-bold text-white/90">{inputLabel}</span>
-              </div>
+                <span
+                  data-edge-image-label="true"
+                  className="pointer-events-none inline-flex flex-none items-center justify-center box-border leading-none bg-[#181818]/90 border border-white/15 px-2 py-0.5 rounded-md text-[11px] font-semibold text-white/80 whitespace-nowrap shadow-sm"
+                >
+                  {inputLabel}
+                </span>
+              </span>
             )}
 
-            {showEdgeControls && (
-              <button
-                type="button"
-                onClick={handleEdgeDelete}
-                className="nodrag nopan w-5 h-5 bg-[#141414] border border-white/5 rounded-full flex items-center justify-center text-white/40 hover:text-red-500 hover:border-red-500 shadow-xl"
-                style={{
-                position: 'absolute',
-                zIndex: 25,
-                transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-                pointerEvents: 'all',
-              }}
-            >
-              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-16v1a1 1 0 001 1h3m-10 0h3m0 0V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"
-                />
-              </svg>
-              </button>
+            {showDeleteControl && (
+              <EdgeActionToolbar edgeId={id} />
             )}
-          </>
-        </EdgeLabelRenderer>
+
+            {showImageLabel && showDeleteControl && (
+              <span
+                aria-hidden="true"
+                data-edge-local-balance-slot="true"
+                className="flex-1 min-w-0 pointer-events-none"
+              />
+            )}
+          </div>
+        </foreignObject>
       )}
     </>
   );

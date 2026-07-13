@@ -2,6 +2,7 @@ const VIDEO_MODE_IDS = ['text-to-video', 'image-to-video', 'reference-video'];
 const SEEDANCE_MODE_IDS = ['frame', 'multimodal-reference'];
 const SEEDANCE_RATIO_OPTIONS = ['adaptive', '21:9', '16:9', '4:3', '1:1', '3:4', '9:16'];
 const SEEDANCE_DURATION_OPTIONS = Array.from({ length: 12 }, (_, index) => `${index + 4}s`);
+export const GOOGLE_OMNI_DURATION_OPTIONS = Array.from({ length: 8 }, (_, index) => `${index + 3}s`);
 
 const COMMON_SEED_PARAM = {
   type: 'number',
@@ -488,6 +489,57 @@ export const VIDEO_GENERATION_REGISTRY = {
       ],
     },
     {
+      id: 'google_omni',
+      label: 'Google Cloud Omni',
+      models: [
+        {
+          id: 'gemini-omni-flash-preview',
+          label: 'Omni Flash',
+          family: 'gemini_omni',
+          adapterKey: 'google_omni',
+          supportedModes: VIDEO_MODE_IDS,
+          inputCapabilities: {
+            text: true,
+            images: true,
+            firstFrame: true,
+            firstFrameRequired: true,
+            endFrame: false,
+            referenceImages: true,
+            referenceVideos: false,
+            referenceAudios: false,
+            maxImages: 1,
+            maxReferenceImages: 10,
+            maxInputImageSizeMb: 20,
+          },
+          quickParams: ['videoMode', 'aspectRatio', 'duration'],
+          params: {
+            videoMode: {
+              type: 'select',
+              label: 'Video Mode',
+              options: VIDEO_MODE_IDS,
+              default: 'text-to-video',
+            },
+            aspectRatio: {
+              type: 'select',
+              label: 'Aspect Ratio',
+              options: ['16:9', '9:16'],
+              default: '16:9',
+            },
+            duration: {
+              type: 'select',
+              label: 'Duration',
+              options: GOOGLE_OMNI_DURATION_OPTIONS,
+              default: '5s',
+            },
+          },
+          uiHints: {
+            allowCustomParams: false,
+          },
+          customParams: {},
+        },
+      ],
+    },
+    {
       id: 'seedance_official',
       label: 'Seedance',
       models: [
@@ -673,6 +725,33 @@ export const fetchVideoGenerationRegistry = async () => {
 const resolveVideoGenerationRegistry = (registry) =>
   registry?.providers?.length ? registry : VIDEO_GENERATION_REGISTRY;
 
+export const getVideoDisplayProviderId = (runtimeProvider) =>
+  runtimeProvider === 'google_omni' ? 'google' : runtimeProvider;
+
+export const getVideoDisplayProviders = (registry) => {
+  const activeRegistry = resolveVideoGenerationRegistry(registry);
+  return activeRegistry.providers.filter((provider) => provider.id !== 'google_omni');
+};
+
+export const getVideoDisplayModels = (displayProviderId, registry) => {
+  const activeRegistry = resolveVideoGenerationRegistry(registry);
+  const runtimeProviders = displayProviderId === 'google' ? ['google', 'google_omni'] : [displayProviderId];
+  return runtimeProviders.flatMap((providerId) => {
+    const provider = activeRegistry.providers.find((candidate) => candidate.id === providerId);
+    return (provider?.models || []).map((model) => ({
+      id: `${providerId}::${model.id}`,
+      label: model.label,
+      runtimeProvider: providerId,
+      modelId: model.id,
+    }));
+  });
+};
+
+export const resolveVideoDisplayModelOption = (optionId, displayProviderId, registry) =>
+  getVideoDisplayModels(displayProviderId, registry).find((option) => option.id === optionId) || null;
+
+export const getVideoDisplayModelOptionId = (providerId, modelId) => `${providerId}::${modelId}`;
+
 const parseDurationSeconds = (value) => {
   const number = Number(String(value || '').replace(/s$/i, ''));
   return Number.isFinite(number) ? number : DEFAULT_VIDEO_GENERATION_SETTINGS.durationSeconds;
@@ -854,6 +933,39 @@ export const isKlingOmniModel = (settingsOrModelConfig = {}) => {
   return modelId === 'kling-v3-omni' && (!family || family === 'kling');
 };
 
+export const isGoogleOmniModel = (settingsOrModelConfig = {}) => {
+  const provider = settingsOrModelConfig?.provider || settingsOrModelConfig?.adapterKey;
+  const modelId = settingsOrModelConfig?.id || settingsOrModelConfig?.model;
+  const family = settingsOrModelConfig?.family;
+  return modelId === 'gemini-omni-flash-preview' && (
+    provider === 'google_omni' || family === 'gemini_omni' || !provider
+  );
+};
+
+export const validateGoogleOmniDuration = (value) => {
+  if (!GOOGLE_OMNI_DURATION_OPTIONS.includes(value)) {
+    throw new Error('Google Omni duration must be an integer from 3s to 10s');
+  }
+  return value;
+};
+
+export const buildGoogleOmniVideoPayload = ({ settings = {}, prompt = '', images = [] } = {}) => {
+  if (!isGoogleOmniModel(settings)) {
+    throw new Error('Google Omni payload builder requires the Google Omni model');
+  }
+  const payload = {
+    projectPath: settings.projectPath || globalThis.window?.currentProjectPath || undefined,
+    provider: 'google_omni',
+    model: 'gemini-omni-flash-preview',
+    videoMode: settings.videoMode,
+    prompt,
+    aspectRatio: settings.aspectRatio,
+    duration: validateGoogleOmniDuration(settings.duration),
+  };
+  if (images.length) payload.images = images;
+  return payload;
+};
+
 export const isSeedanceModel = (settingsOrModelConfig = {}) => {
   const provider = settingsOrModelConfig?.provider || settingsOrModelConfig?.adapterKey;
   const family = settingsOrModelConfig?.family;
@@ -871,9 +983,11 @@ export const getVideoAdvancedParamEntries = (modelConfig = {}) =>
 export const shouldShowVideoNegativePrompt = (modelConfig = {}, settings = {}) =>
   !(isSeedanceModel(modelConfig) || isSeedanceModel(settings));
 
-// eslint-disable-next-line no-unused-vars
-export const shouldShowVideoCustomParams = (_modelConfig = {}, _settings = {}, appSettings = {}) =>
-  Boolean(appSettings?.showRawCustomParams);
+export const shouldShowVideoCustomParams = (modelConfig = {}, settings = {}, appSettings = {}) =>
+  Boolean(appSettings?.showRawCustomParams) &&
+  modelConfig?.uiHints?.allowCustomParams !== false &&
+  !isGoogleOmniModel(modelConfig) &&
+  !isGoogleOmniModel(settings);
 
 const VIDEO_MODE_ALIASES = {
   text: 'text-to-video',
@@ -903,6 +1017,11 @@ export const getEffectiveVideoMode = (settings = {}, modelConfig = {}) => {
 export const getActiveVideoHandlesForMode = (mode, modelConfig, settings = {}) => {
   if (isKlingOmniModel(modelConfig) || isKlingOmniModel(settings)) {
     return ['omniParams:in'];
+  }
+  if (isGoogleOmniModel(modelConfig) || isGoogleOmniModel(settings)) {
+    if (mode === 'image-to-video') return ['text:prompt', 'image:firstFrame'];
+    if (mode === 'reference-video') return ['text:prompt', 'image:references'];
+    return ['text:prompt'];
   }
   if (isSeedanceModel(modelConfig) || isSeedanceModel(settings)) {
     if (mode === 'frame' || mode === 'image-to-video') {

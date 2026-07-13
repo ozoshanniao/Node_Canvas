@@ -1,108 +1,47 @@
-export const isImageLabelTargetHandle = (targetHandle) =>
-  targetHandle === 'image:in' ||
-  targetHandle === 'image:images' ||
-  targetHandle === 'image:references' ||
-  targetHandle === 'image:firstFrame' ||
-  targetHandle === 'image:lastFrame' ||
-  targetHandle === 'image:end';
+import {
+  getCanonicalInputEdges,
+  getEdgeTargetHandle,
+  isImageOrderedTargetHandle,
+  migrateLegacyConnectionOrders,
+} from './edgeOrdering.js';
 
-const IMAGE_FRAME_LABELS = {
-  'image:firstFrame': {
-    imageIndex: 0,
-    inputLabel: 'image1',
-  },
-  'image:lastFrame': {
-    imageIndex: 1,
-    inputLabel: 'image2',
-  },
-};
+export const isImageLabelTargetHandle = isImageOrderedTargetHandle;
 
-export const shouldShowImageInputEdgeLabel = (targetHandle, inputLabel, showEdgeControls = false) =>
+export const shouldShowImageInputEdgeLabel = (targetHandle, inputLabel, shouldReveal = false) =>
+  Boolean(shouldReveal) &&
   isImageLabelTargetHandle(targetHandle) &&
-  Boolean(inputLabel) &&
-  (/^image\d+$/.test(inputLabel) || showEdgeControls);
+  (/^image\d+$/.test(inputLabel) || inputLabel === 'END');
 
-export const shouldShowEdgeControls = ({ selected, sourceSelected, targetSelected } = {}) =>
-  Boolean(selected || sourceSelected || targetSelected);
+export const getImageEdgeUiVisibility = ({
+  selected,
+  sourceSelected,
+  targetSelected,
+  targetHandle,
+  inputLabel,
+} = {}) => ({
+  showImageLabel: shouldShowImageInputEdgeLabel(
+    targetHandle,
+    inputLabel,
+    Boolean(selected || sourceSelected || targetSelected)
+  ),
+  showDeleteControl: Boolean(selected),
+});
 
-const MEDIA_REFERENCE_LABELS = {
-  'video:references': {
-    kind: 'video',
-    indexKey: 'videoIndex',
-    labelPrefix: 'video',
-  },
-  'audio:references': {
-    kind: 'audio',
-    indexKey: 'audioIndex',
-    labelPrefix: 'audio',
-  },
+export const getDerivedImageInputEdgeLabel = (edge, edges = []) => {
+  const targetHandle = getEdgeTargetHandle(edge);
+  if (targetHandle === 'image:firstFrame') return 'image1';
+  if (targetHandle === 'image:lastFrame') return 'image2';
+  if (targetHandle === 'image:end') return 'END';
+  if (!isImageLabelTargetHandle(targetHandle)) return edge?.data?.label || '';
+
+  const canonicalEdges = getCanonicalInputEdges({
+    edges,
+    targetNodeId: edge?.target,
+    targetHandle,
+  });
+  const index = canonicalEdges.findIndex((candidate) => candidate.id === edge?.id);
+  return index >= 0 ? 'image' + (index + 1) : edge?.data?.label || '';
 };
 
-export function normalizeImageInputEdgeLabels(edges = []) {
-  const groupCounters = new Map();
-  let changed = false;
-
-  const nextEdges = edges.map((edge) => {
-    const targetHandle = edge.targetHandle ?? edge.targetHandleId;
-    const mediaConfig = MEDIA_REFERENCE_LABELS[targetHandle];
-    if (!isImageLabelTargetHandle(targetHandle) && !mediaConfig) return edge;
-
-    let nextData;
-    if (mediaConfig) {
-      const groupKey = `${edge.target}:${targetHandle}`;
-      const mediaIndex = groupCounters.get(groupKey) || 0;
-      groupCounters.set(groupKey, mediaIndex + 1);
-
-      nextData = {
-        ...(edge.data || {}),
-        kind: mediaConfig.kind,
-        [mediaConfig.indexKey]: mediaIndex,
-        inputLabel: `${mediaConfig.labelPrefix}${mediaIndex + 1}`,
-      };
-    } else if (targetHandle === 'image:end') {
-      nextData = {
-        ...(edge.data || {}),
-        kind: 'image',
-        inputLabel: 'END',
-      };
-      if ('imageIndex' in nextData) {
-        delete nextData.imageIndex;
-      }
-    } else if (IMAGE_FRAME_LABELS[targetHandle]) {
-      nextData = {
-        ...(edge.data || {}),
-        kind: 'image',
-        ...IMAGE_FRAME_LABELS[targetHandle],
-      };
-    } else {
-      const groupKey = `${edge.target}:${targetHandle}`;
-      const imageIndex = groupCounters.get(groupKey) || 0;
-      groupCounters.set(groupKey, imageIndex + 1);
-
-      nextData = {
-        ...(edge.data || {}),
-        kind: 'image',
-        imageIndex,
-        inputLabel: `image${imageIndex + 1}`,
-      };
-    }
-
-    if (
-      edge.data?.kind === nextData.kind &&
-      edge.data?.imageIndex === nextData.imageIndex &&
-      edge.data?.videoIndex === nextData.videoIndex &&
-      edge.data?.audioIndex === nextData.audioIndex &&
-      edge.data?.inputLabel === nextData.inputLabel
-    ) {
-      return edge;
-    }
-
-    changed = true;
-    return {
-      ...edge,
-      data: nextData,
-    };
-  });
-
-  return changed ? nextEdges : edges;
-}
+// Compatibility export for existing call sites. Labels are now derived at render time.
+export const normalizeImageInputEdgeLabels = migrateLegacyConnectionOrders;

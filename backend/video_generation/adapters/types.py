@@ -49,6 +49,10 @@ class VideoCreateResult:
     message: str | None = None
     created_at: int | None = None
     raw_response: dict[str, Any] | None = None
+    video_bytes: bytes | None = None
+    video_url: str | None = None
+    video_mime_type: str | None = None
+    diagnostics: Any | None = None
 
 
 @dataclass(frozen=True)

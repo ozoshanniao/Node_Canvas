@@ -8,7 +8,7 @@ import { buildSplitGridGenerateSets } from '../utils/splitGridGenerateSets';
 import { getNodeImageOutput } from '../utils/nodeOutputs';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { countRender } from '../utils/perfDebug';
-import { normalizeImageInputEdgeLabels } from '../utils/edgeLabels';
+import { appendEdgesWithConnectionOrder } from '../utils/edgeOrdering';
 import { getMatchingPreviewUrl } from '../utils/imagePreview';
 
 const getFirstImageUrl = (output) => {
@@ -229,7 +229,7 @@ export const SplitGridNode = memo(function SplitGridNode({ id, data }) {
         })
         .concat(nodesToAdd)
     );
-    setEdges((eds) => normalizeImageInputEdgeLabels(eds.concat(edgesToAdd)));
+    setEdges((eds) => appendEdgesWithConnectionOrder(eds, edgesToAdd));
   };
 
   const handleSplit = async (event = { stopPropagation: () => {} }) => {

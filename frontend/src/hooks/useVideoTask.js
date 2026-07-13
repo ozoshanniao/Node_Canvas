@@ -118,7 +118,9 @@ export const useVideoTask = ({ apiBaseUrl = 'http://127.0.0.1:8000', data, updat
       }
 
       applyTaskResponse(task);
-      startPolling(task.id);
+      if (isVideoTaskActive(task.status)) {
+        startPolling(task.id);
+      }
       return { ok: true, task };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Video task submission failed.';

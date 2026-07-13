@@ -6,15 +6,15 @@ from ..adapters.google_gemini_image_adapter import GoogleGeminiImageAdapter
 
 class GoogleImageProvider(BaseImageProvider):
     MODEL_MAP = {
-        "Nano 2": "gemini-3.1-flash-image-preview",
-        "Nano Banana 2": "gemini-3.1-flash-image-preview",
-        "gemini-3.1-flash-image-preview": "gemini-3.1-flash-image-preview",
-        "Nano Pro": "gemini-3-pro-image-preview",
-        "Nano pro": "gemini-3-pro-image-preview",
-        "Nano Banana Pro": "gemini-3-pro-image-preview",
-        "gemini-3-pro-image-preview": "gemini-3-pro-image-preview",
+        "Nano 2": "gemini-3.1-flash-image",
+        "Nano Banana 2": "gemini-3.1-flash-image",
+        "gemini-3.1-flash-image": "gemini-3.1-flash-image",
+        "Nano Pro": "gemini-3-pro-image",
+        "Nano pro": "gemini-3-pro-image",
+        "Nano Banana Pro": "gemini-3-pro-image",
+        "gemini-3-pro-image": "gemini-3-pro-image",
     }
-    SUPPORTED_MODELS = {"gemini-3.1-flash-image-preview", "gemini-3-pro-image-preview"}
+    SUPPORTED_MODELS = {"gemini-3.1-flash-image", "gemini-3-pro-image"}
 
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key

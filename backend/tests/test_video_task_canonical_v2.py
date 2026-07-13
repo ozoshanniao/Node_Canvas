@@ -295,6 +295,29 @@ class VideoTaskCanonicalV2Test(unittest.TestCase):
         self.assertNotIn("rawCreateResponse", stored["a"])
         self.assertEqual(stored["b"], legacy_b)
 
+    def test_google_omni_transient_interaction_id_is_not_persisted_or_exposed(self):
+        relative_path = "generation/videos/omni.mp4"
+        artifact = self.project / relative_path
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_bytes(b"\x00\x00\x00\x18ftypmp42omni")
+        task = self.canonical_task(
+            id="task-google-omni",
+            provider="google_omni",
+            model="gemini-omni-flash-preview",
+            status="success",
+            progress=100,
+            providerTaskId="transient-interaction-id",
+            outputs={"video": {"relativePath": relative_path}},
+        )
+        run(upsert_task(str(self.project), task))
+        stored = self.read_store()[task.id]
+        self.assertNotIn("providerTaskId", stored)
+        loaded = run(load_tasks(str(self.project)))[task.id]
+        self.assertNotIn("providerTaskId", loaded)
+        self.assertNotIn("providerTaskId", task_api_data(task))
+        serialized = json.dumps(stored)
+        self.assertNotIn("transient-interaction-id", serialized)
+
     def test_recovery_fields_are_provider_neutral_and_minimal(self):
         for provider in ("yunwu", "google", "kling", "yunwu-kling", "kie", "seedance_official"):
             with self.subTest(provider=provider):

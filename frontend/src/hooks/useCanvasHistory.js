@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PERF_DEBUG } from '../utils/perfDebug';
+import { PERF_DEBUG } from '../utils/perfDebug.js';
 
 const DEFAULT_DEBOUNCE_MS = 800;
 
@@ -42,7 +42,7 @@ const sanitizeNodesForHistory = (nodes = []) =>
     };
   });
 
-const sanitizeEdgesForHistory = (edges = []) =>
+export const sanitizeEdgesForHistory = (edges = []) =>
   edges.map((edge) => {
     const restEdge = { ...edge };
     delete restEdge.selected;
@@ -57,7 +57,7 @@ const sanitizeEdgesForHistory = (edges = []) =>
 
 const sanitizeGroupsForHistory = (groups = {}) => cloneValue(groups || {});
 
-const createSnapshot = (nodes, edges, groups = {}) => ({
+export const createSnapshot = (nodes, edges, groups = {}) => ({
   nodes: cloneValue(sanitizeNodesForHistory(nodes)),
   edges: cloneValue(sanitizeEdgesForHistory(edges)),
   groups: sanitizeGroupsForHistory(groups),
@@ -69,7 +69,7 @@ const createShallowSnapshot = (nodes, edges, groups = {}) => ({
   groups,
 });
 
-const getSnapshotHash = (snapshot) => JSON.stringify(snapshot);
+export const getSnapshotHash = (snapshot) => JSON.stringify(snapshot);
 
 const createLayoutComparableSnapshot = (nodes = [], edges = [], groups = {}) => ({
   nodes: nodes.map((node) => ({
@@ -255,6 +255,15 @@ export function useCanvasHistory({
     return true;
   }, [maxHistory, refreshState]);
 
+  const commitDiscreteHistory = useCallback((
+    nextNodes = latestNodesRef.current,
+    nextEdges = latestEdgesRef.current,
+    nextGroups = latestGroupsRef.current,
+    reason = 'discrete'
+  ) => {
+    clearTimer();
+    return commitHistory(nextNodes, nextEdges, nextGroups, reason);
+  }, [clearTimer, commitHistory]);
   const commitLayoutHistory = useCallback((nextNodes = latestNodesRef.current, nextEdges = latestEdgesRef.current, nextGroups = latestGroupsRef.current) => {
     if (isApplyingHistoryRef.current) return false;
 
@@ -420,6 +429,7 @@ export function useCanvasHistory({
 
   return {
     commitHistory,
+    commitDiscreteHistory,
     scheduleHistoryCommit,
     undo,
     redo,
