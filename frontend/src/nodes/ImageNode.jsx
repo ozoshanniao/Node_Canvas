@@ -3,7 +3,7 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { GenerationPreviewOverlay } from '../components/GenerationPreviewOverlay';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
 import { useImageAspect } from '../hooks/useImageAspect';
-import { getNodeImageOutput, getNodeTextOutput } from '../utils/nodeOutputs';
+import { collectCanonicalImageInputs, getNodeTextOutput } from '../utils/nodeOutputs';
 import { setLastNodeDefaults } from '../utils/nodeDefaults';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { getImageNodeAspectRatio, getImageNodeSizeByAspectRatio } from '../utils/nodeSizing';
@@ -216,19 +216,21 @@ export function ImageNode({ id, data }) {
 
     // 1. 获取所有连向本节点 image:in 端口的线
   try {
-    const imageEdges = allEdges.filter(
-      (edge) => edge.target === id && (edge.targetHandle ?? edge.targetHandleId) === "image:in"
-    );
+    const canonicalImageInputs = collectCanonicalImageInputs({
+      targetNodeId: id,
+      targetHandle: 'image:in',
+      edges: allEdges,
+      nodes: allNodes,
+    });
+    const missingInput = canonicalImageInputs.find((item) => !item.url);
+    if (missingInput) {
+      throw new Error('Image input image' + (missingInput.index + 1) + ' has no usable image.');
+    }
 
-    // 2. 按照连线在数组中的顺序（即连线先后顺序）提取上游节点的图片
-    const connectedImages = await Promise.all(imageEdges.map(async (edge, index) => {
-      const sourceNode = allNodes.find((n) => n.id === edge.source);
-      // 优先取单图 url，如果没有则取多图数组的第一张
-      const urls = getNodeImageOutput(sourceNode, edge.sourceHandle, edge, allNodes, allEdges);
-      // Deferred: ImageNode currently forwards one image per connected edge; future work should preserve array-level multi-image inputs.
-      const url = await imageUrlForBackend(urls[0]);
-      return { index, url };
-    }));
+    const connectedImages = await Promise.all(canonicalImageInputs.map(async ({ index, url }) => ({
+      index,
+      url: await imageUrlForBackend(url),
+    })));
 
     const runtimeNodes = allNodes.map((n) => {
       const resolvedText = getNodeTextOutput(n, allNodes, allEdges);
@@ -263,7 +265,8 @@ export function ImageNode({ id, data }) {
       }
       // 如果后端收到了，控制台会打印 {"status": "success", ...}
     } catch (error) {
-      console.error(" 渲染失败:", error);
+      console.error('Image generation failed:', error);
+      updateNodeData({ status: 'error', error: error?.message || String(error) });
     } finally {
       if (runSequenceRef.current === runSequence) {
         setIsLoading(false);

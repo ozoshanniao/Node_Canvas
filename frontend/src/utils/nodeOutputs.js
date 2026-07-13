@@ -3,6 +3,7 @@ import { normalizeBezierHandles } from '../lib/easingFunctions.js';
 import { normalizeEasingPresetId } from '../lib/easingPresets.js';
 import { resolveImageUrl } from './resolveImageUrl.js';
 import { isAnnotationSourceCurrent } from './annotationUtils.js';
+import { getCanonicalInputEdges } from './edgeOrdering.js';
 
 const videoFileObjectUrlCache = new WeakMap();
 const getImageOutputUrl = (image) =>
@@ -94,9 +95,11 @@ export const getNodeImageOutput = (node, sourceHandle, edge, nodes = [], edges =
     const nextVisited = new Set(visited);
     nextVisited.add(node.id);
     const nodeMap = new Map(nodes.map((item) => [item.id, item]));
-    const inputEdge = edges.find(
-      (item) => item.target === node.id && (item.targetHandle ?? item.targetHandleId) === 'image:in'
-    );
+    const inputEdge = getCanonicalInputEdges({
+      edges,
+      targetNodeId: node.id,
+      targetHandle: 'image:in',
+    })[0];
     if (!inputEdge) return [];
 
     const upstreamImages = getNodeImageOutput(
@@ -131,9 +134,11 @@ export const getNodeImageOutput = (node, sourceHandle, edge, nodes = [], edges =
     const nextVisited = new Set(visited);
     nextVisited.add(node.id);
     const nodeMap = new Map(nodes.map((item) => [item.id, item]));
-    const imageInputEdges = edges.filter(
-      (inputEdge) => inputEdge.target === node.id && (inputEdge.targetHandle ?? inputEdge.targetHandleId) === 'image:in'
-    );
+    const imageInputEdges = getCanonicalInputEdges({
+      edges,
+      targetNodeId: node.id,
+      targetHandle: 'image:in',
+    });
 
     return imageInputEdges
       .flatMap((inputEdge) =>
@@ -143,6 +148,38 @@ export const getNodeImageOutput = (node, sourceHandle, edge, nodes = [], edges =
   }
 
   return [];
+};
+
+export const collectCanonicalImageInputs = ({
+  targetNodeId,
+  targetHandle,
+  edges = [],
+  nodes = [],
+  includeAllSourceOutputs = false,
+} = {}) => {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const canonicalEdges = getCanonicalInputEdges({ edges, targetNodeId, targetHandle });
+
+  return canonicalEdges.flatMap((edge, index) => {
+    const outputs = getNodeImageOutput(
+      nodeMap.get(edge.source),
+      edge.sourceHandle,
+      edge,
+      nodes,
+      edges
+    ).filter(Boolean);
+    const selectedOutputs = includeAllSourceOutputs ? outputs : outputs.slice(0, 1);
+    if (selectedOutputs.length === 0) {
+      return [{ edge, index, outputIndex: 0, value: null, url: '' }];
+    }
+    return selectedOutputs.map((value, outputIndex) => ({
+      edge,
+      index,
+      outputIndex,
+      value,
+      url: getImageOutputUrl(value),
+    }));
+  });
 };
 
 export const getNodeVideoOutput = (node, sourceHandle, edge, nodes = [], edges = [], visited = new Set()) => {
@@ -359,25 +396,25 @@ export const getNodeOmniParamsOutput = (node, edges = [], nodes = []) => {
     : multiShot
       ? 'intelligence'
       : 'single';
-  const inputEdges = edges
-    .filter((edge) => edge.target === node.id && (edge.targetHandle ?? edge.targetHandleId) === 'image:references')
-    .map((edge, order) => ({ edge, order }))
-    .sort((a, b) => {
-      const aIndex = typeof a.edge.data?.imageIndex === 'number' ? a.edge.data.imageIndex : a.order;
-      const bIndex = typeof b.edge.data?.imageIndex === 'number' ? b.edge.data.imageIndex : b.order;
-      return aIndex - bIndex;
-    });
+  const errors = [];
+  const inputItems = collectCanonicalImageInputs({
+    targetNodeId: node.id,
+    targetHandle: 'image:references',
+    edges,
+    nodes,
+  });
 
   const imageRoles = node.data?.imageRoles || {};
-  const images = inputEdges
-    .map(({ edge }, index) => {
-      const alias = `image_${index + 1}`;
+  const images = inputItems
+    .map(({ edge, index, url }) => {
+      const alias = 'image_' + (index + 1);
       const role = ['reference', 'first_frame', 'end_frame'].includes(imageRoles[alias])
         ? imageRoles[alias]
         : 'reference';
-      const urls = getNodeImageOutput(nodeMap.get(edge.source), edge.sourceHandle, edge, nodes, edges);
-      const url = urls[0];
-      if (!url) return null;
+      if (!url) {
+        errors.push('Image input image' + (index + 1) + ' has no usable image.');
+        return null;
+      }
       return {
         alias,
         url,
@@ -389,7 +426,6 @@ export const getNodeOmniParamsOutput = (node, edges = [], nodes = []) => {
     .filter(Boolean);
 
   const rawElements = Array.isArray(node.data?.elements) ? node.data.elements : [''];
-  const errors = [];
   const elementValues = rawElements
     .map((value) => String(value ?? '').trim())
     .filter(Boolean);

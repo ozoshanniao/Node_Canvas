@@ -7,18 +7,26 @@ import {
   buildVideoTaskQueryInterruptedPatch,
   buildVideoTaskResumePatch,
   buildVideoQuickParamLabel,
+  buildGoogleOmniVideoPayload,
   fetchVideoGenerationRegistry,
   getActiveVideoHandlesForMode,
   getEffectiveVideoMode,
   getVideoAdvancedParamEntries,
+  getVideoDisplayModelOptionId,
+  getVideoDisplayModels,
+  getVideoDisplayProviderId,
+  getVideoDisplayProviders,
   getVideoModelConfig,
+  isGoogleOmniModel,
   isVideoTaskActive,
   isVideoTaskRecoverable,
   normalizeVideoGenerationSettings,
   resolveKlingOmniElements,
+  resolveVideoDisplayModelOption,
   shouldRenderVideoToolbarParam,
   shouldShowVideoCustomParams,
   shouldShowVideoNegativePrompt,
+  validateGoogleOmniDuration,
 } from '../videoGenerationOptions.js';
 import {
   getHandleState,
@@ -600,6 +608,82 @@ globalThis.fetch = async () => ({
 });
 await assert.rejects(fetchVideoGenerationRegistry, /offline/, 'failed specs response should reject for fallback handling');
 globalThis.fetch = originalFetch;
+
+const googleOmniModel = getVideoModelConfig('google_omni', 'gemini-omni-flash-preview');
+assert.equal(isGoogleOmniModel(googleOmniModel), true);
+assert.equal(isGoogleOmniModel({ provider: 'google', model: 'veo-3.1-generate-001' }), false);
+assert.equal(googleOmniModel.label, 'Omni Flash');
+assert.deepEqual(googleOmniModel.supportedModes, ['text-to-video', 'image-to-video', 'reference-video']);
+assert.deepEqual(Object.keys(googleOmniModel.params), ['videoMode', 'aspectRatio', 'duration']);
+assert.deepEqual(googleOmniModel.params.duration.options, ['3s', '4s', '5s', '6s', '7s', '8s', '9s', '10s']);
+assert.equal(googleOmniModel.params.duration.default, '5s');
+assert.equal(googleOmniModel.uiHints.fixedBadges, undefined);
+assert.equal(googleOmniModel.inputCapabilities.firstFrameRequired, true);
+
+const displayProviders = getVideoDisplayProviders();
+assert.equal(displayProviders.some((provider) => provider.id === 'google_omni'), false);
+assert.equal(getVideoDisplayProviderId('google_omni'), 'google');
+const googleDisplayModels = getVideoDisplayModels('google');
+assert.deepEqual(googleDisplayModels.map((option) => option.label), [
+  'Veo 3.1', 'Veo 3.1 Fast', 'Veo 3.1 Lite', 'Omni Flash',
+]);
+const omniDisplayId = getVideoDisplayModelOptionId('google_omni', 'gemini-omni-flash-preview');
+assert.deepEqual(resolveVideoDisplayModelOption(omniDisplayId, 'google'), {
+  id: omniDisplayId,
+  label: 'Omni Flash',
+  runtimeProvider: 'google_omni',
+  modelId: 'gemini-omni-flash-preview',
+});
+
+assert.deepEqual(
+  getActiveVideoHandlesForMode('text-to-video', googleOmniModel, { provider: 'google_omni' }),
+  ['text:prompt']
+);
+assert.deepEqual(
+  getActiveVideoHandlesForMode('image-to-video', googleOmniModel, { provider: 'google_omni' }),
+  ['text:prompt', 'image:firstFrame']
+);
+assert.deepEqual(
+  getActiveVideoHandlesForMode('reference-video', googleOmniModel, { provider: 'google_omni' }),
+  ['text:prompt', 'image:references']
+);
+assert.equal(
+  shouldShowVideoCustomParams(googleOmniModel, { provider: 'google_omni' }, { showRawCustomParams: true }),
+  false
+);
+const googleOmniPayload = buildGoogleOmniVideoPayload({
+  settings: {
+    provider: 'google_omni',
+    model: 'gemini-omni-flash-preview',
+    videoMode: 'image-to-video',
+    aspectRatio: '9:16',
+    resolution: '720p',
+    duration: '8s',
+    customParams: { forbidden: true },
+  },
+  prompt: 'Animate',
+  images: ['input/frame.png'],
+});
+assert.deepEqual(googleOmniPayload, {
+  projectPath: undefined,
+  provider: 'google_omni',
+  model: 'gemini-omni-flash-preview',
+  videoMode: 'image-to-video',
+  prompt: 'Animate',
+  aspectRatio: '9:16',
+  duration: '8s',
+  images: ['input/frame.png'],
+});
+assert.equal('resolution' in googleOmniPayload, false);
+assert.equal('durationSeconds' in googleOmniPayload, false);
+assert.equal('customParams' in googleOmniPayload, false);
+for (const invalidDuration of ['2s', '11s', '', '5.5s', 'abc', null]) {
+  assert.throws(() => validateGoogleOmniDuration(invalidDuration), /integer from 3s to 10s/);
+}
+assert.ok(
+  useVideoTaskSource.includes('if (isVideoTaskActive(task.status))'),
+  'synchronous terminal create responses must not start polling'
+);
 
 const omniElements = [
   {

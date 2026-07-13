@@ -161,9 +161,16 @@ def canonicalize_task_record(project_path: str, record: dict[str, Any], task_id:
     )
 
 
+def _task_model_data(task: VideoTask) -> dict[str, Any]:
+    data = task.model_dump(exclude_none=True)
+    if task.provider == "google_omni":
+        data.pop("providerTaskId", None)
+    return data
+
+
 def task_storage_record(project_path: str, task: VideoTask) -> dict[str, Any]:
     canonical = canonicalize_task_record(project_path, task.model_dump(), task.id)
-    data = canonical.model_dump(exclude_none=True)
+    data = _task_model_data(canonical)
     if not data.get("requestSnapshot"):
         data.pop("requestSnapshot", None)
     if not data.get("message"):
@@ -174,7 +181,7 @@ def task_storage_record(project_path: str, task: VideoTask) -> dict[str, Any]:
 
 
 def task_api_data(task: VideoTask) -> dict[str, Any]:
-    data = task.model_dump(exclude_none=True)
+    data = _task_model_data(task)
     if not data.get("requestSnapshot"):
         data.pop("requestSnapshot", None)
     outputs = dict(data.get("outputs") or {})
@@ -200,7 +207,7 @@ async def load_tasks(project_path: str) -> dict[str, Any]:
     async with _project_lock(project_path):
         tasks = _read_tasks(project_path)
     return {
-        task_id: canonicalize_task_record(project_path, record, task_id).model_dump(exclude_none=True)
+        task_id: _task_model_data(canonicalize_task_record(project_path, record, task_id))
         for task_id, record in tasks.items()
         if isinstance(record, dict)
     }

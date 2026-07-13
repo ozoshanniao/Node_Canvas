@@ -4,6 +4,7 @@ import { Handle, Position, useEdges, useNodes, useReactFlow, useUpdateNodeIntern
 import { OutputImageModal } from '../components/OutputImageModal';
 import { AspectRatioResizeCorner } from '../components/AspectRatioResizeCorner';
 import { getNodeImageOutput } from '../utils/nodeOutputs';
+import { getCanonicalInputEdges } from '../utils/edgeOrdering';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { normalizeImageOutputItem } from '../utils/outputImages';
 import { getImageInputNodeSizeByRatio, getImageInputNodeSizeFromImageUrl } from '../utils/imageInputSizing';
@@ -68,12 +69,11 @@ export const OutputNode = memo(function OutputNode({ id, data }) {
 
   const upstreamImages = useMemo(() => {
     const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-    return edges
-      .filter(
-        (edge) =>
-          edge.target === id &&
-          (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
-      )
+    return getCanonicalInputEdges({
+      edges,
+      targetNodeId: id,
+      targetHandle: 'image:in',
+    })
       .flatMap((edge) =>
         getNodeImageOutput(nodeMap.get(edge.source), edge.sourceHandle, edge, nodes, edges).map((item) =>
           normalizeImageOutputItem(item, edge.source)

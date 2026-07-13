@@ -85,6 +85,17 @@ PROVIDER_DEFINITIONS = (
         ),
     ),
     ProviderDefinition(
+        "google_omni",
+        "Google Cloud Omni",
+        (),
+        (
+            EnvRequirement(
+                label="GOOGLE_CLOUD_PROJECT or GOOGLE_PROJECT_ID or GOOGLE_PROJECT",
+                alternatives=("GOOGLE_CLOUD_PROJECT", "GOOGLE_PROJECT_ID", "GOOGLE_PROJECT"),
+            ),
+        ),
+    ),
+    ProviderDefinition(
         "openai",
         "OpenAI",
         (_secret("apiKey", "OPENAI_API_KEY"),),

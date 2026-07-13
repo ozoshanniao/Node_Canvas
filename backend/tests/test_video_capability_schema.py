@@ -149,11 +149,35 @@ class VideoCapabilitySchemaTest(unittest.TestCase):
 
         self.assertGreaterEqual(len(self.capabilities), legacy_count)
 
+    def test_google_omni_capability_is_strict_and_independent(self):
+        capability = next(
+            item for item in self.capabilities
+            if item["provider"] == "google_omni" and item["model"] == "gemini-omni-flash-preview"
+        )
+        self.assertEqual(capability["displayName"], "Omni Flash")
+        self.assertEqual(capability["family"], "gemini_omni")
+        self.assertEqual(capability["taskTypes"], ["text-to-video", "image-to-video", "reference-video"])
+        self.assertEqual(set(capability["parameters"]), {"videoMode", "aspectRatio", "duration"})
+        self.assertEqual(capability["quickParams"], ["videoMode", "aspectRatio", "duration"])
+        self.assertEqual(capability["parameters"]["duration"]["options"], [f"{value}s" for value in range(3, 11)])
+        self.assertEqual(capability["parameters"]["duration"]["default"], "5s")
+        self.assertNotIn("fixedBadges", capability["uiHints"])
+        self.assertFalse(capability["uiHints"]["allowCustomParams"])
+        inputs = capability["inputCapabilities"]
+        self.assertTrue(inputs["image:firstFrame"]["supported"])
+        self.assertTrue(inputs["image:firstFrame"]["required"])
+        self.assertEqual(inputs["image:firstFrame"]["metadata"]["maxItems"], 1)
+        self.assertTrue(inputs["image:references"]["supported"])
+        self.assertEqual(inputs["image:references"]["metadata"]["maxItems"], 10)
+        for handle in ("image:lastFrame", "video:references", "audio:references", "omniParams:in"):
+            self.assertFalse(inputs[handle]["supported"])
+
     def test_existing_provider_families_are_covered(self):
         covered = {(capability["provider"], capability["family"]) for capability in self.capabilities}
 
         self.assertIn(("yunwu", "veo"), covered)
         self.assertIn(("google", "veo"), covered)
+        self.assertIn(("google_omni", "gemini_omni"), covered)
         self.assertIn(("kling", "kling"), covered)
         self.assertIn(("yunwu-kling", "kling"), covered)
         self.assertIn(("seedance_official", "seedance"), covered)

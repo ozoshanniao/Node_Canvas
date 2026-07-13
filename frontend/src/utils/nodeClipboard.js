@@ -1,5 +1,6 @@
 import { sanitizePersistedKlingOmniReferences } from './klingOmniReferences.js';
 import { VIDEO_PARAM_KEYS, pickLegacyVideoParams } from './videoNodeData.js';
+import { appendEdgesWithConnectionOrder } from './edgeOrdering.js';
 
 const cloneValue = (value) => {
   if (Array.isArray(value)) return value.map(cloneValue);
@@ -58,4 +59,27 @@ export const sanitizePastedNodeData = (nodeType, sourceData = {}) => {
     }
   }
   return sanitized;
+};
+export const preparePastedEdges = ({
+  clipboardEdges = [],
+  currentEdges = [],
+  oldToNewIdMap = {},
+  createEdgeId = (_edge, index) => 'pasted-edge-' + index,
+} = {}) => {
+  const remappedEdges = clipboardEdges
+    .map((oldEdge, index) => {
+      const source = oldToNewIdMap[oldEdge.source];
+      const target = oldToNewIdMap[oldEdge.target];
+      if (!source || !target) return null;
+      return {
+        ...oldEdge,
+        id: createEdgeId(oldEdge, index),
+        source,
+        target,
+        selected: false,
+      };
+    })
+    .filter(Boolean);
+
+  return appendEdgesWithConnectionOrder(currentEdges, remappedEdges);
 };

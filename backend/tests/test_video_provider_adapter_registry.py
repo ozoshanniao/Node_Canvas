@@ -16,6 +16,7 @@ from video_generation.adapters.registry import (
     temporary_video_adapter_registry,
     _restore_default_video_adapters_for_tests,
 )
+from video_generation.adapters.google_omni import GoogleOmniVideoAdapter
 from video_generation.adapters.google_veo import GoogleVeoVideoAdapter
 from video_generation.adapters.kie import KieVideoAdapter
 from video_generation.adapters.kling import KlingVideoAdapter
@@ -90,7 +91,7 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
         self.assertTrue(all(getattr(adapter, "provider", None) for adapter in adapters))
         self.assertEqual(
             {adapter.provider for adapter in adapters},
-            {"yunwu", "google", "kling", "yunwu-kling", "seedance_official", "kie"},
+            {"yunwu", "google", "google_omni", "kling", "yunwu-kling", "seedance_official", "kie"},
         )
 
     def test_resolve_adapter_for_capability_uses_adapter_hints(self):
@@ -124,6 +125,12 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
         self.assertIsInstance(adapter, GoogleVeoVideoAdapter)
         self.assertEqual(adapter.adapter_id, "google:veo")
 
+    def test_google_omni_adapter_is_real_adapter(self):
+        adapter = get_video_adapter("google_omni")
+
+        self.assertIsInstance(adapter, GoogleOmniVideoAdapter)
+        self.assertEqual(adapter.adapter_id, "google:omni")
+
     def test_kling_adapter_is_real_adapter(self):
         adapter = get_video_adapter("kling")
 
@@ -156,7 +163,7 @@ class VideoProviderAdapterRegistryTest(unittest.TestCase):
             serialized = str(hints).replace("_", "").replace("-", "").lower()
             with self.subTest(provider=capability["provider"], model=capability["model"]):
                 self.assertIn("adapterId", hints)
-                expected_runtime = "adapter" if capability["provider"] in {"yunwu", "google", "kling", "yunwu-kling", "seedance_official", "kie"} else "legacy"
+                expected_runtime = "adapter" if capability["provider"] in {"yunwu", "google", "google_omni", "kling", "yunwu-kling", "seedance_official", "kie"} else "legacy"
                 self.assertEqual(hints.get("runtime"), expected_runtime)
                 for token in sensitive_tokens:
                     self.assertNotIn(token, serialized)

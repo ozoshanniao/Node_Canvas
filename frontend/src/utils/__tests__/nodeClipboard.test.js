@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { sanitizePastedNodeData } from '../nodeClipboard.js';
+import { preparePastedEdges, sanitizePastedNodeData } from '../nodeClipboard.js';
 import { sanitizeNodeDefaults } from '../nodeDefaults.js';
 import { buildRuntimeKlingOmniReferences, sanitizePersistedKlingOmniReferences } from '../klingOmniReferences.js';
 
@@ -125,7 +125,63 @@ assert.equal('url' in mixedNodes[0].data, false);
 assert.equal('task' in mixedNodes[1].data, false);
 assert.equal(mixedNodes[2].data.url, imageInputSource.url);
 
-console.log('nodeClipboard tests passed');
+{
+  const currentEdges = [
+    {
+      id: 'existing',
+      source: 'existing-source',
+      target: 'pasted-target',
+      targetHandle: 'image:references',
+      data: { connectionOrder: 7 },
+    },
+  ];
+  const pasted = preparePastedEdges({
+    currentEdges,
+    clipboardEdges: [
+      {
+        id: 'copied-later',
+        source: 'old-a',
+        target: 'old-target',
+        targetHandle: 'image:references',
+        data: { connectionOrder: 5, inputLabel: 'image2', imageIndex: 1 },
+      },
+      {
+        id: 'copied-first',
+        source: 'old-b',
+        target: 'old-target',
+        targetHandle: 'image:references',
+        data: { connectionOrder: 2, inputLabel: 'image1', imageIndex: 0 },
+      },
+    ],
+    oldToNewIdMap: {
+      'old-a': 'new-a',
+      'old-b': 'new-b',
+      'old-target': 'pasted-target',
+    },
+    createEdgeId: (edge) => 'new-' + edge.id,
+  });
+  const newEdges = pasted.slice(1);
+  assert.deepEqual(
+    newEdges.map((edge) => edge.id),
+    ['new-copied-later', 'new-copied-first'],
+    'paste should preserve edge array placement'
+  );
+  assert.deepEqual(
+    [...newEdges].sort((a, b) => a.data.connectionOrder - b.data.connectionOrder).map((edge) => edge.id),
+    ['new-copied-first', 'new-copied-later'],
+    'paste should preserve copied canonical relative order'
+  );
+  assert.deepEqual(
+    newEdges.map((edge) => edge.data.connectionOrder).sort((a, b) => a - b),
+    [8, 9],
+    'paste should allocate after the current target group maximum'
+  );
+  newEdges.forEach((edge) => {
+    assert.equal(edge.data.inputLabel, undefined);
+    assert.equal(edge.data.imageIndex, undefined);
+  });
+}
+
 const legacyOmniCustomParams = {
   kling: {
     omniParams: {
@@ -157,15 +213,17 @@ const runtimeSource = {
   images: [
     { alias: 'image_1', role: 'reference', url: 'https://example.test/a.png', sourceNodeId: 'a', sourceHandle: 'image:out' },
     { alias: 'image_2', role: 'end_frame', url: 'https://example.test/b.png', sourceNodeId: 'b', sourceHandle: 'image:out' },
+    { alias: 'image_3', role: 'reference', url: 'https://example.test/a.png', sourceNodeId: 'a', sourceHandle: 'image:out' },
   ],
   elements: [{ alias: 'element_1', elementId: 123 }],
 };
 const runtimeSourceSnapshot = structuredClone(runtimeSource);
 const runtimeRefs = buildRuntimeKlingOmniReferences(runtimeSource);
-assert.deepEqual(runtimeRefs.images, ['https://example.test/a.png', 'https://example.test/b.png']);
+assert.deepEqual(runtimeRefs.images, ['https://example.test/a.png', 'https://example.test/b.png', 'https://example.test/a.png']);
 assert.deepEqual(runtimeRefs.omniParams.images, [
   { alias: 'image_1', role: 'reference', index: 0 },
   { alias: 'image_2', role: 'end_frame', index: 1 },
+  { alias: 'image_3', role: 'reference', index: 2 },
 ]);
 assert.equal(JSON.stringify(runtimeRefs.omniParams).includes('https://example.test'), false);
 assert.deepEqual(runtimeSource, runtimeSourceSnapshot, 'runtime helper must not mutate source output');
@@ -224,3 +282,5 @@ assert.equal(JSON.stringify(defaultParams).includes('token=secret'), false);
 assert.deepEqual(defaultParams.customParams.kling.omniParams.images, [
   { alias: 'image_1', role: 'reference', sourceNodeId: 'node-a', sourceHandle: 'image:out' },
 ]);
+
+console.log('nodeClipboard tests passed');

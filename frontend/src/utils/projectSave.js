@@ -1,4 +1,5 @@
 import { sanitizeProjectForSave } from './projectSanitize.js';
+import { getEdgeTargetHandle, isImageOrderedTargetHandle } from './edgeOrdering.js';
 
 export const describeImageValue = (value) => {
   if (!value) return { type: 'empty', length: 0 };
@@ -96,6 +97,10 @@ export const sanitizeEdgesForSave = (edges = []) =>
     delete persistedEdge.className;
     const data = { ...(persistedEdge.data || {}) };
     delete data.flowing;
+    if (isImageOrderedTargetHandle(getEdgeTargetHandle(persistedEdge))) {
+      delete data.imageIndex;
+      delete data.inputLabel;
+    }
     return { ...persistedEdge, type: 'default', data };
   });
 

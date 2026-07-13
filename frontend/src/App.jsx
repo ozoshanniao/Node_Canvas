@@ -8,7 +8,8 @@ import {
   useNodesState, 
   useEdgesState,
   addEdge,
-  applyEdgeChanges
+  applyEdgeChanges,
+  reconnectEdge
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Launcher } from './components/Launcher';
@@ -67,11 +68,17 @@ import {
 } from './utils/groupBoxes';
 import { RUNNABLE_NODE_TYPES } from './utils/nodeCategories';
 import { DISABLE_MINIMAP, ONLY_RENDER_VISIBLE_ELEMENTS } from './utils/perfDebug';
-import { normalizeImageInputEdgeLabels } from './utils/edgeLabels';
+import {
+  assignConnectionOrder,
+  assignReconnectedConnectionOrder,
+  isConnectionAllowed,
+  migrateLegacyConnectionOrders,
+} from './utils/edgeOrdering';
+import { removeEdgesByIds } from './utils/edgeActions';
 import { uploadImageToInput } from './utils/uploadToInput';
 import { useAppSettings } from './utils/appSettings';
 import { useI18n } from './hooks/useI18n';
-import { sanitizePastedNodeData } from './utils/nodeClipboard';
+import { preparePastedEdges, sanitizePastedNodeData } from './utils/nodeClipboard';
 //import { ButtonEdge } from './edges/ButtonEdge';
 
 const nodeTypes = {
@@ -100,7 +107,7 @@ const edgeTypes = {
 };
 
 const normalizeEdges = (edges = []) =>
-  normalizeImageInputEdgeLabels(
+  migrateLegacyConnectionOrders(
     edges.map((edge) => ({
       ...edge,
       type: 'default',
@@ -281,11 +288,6 @@ const isValidViewport = (viewport) =>
   Number.isFinite(Number(viewport.zoom)) &&
   Number(viewport.zoom) > 0;
 
-const isValidConnection = (c) => {
-  if (!c.sourceHandle || !c.targetHandle) return false;
-  return c.sourceHandle.split(':')[0] === c.targetHandle.split(':')[0];
-};
-
 const getEventPoint = (event) => {
   const touch = event?.changedTouches?.[0];
   if (touch) return { x: touch.clientX, y: touch.clientY };
@@ -352,8 +354,9 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
   const latestProjectRef = useRef({ projectPath, projectFilePath, projectName });
   const hasRestoredViewportRef = useRef(false);
   const pendingConnectionRef = useRef(null);
+  const pendingDeleteRef = useRef(null);
   const connectionSuccessfulRef = useRef(false);
-  const { commitHistory, undo, redo } = useCanvasHistory({
+  const { commitHistory, commitDiscreteHistory, undo, redo } = useCanvasHistory({
     nodes,
     edges,
     groups,
@@ -396,9 +399,74 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     }
   }, [initialData, setNodes, setEdges, setGroups, restoreProjectViewport]);
 
+  const isValidConnection = useCallback(
+    (connection) => isConnectionAllowed({ connection, edges, nodes }),
+    [edges, nodes]
+  );
+
+  const deleteEdgesByIds = useCallback(
+    (edgeIds, reason = 'edge-delete') => {
+      const current = latestCanvasRef.current;
+      const nextEdges = removeEdgesByIds(current.edges, edgeIds);
+      if (nextEdges === current.edges) return false;
+
+      latestCanvasRef.current = {
+        nodes: current.nodes,
+        edges: nextEdges,
+        groups: current.groups,
+      };
+      setEdges(nextEdges);
+      setSaveStatus('idle');
+      commitDiscreteHistory(current.nodes, nextEdges, current.groups, reason);
+      return true;
+    },
+    [commitDiscreteHistory, setEdges]
+  );
+
+  const handleBeforeDelete = useCallback(({ nodes: deletedNodes = [], edges: deletedEdges = [] }) => {
+    pendingDeleteRef.current = {
+      nodeIds: deletedNodes.map((node) => node.id),
+      edgeIds: deletedEdges.map((edge) => edge.id),
+    };
+    return true;
+  }, []);
+
+  const handleEdgesDelete = useCallback(
+    (deletedEdges) => {
+      if ((pendingDeleteRef.current?.nodeIds || []).length > 0) return;
+      deleteEdgesByIds(deletedEdges.map((edge) => edge.id), 'react-flow-edge-delete');
+    },
+    [deleteEdgesByIds]
+  );
+
+  const handleDelete = useCallback(
+    ({ nodes: deletedNodes = [], edges: deletedEdges = [] }) => {
+      if (deletedNodes.length > 0) {
+        const current = latestCanvasRef.current;
+        const deletedNodeIds = new Set(deletedNodes.map((node) => node.id));
+        const deletedEdgeIds = new Set(deletedEdges.map((edge) => edge.id));
+        const nextNodes = current.nodes.filter((node) => !deletedNodeIds.has(node.id));
+        const nextEdges = current.edges.filter(
+          (edge) =>
+            !deletedEdgeIds.has(edge.id) &&
+            !deletedNodeIds.has(edge.source) &&
+            !deletedNodeIds.has(edge.target)
+        );
+
+        latestCanvasRef.current = { nodes: nextNodes, edges: nextEdges, groups: current.groups };
+        setNodes(nextNodes);
+        setEdges(nextEdges);
+        setSaveStatus('idle');
+        commitDiscreteHistory(nextNodes, nextEdges, current.groups, 'react-flow-node-delete');
+      }
+      pendingDeleteRef.current = null;
+    },
+    [commitDiscreteHistory, setEdges, setNodes]
+  );
+
   const onEdgesChange = useCallback(
     (changes) => {
-      setEdges((currentEdges) => normalizeImageInputEdgeLabels(applyEdgeChanges(changes, currentEdges)));
+      setEdges((currentEdges) => applyEdgeChanges(changes, currentEdges));
     },
     [setEdges]
   );
@@ -564,28 +632,26 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
       };
     });
 
-    const nextPastedEdges = clipboardData.edges.map((oldEdge, index) => {
-      const newEdgeId = `edge-${now}-${index}-${Math.random().toString(36).substr(2, 5)}`;
-      return {
-        ...oldEdge,
-        id: newEdgeId,
-        source: oldToNewIdMap[oldEdge.source],
-        target: oldToNewIdMap[oldEdge.target],
-      };
-    });
-
     const updatedCurrentNodes = currentNodes.map((node) => ({
       ...node,
       selected: false,
     }));
 
     const newNodes = updatedCurrentNodes.concat(nextPastedNodes);
-    const newEdges = currentEdges.concat(nextPastedEdges);
+    const newEdges = preparePastedEdges({
+      clipboardEdges: clipboardData.edges,
+      currentEdges,
+      oldToNewIdMap,
+      createEdgeId: (_oldEdge, index) =>
+        'edge-' + now + '-' + index + '-' + Math.random().toString(36).substr(2, 5),
+    });
 
+    latestCanvasRef.current = { nodes: newNodes, edges: newEdges, groups: currentGroups };
     setNodes(newNodes);
     setEdges(newEdges);
-    commitHistory(newNodes, newEdges, currentGroups);
-  }, [projectPath, setNodes, setEdges, commitHistory]);
+    setSaveStatus('idle');
+    commitDiscreteHistory(newNodes, newEdges, currentGroups, 'paste');
+  }, [projectPath, setNodes, setEdges, commitDiscreteHistory]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -882,12 +948,60 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
     );
   }, [selectedRunnableNode, setNodes]);
 
-  const onConnect = (params) => {
+  const onConnect = useCallback((params) => {
+    if (!isConnectionAllowed({ connection: params, edges, nodes })) {
+      connectionSuccessfulRef.current = false;
+      return;
+    }
+
     connectionSuccessfulRef.current = true;
-    const nextEdges = normalizeImageInputEdgeLabels(addEdge({ ...params, type: 'default' }, edges));
+    const edgeWithOrder = assignConnectionOrder(
+      {
+        ...params,
+        id:
+          'edge-' +
+          params.source + '-' +
+          params.sourceHandle + '-' +
+          params.target + '-' +
+          params.targetHandle + '-' +
+          Date.now(),
+        type: 'default',
+      },
+      edges
+    );
+    const nextEdges = addEdge(edgeWithOrder, edges);
+    latestCanvasRef.current = { nodes, edges: nextEdges, groups };
     setEdges(nextEdges);
-    commitHistory(nodes, nextEdges);
-  };
+    setSaveStatus('idle');
+    commitDiscreteHistory(nodes, nextEdges, groups, 'connect');
+  }, [commitDiscreteHistory, edges, groups, nodes, setEdges]);
+
+  const handleReconnect = useCallback((oldEdge, newConnection) => {
+    if (!isConnectionAllowed({
+      connection: newConnection,
+      edges,
+      nodes,
+      excludeEdgeId: oldEdge.id,
+    })) {
+      return;
+    }
+
+    let nextEdges = reconnectEdge(oldEdge, newConnection, edges, { shouldReplaceId: false });
+    const reconnectedEdge = nextEdges.find((edge) => edge.id === oldEdge.id);
+    if (!reconnectedEdge) return;
+
+    const normalizedEdge = assignReconnectedConnectionOrder({
+      oldEdge,
+      reconnectedEdge,
+      existingEdges: nextEdges.filter((edge) => edge.id !== oldEdge.id),
+    });
+
+    nextEdges = nextEdges.map((edge) => edge.id === oldEdge.id ? normalizedEdge : edge);
+    latestCanvasRef.current = { nodes, edges: nextEdges, groups };
+    setEdges(nextEdges);
+    setSaveStatus('idle');
+    commitDiscreteHistory(nodes, nextEdges, groups, 'reconnect');
+  }, [commitDiscreteHistory, edges, groups, nodes, setEdges]);
 
   const handleConnectStart = (event, params) => {
     setConnectionMenu(null);
@@ -969,9 +1083,13 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
       };
     }
     const nextNodes = nodes.concat(newNode);
-    const nextEdges = normalizeImageInputEdgeLabels(addEdge(
+    const nextEdge = assignConnectionOrder(
       {
-        id: `${connectionMenu.source}-${connectionMenu.sourceHandle}-${newNode.id}-${targetHandle}`,
+        id:
+          connectionMenu.source + '-' +
+          connectionMenu.sourceHandle + '-' +
+          newNode.id + '-' +
+          targetHandle,
         source: connectionMenu.source,
         sourceHandle: connectionMenu.sourceHandle,
         target: newNode.id,
@@ -979,11 +1097,14 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         type: 'default',
       },
       edges
-    ));
+    );
+    const nextEdges = addEdge(nextEdge, edges);
 
+    latestCanvasRef.current = { nodes: nextNodes, edges: nextEdges, groups };
     setNodes(nextNodes);
     setEdges(nextEdges);
-    commitHistory(nextNodes, nextEdges);
+    setSaveStatus('idle');
+    commitDiscreteHistory(nextNodes, nextEdges, groups, 'connect-and-create-node');
     setConnectionMenu(null);
   };
 
@@ -1210,8 +1331,12 @@ function FlowCanvas({ projectPath, projectFilePath, projectName, initialData }) 
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onEdgesDelete={handleEdgesDelete}
+        onBeforeDelete={handleBeforeDelete}
+        onDelete={handleDelete}
         onEdgeClick={handleEdgeClick}
         onConnect={onConnect}
+        onReconnect={handleReconnect}
         onConnectStart={handleConnectStart}
         onConnectEnd={handleConnectEnd}
         onNodeDragStart={() => setIsDraggingNode(true)}

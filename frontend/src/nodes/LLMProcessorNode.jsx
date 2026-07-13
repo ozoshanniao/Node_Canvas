@@ -16,7 +16,7 @@ import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { FullscreenTextModal } from '../components/FullscreenTextModal';
 import { NodeFullscreenButton } from '../components/NodeFullscreenButton';
 import { NodeResizeCorner } from '../components/NodeResizeCorner';
-import { getNodeImageOutput, getNodeTextOutput } from '../utils/nodeOutputs';
+import { collectCanonicalImageInputs, getNodeTextOutput } from '../utils/nodeOutputs';
 import { countRender } from '../utils/perfDebug';
 import { fetchLLMSkills, getSkillDisplayName, normalizeEnabledSkills } from '../utils/llmSkills';
 import { useI18n } from '../hooks/useI18n';
@@ -129,17 +129,13 @@ export function LLMProcessorNode({ id, data }) {
         .filter((text) => String(text ?? '').trim())
         .join('\n');
 
-      const imageInputEdges = allEdges.filter(
-        (edge) =>
-          edge.target === id &&
-          (edge.targetHandle ?? edge.targetHandleId) === 'image:in'
-      );
-      const orderedImageUrls = imageInputEdges.flatMap((edge) => {
-          const sourceNode = nodeMap.get(edge.source);
-          return getNodeImageOutput(sourceNode, edge.sourceHandle, edge, allNodes, allEdges)
-            .map((url) => (typeof url === 'string' ? url : url?.url || url?.src || url?.imageUrl))
-            .filter(Boolean);
-        });
+      const imageInputItems = collectCanonicalImageInputs({
+        targetNodeId: id,
+        targetHandle: 'image:in',
+        edges: allEdges,
+        nodes: allNodes,
+      });
+      const imageInputEdges = imageInputItems.map((item) => item.edge);
 
       if (!modelCapabilities.supportsImages && imageInputEdges.length > 0) {
         updateNodeData({
@@ -150,7 +146,17 @@ export function LLMProcessorNode({ id, data }) {
         return;
       }
 
-      const imageInputs = orderedImageUrls.map((url, index) => ({
+      const missingInput = imageInputItems.find((item) => !item.url);
+      if (missingInput) {
+        updateNodeData({
+          outputText: 'Image input image' + (missingInput.index + 1) + ' has no usable image.',
+          status: 'error',
+          lastRunAt: new Date().toISOString(),
+        });
+        return;
+      }
+
+      const imageInputs = imageInputItems.map(({ index, url }) => ({
         index,
         url,
       }));

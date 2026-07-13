@@ -9,8 +9,8 @@ import { useVideoTask } from '../hooks/useVideoTask';
 import { setLastNodeDefaults } from '../utils/nodeDefaults';
 import { buildSyncedVideoParamsPatch } from '../utils/videoNodeData';
 import {
+  collectCanonicalImageInputs,
   getNodeAudioOutput,
-  getNodeImageOutput,
   getNodeMultiPromptOutput,
   getNodeOmniParamsOutput,
   getNodeTextOutput,
@@ -19,20 +19,29 @@ import {
 import {
   VIDEO_GENERATION_REGISTRY,
   VIDEO_MODE_OPTIONS,
+  buildGoogleOmniVideoPayload,
   fetchVideoGenerationRegistry,
   getActiveVideoHandlesForMode,
   getEffectiveVideoMode,
   getKlingShotMode,
+  getVideoDisplayModelOptionId,
+  getVideoDisplayModels,
+  getVideoDisplayProviderId,
+  getVideoDisplayProviders,
   getVideoModelConfig,
   getVideoProvider,
   isVideoTaskActive,
   isVideoTaskRecoverable,
+  isGoogleOmniModel,
   isKlingOmniModel,
   isSeedanceModel,
   normalizeVideoGenerationSettings,
   resolveKlingOmniElements,
+  resolveVideoDisplayModelOption,
   shouldRenderVideoToolbarParam,
+  shouldShowVideoCustomParams,
   supportsKlingMultiShot,
+  validateGoogleOmniDuration,
 } from '../utils/videoGenerationOptions';
 import {
   buildVideoSchemaSnapshot,
@@ -42,6 +51,11 @@ import {
   getVideoCapability,
 } from '../utils/videoCapabilities';
 import { buildRuntimeKlingOmniReferences } from '../utils/klingOmniReferences';
+import {
+  collectVideoImageHandle,
+  getReferenceImageLimitError,
+  validateVideoInputHandles,
+} from '../utils/videoInputCollection';
 import { shouldShowRawCustomParams, useAppSettings } from '../utils/appSettings';
 import { countRender } from '../utils/perfDebug';
 import { useI18n } from '../hooks/useI18n';
@@ -52,7 +66,7 @@ const HANDLE_LABELS = {
   'omniParams:in': 'omni',
   'image:images': 'images',
   'image:end': 'END',
-  'image:firstFrame': 'first',
+  'image:firstFrame': 'First',
   'image:lastFrame': 'last',
   'image:references': 'images',
   'video:references': 'videos',
@@ -232,6 +246,9 @@ export function VideoNode({ id, data }) {
   const settings = useMemo(() => normalizeVideoGenerationSettings(data, registry), [data, registry]);
   const videoUrl = useMemo(() => resolveVideoUrl(settings.outputs?.videoUrl), [settings.outputs?.videoUrl]);
   const providerConfig = getVideoProvider(settings.provider, registry);
+  const displayProviderId = getVideoDisplayProviderId(settings.provider);
+  const displayProviders = useMemo(() => getVideoDisplayProviders(registry), [registry]);
+  const displayProviderConfig = displayProviders.find((provider) => provider.id === displayProviderId) || providerConfig;
   const modelConfig = useMemo(
     () => getVideoModelConfig(settings.provider, settings.model, registry) || {},
     [registry, settings.provider, settings.model]
@@ -281,6 +298,7 @@ export function VideoNode({ id, data }) {
     [selectedCapability, stableVideoHandles.outputs]
   );
   const isOmniModel = isKlingOmniModel(modelConfig) || isKlingOmniModel(settings);
+  const isGoogleOmni = isGoogleOmniModel(modelConfig) || isGoogleOmniModel(settings);
   const isSeedance = isSeedanceModel(modelConfig) || isSeedanceModel(settings);
   const supportsCameraControl = Boolean(
     getParameterSchema(selectedCapability, 'cameraControl') ||
@@ -351,6 +369,10 @@ export function VideoNode({ id, data }) {
   }, [activeVideoHandleIdsHash, inputHandleIdsHash, refreshHandles, selectedCapability, settings.model, settings.provider, settings.videoMode, visibleInputHandleIdsHash]);
 
   const handleProviderSelect = (providerId) => {
+    if (providerId === displayProviderId) {
+      setActiveMenu(null);
+      return;
+    }
     const provider = getVideoProvider(providerId, registry);
     const nextModel = provider?.models?.[0]?.id;
     const nextModelConfig = getVideoModelConfig(providerId, nextModel, registry);
@@ -360,9 +382,15 @@ export function VideoNode({ id, data }) {
     setActiveMenu(null);
   };
 
-  const handleModelSelect = (modelId) => {
-    const nextModelConfig = getVideoModelConfig(settings.provider, modelId, registry);
-    applySettings({ model: modelId, customParams: { ...(nextModelConfig?.customParams || {}) } });
+  const handleModelSelect = (optionId) => {
+    const option = resolveVideoDisplayModelOption(optionId, displayProviderId, registry);
+    if (!option) return;
+    const nextModelConfig = getVideoModelConfig(option.runtimeProvider, option.modelId, registry);
+    applySettings({
+      provider: option.runtimeProvider,
+      model: option.modelId,
+      customParams: { ...(nextModelConfig?.customParams || {}) },
+    });
     setActiveMenu(null);
   };
 
@@ -476,6 +504,7 @@ export function VideoNode({ id, data }) {
     const allNodes = getNodes();
     const allEdges = getEdges();
     const nodeMap = new Map(allNodes.map((node) => [node.id, node]));
+    const inputErrors = [];
 
     if (isOmniModel) {
       const omniEdge = allEdges.find(
@@ -491,6 +520,7 @@ export function VideoNode({ id, data }) {
         endImage: null,
         multiPromptOutput: null,
         omniParamsOutput,
+        inputErrors,
       };
     }
 
@@ -526,8 +556,16 @@ export function VideoNode({ id, data }) {
         .filter(Boolean);
     };
 
-    const collectImagesForHandle = (handleId, indexKey = null) =>
-      collectFromHandle(handleId, getNodeImageOutput, indexKey);
+    const collectImagesForHandle = (handleId) => {
+      const result = collectVideoImageHandle({
+        targetNodeId: id,
+        targetHandle: handleId,
+        edges: allEdges,
+        nodes: allNodes,
+      });
+      inputErrors.push(...result.errors);
+      return result.images;
+    };
 
     const collectVideosForHandle = (handleId, indexKey = null) =>
       collectFromHandle(handleId, getNodeVideoOutput, indexKey);
@@ -535,16 +573,32 @@ export function VideoNode({ id, data }) {
     const collectAudiosForHandle = (handleId, indexKey = null) =>
       collectFromHandle(handleId, getNodeAudioOutput, indexKey);
 
+    inputErrors.push(...validateVideoInputHandles({
+      targetNodeId: id,
+      handles: ['image:firstFrame', 'image:lastFrame', 'image:images', 'image:end'],
+      edges: allEdges,
+      nodes: allNodes,
+    }));
+
+    const configuredMaxReferenceImages = Number(modelConfig.inputCapabilities?.maxReferenceImages);
+    const maxReferenceImages =
+      Number.isInteger(configuredMaxReferenceImages) && configuredMaxReferenceImages >= 0
+        ? configuredMaxReferenceImages
+        : Number.POSITIVE_INFINITY;
+
     if (isSeedance) {
       if (settings.videoMode === 'frame') {
-        const firstFrame = collectImagesForHandle('image:firstFrame')[0] || null;
-        const lastFrame = collectImagesForHandle('image:lastFrame')[0] || null;
+        const firstFrameImages = collectImagesForHandle('image:firstFrame');
+        const lastFrameImages = collectImagesForHandle('image:lastFrame');
+        const firstFrame = firstFrameImages[0] || null;
+        const lastFrame = lastFrameImages[0] || null;
         return {
           prompt,
           images: firstFrame ? [firstFrame] : [],
           endImage: lastFrame,
           multiPromptOutput,
           omniParamsOutput: null,
+          inputErrors,
           seedanceParams: {
             mode: 'frame',
             firstFrame,
@@ -556,44 +610,52 @@ export function VideoNode({ id, data }) {
         };
       }
 
+      const referenceImages = collectImagesForHandle('image:references');
+      const referenceLimitError = getReferenceImageLimitError(referenceImages, maxReferenceImages);
+      if (referenceLimitError) inputErrors.push(referenceLimitError);
       return {
         prompt,
         images: [],
         endImage: null,
         multiPromptOutput,
         omniParamsOutput: null,
+        inputErrors,
         seedanceParams: {
           mode: 'multimodal-reference',
-          images: collectImagesForHandle('image:references', 'imageIndex'),
+          images: referenceImages,
           videos: collectVideosForHandle('video:references', 'videoIndex'),
           audios: collectAudiosForHandle('audio:references', 'audioIndex'),
         },
       };
     }
 
-    const collectLegacyImagesForHandle = (handleId) =>
-      allEdges
-        .filter((edge) => edge.target === id && (edge.targetHandle ?? edge.targetHandleId) === handleId)
-        .flatMap((edge) => getNodeImageOutput(nodeMap.get(edge.source), edge.sourceHandle, edge, allNodes, allEdges))
-        .filter(Boolean);
-
-    const maxImages = Number(modelConfig.inputCapabilities?.maxImages) || Number.POSITIVE_INFINITY;
     const imageInputs = [
-      ...collectLegacyImagesForHandle('image:firstFrame'),
-      ...collectLegacyImagesForHandle('image:images'),
+      ...collectImagesForHandle('image:firstFrame'),
+      ...collectImagesForHandle('image:images'),
     ];
+    const referenceInputs = collectImagesForHandle('image:references');
     const endImages = [
-      ...collectLegacyImagesForHandle('image:lastFrame'),
-      ...collectLegacyImagesForHandle('image:end'),
+      ...collectImagesForHandle('image:lastFrame'),
+      ...collectImagesForHandle('image:end'),
     ];
+
+    if (imageInputs.length > 1) {
+      inputErrors.push('First frame accepts at most 1 input, but ' + imageInputs.length + ' are connected.');
+    }
+    if (endImages.length > 1) {
+      inputErrors.push('Last frame accepts at most 1 input, but ' + endImages.length + ' are connected.');
+    }
 
     let images = [];
     let endImage = null;
     if (settings.videoMode === 'image-to-video') {
-      images = imageInputs.slice(0, 1);
+      images = imageInputs;
       endImage = endImages[0] || null;
     } else if (settings.videoMode === 'reference-video') {
-      images = imageInputs.slice(0, maxImages);
+      const candidates = referenceInputs.length ? referenceInputs : imageInputs;
+      const referenceLimitError = getReferenceImageLimitError(candidates, maxReferenceImages);
+      if (referenceLimitError) inputErrors.push(referenceLimitError);
+      images = candidates;
     }
 
     return {
@@ -602,15 +664,22 @@ export function VideoNode({ id, data }) {
       endImage,
       multiPromptOutput,
       omniParamsOutput: null,
+      inputErrors,
     };
-  }, [getEdges, getNodes, id, isOmniModel, isSeedance, modelConfig.inputCapabilities?.maxImages, settings.prompt, settings.videoMode]);
+  }, [getEdges, getNodes, id, isOmniModel, isSeedance, modelConfig.inputCapabilities?.maxReferenceImages, settings.prompt, settings.videoMode]);
 
   const inputImageCandidates = useMemo(() => {
-    const nodeMap = new Map(flowNodes.map((node) => [node.id, node]));
     const collectImagesForHandles = (handleIds) =>
-      flowEdges
-        .filter((edge) => edge.target === id && handleIds.includes(edge.targetHandle ?? edge.targetHandleId))
-        .flatMap((edge) => getNodeImageOutput(nodeMap.get(edge.source), edge.sourceHandle, edge, flowNodes, flowEdges))
+      handleIds
+        .flatMap((targetHandle) =>
+          collectCanonicalImageInputs({
+            targetNodeId: id,
+            targetHandle,
+            edges: flowEdges,
+            nodes: flowNodes,
+          })
+        )
+        .map((item) => item.url)
         .filter(Boolean)
         .map(resolveVideoUrl);
 
@@ -658,8 +727,24 @@ export function VideoNode({ id, data }) {
     setActiveMenu(null);
     setShowAdvanced(false);
 
-    const { prompt, images, endImage, multiPromptOutput, omniParamsOutput, seedanceParams } = collectVideoInputs();
+    const {
+      prompt,
+      images,
+      endImage,
+      multiPromptOutput,
+      omniParamsOutput,
+      seedanceParams,
+      inputErrors = [],
+    } = collectVideoInputs();
     const runShotMode = supportsKlingMultiShot(modelConfig) ? getKlingShotMode(settings) : 'single';
+    if (inputErrors.length > 0) {
+      setTask({
+        status: 'error',
+        progress: 0,
+        message: inputErrors[0],
+      });
+      return;
+    }
     if (isOmniModel && !omniParamsOutput) {
       setTask({
         status: 'error',
@@ -699,6 +784,22 @@ export function VideoNode({ id, data }) {
         message: t('node.video.error.noPrompt'),
       });
       return;
+    }
+    if (isGoogleOmni && settings.videoMode === 'image-to-video' && images.length !== 1) {
+      setTask({ status: 'error', progress: 0, message: 'Omni Flash requires a First image.' });
+      return;
+    }
+    if (isGoogleOmni && settings.videoMode === 'reference-video' && images.length === 0) {
+      setTask({ status: 'error', progress: 0, message: 'Omni Flash Reference mode requires at least one image.' });
+      return;
+    }
+    if (isGoogleOmni) {
+      try {
+        validateGoogleOmniDuration(settings.duration);
+      } catch (error) {
+        setTask({ status: 'error', progress: 0, message: error.message });
+        return;
+      }
     }
     if (isSeedance && settings.videoMode === 'frame' && !seedanceParams?.firstFrame) {
       setTask({
@@ -740,10 +841,12 @@ export function VideoNode({ id, data }) {
         : {}),
     };
 
-    const payload = {
-      projectPath: settings.projectPath || window.currentProjectPath || undefined,
-      provider: settings.provider,
-      model: settings.model,
+    const payload = isGoogleOmni
+      ? buildGoogleOmniVideoPayload({ settings, prompt, images })
+      : {
+          projectPath: settings.projectPath || window.currentProjectPath || undefined,
+          provider: settings.provider,
+          model: settings.model,
       videoMode: isOmniModel ? 'omni-video' : settings.videoMode,
       prompt: isOmniModel ? prompt : runShotMode === 'customize' ? '' : prompt,
       negativePrompt: settings.negativePrompt || '',
@@ -800,6 +903,7 @@ export function VideoNode({ id, data }) {
   }, [
     collectVideoInputs,
     isOmniModel,
+    isGoogleOmni,
     isSeedance,
     appSettings.publicAssetStorage,
     modelConfig,
@@ -1026,8 +1130,13 @@ export function VideoNode({ id, data }) {
     return <div className="text-sm font-light tracking-wide text-white/12">{t('node.video.status.noVideo')}</div>;
   };
 
-  const modelOptions = providerConfig?.models || [];
-  const showCustomParamsInput = shouldShowRawCustomParams(appSettings);
+  const modelOptions = getVideoDisplayModels(displayProviderId, registry);
+  const selectedModelOptionId = getVideoDisplayModelOptionId(settings.provider, settings.model);
+  const showCustomParamsInput = shouldShowVideoCustomParams(modelConfig, settings, {
+    ...appSettings,
+    showRawCustomParams: shouldShowRawCustomParams(appSettings),
+  });
+  const fixedBadges = modelConfig.uiHints?.fixedBadges || selectedCapability?.uiHints?.fixedBadges || [];
   const customParamsValue =
     typeof settings.customParamsText === 'string'
       ? settings.customParamsText
@@ -1190,12 +1299,12 @@ export function VideoNode({ id, data }) {
         <CapsuleDropdown
           id="provider"
           activeMenu={activeMenu}
-          label={providerConfig?.label || settings.provider}
+          label={displayProviderConfig?.label || displayProviderId}
           minWidth={110}
           onOpen={handleMenuOpen}
           onSelect={handleProviderSelect}
-          options={activeRegistry.providers}
-          value={settings.provider}
+          options={displayProviders}
+          value={displayProviderId}
         />
 
         <div className="h-3 w-px bg-white/10" />
@@ -1208,7 +1317,7 @@ export function VideoNode({ id, data }) {
           onOpen={handleMenuOpen}
           onSelect={handleModelSelect}
           options={modelOptions}
-          value={settings.model}
+          value={selectedModelOptionId}
         />
 
         {toolbarParamKeys.map((key) => {
@@ -1274,6 +1383,11 @@ export function VideoNode({ id, data }) {
           title={selectedCapability ? undefined : 'Capability schema missing; using conservative handle states.'}
         />
         <span>{t('node.video.label')}</span>
+        {fixedBadges.map((badge) => (
+          <span key={badge} className="rounded-full border border-white/10 px-1.5 py-0.5 text-[9px] text-white/35">
+            {badge}
+          </span>
+        ))}
       </div>
 
       <div className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-[24px]">

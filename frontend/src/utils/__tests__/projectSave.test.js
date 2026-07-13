@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { saveProjectCore } from '../projectSave.js';
+import { sanitizeEdgesForSave, saveProjectCore } from '../projectSave.js';
+import { getCanonicalInputEdges, migrateLegacyConnectionOrders } from '../edgeOrdering.js';
 
 const originalFetch = globalThis.fetch;
 const requests = [];
@@ -43,9 +44,14 @@ const baseProject = {
       source: 'node-1',
       target: 'node-2',
       sourceHandle: 'text:out',
-      targetHandle: 'text:in',
+      targetHandle: 'image:references',
       selected: true,
-      data: { flowing: true },
+      data: {
+        flowing: true,
+        connectionOrder: 7,
+        inputLabel: 'image9',
+        imageIndex: 8,
+      },
     },
   ],
   groups: { groupA: { id: 'groupA' } },
@@ -77,6 +83,27 @@ assert.equal(
   false,
   'app settings must never be included in the project save payload'
 );
+assert.equal(requests[0].body.edges[0].data.connectionOrder, 7);
+assert.equal(requests[0].body.edges[0].data.inputLabel, undefined);
+assert.equal(requests[0].body.edges[0].data.imageIndex, undefined);
+
+{
+  const legacyEdges = [
+    { id: 'legacy-z', source: 'z', target: 'video', targetHandle: 'image:references', data: { inputLabel: 'image1' } },
+    { id: 'legacy-a', source: 'a', target: 'video', targetHandle: 'image:references', data: { imageIndex: 9 } },
+  ];
+  const loadedEdges = migrateLegacyConnectionOrders(sanitizeEdgesForSave(legacyEdges));
+  assert.deepEqual(loadedEdges.map((edge) => edge.data.connectionOrder), [0, 1]);
+  assert.deepEqual(
+    getCanonicalInputEdges({ edges: loadedEdges, targetNodeId: 'video', targetHandle: 'image:references' })
+      .map((edge) => edge.id),
+    ['legacy-z', 'legacy-a']
+  );
+  loadedEdges.forEach((edge) => {
+    assert.equal(edge.data.inputLabel, undefined);
+    assert.equal(edge.data.imageIndex, undefined);
+  });
+}
 
 await saveProjectCore({
   ...baseProject,

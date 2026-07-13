@@ -225,6 +225,20 @@ class ProviderSettingsStatusTest(unittest.TestCase):
         self.assertEqual(anthropic["source"], "settings")
         self.assertNotIn(fake_secret, str(anthropic))
 
+    def test_google_omni_requires_project_but_has_no_api_key_setting(self):
+        with patch.dict(os.environ, self.clean_env, clear=False):
+            omni = provider_by_id(settings_router.get_provider_statuses(), "google_omni")
+        self.assertFalse(omni["configured"])
+        self.assertEqual(omni["requiredSettings"], [])
+        self.assertEqual(omni["settingsFields"], [])
+        self.assertNotIn("apiKey", str(omni))
+
+        env = {**self.clean_env, "GOOGLE_CLOUD_PROJECT": "mock-project"}
+        with patch.dict(os.environ, env, clear=False):
+            configured = provider_by_id(settings_router.get_provider_statuses(), "google_omni")
+        self.assertTrue(configured["configured"])
+        self.assertEqual(configured["missingDependencyEnv"], [])
+
     def test_r2_settings_still_requires_non_secret_env(self):
         self.store.set_provider(
             "cloudflare-r2",

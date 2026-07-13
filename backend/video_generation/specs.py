@@ -772,6 +772,57 @@ VIDEO_GENERATION_REGISTRY = {
             ],
         },
         {
+            "id": "google_omni",
+            "label": "Google Cloud Omni",
+            "models": [
+                {
+                    "id": "gemini-omni-flash-preview",
+                    "label": "Omni Flash",
+                    "family": "gemini_omni",
+                    "adapterKey": "google_omni",
+                    "supportedModes": ["text-to-video", "image-to-video", "reference-video"],
+                    "inputCapabilities": {
+                        "text": True,
+                        "images": True,
+                        "firstFrame": True,
+                        "firstFrameRequired": True,
+                        "endFrame": False,
+                        "referenceImages": True,
+                        "referenceVideos": False,
+                        "referenceAudios": False,
+                        "maxImages": 1,
+                        "maxReferenceImages": 10,
+                        "maxInputImageSizeMb": 20,
+                    },
+                    "quickParams": ["videoMode", "aspectRatio", "duration"],
+                    "params": {
+                        "videoMode": {
+                            "type": "select",
+                            "label": "Video Mode",
+                            "options": ["text-to-video", "image-to-video", "reference-video"],
+                            "default": "text-to-video",
+                        },
+                        "aspectRatio": {
+                            "type": "select",
+                            "label": "Aspect Ratio",
+                            "options": ["16:9", "9:16"],
+                            "default": "16:9",
+                        },
+                        "duration": {
+                            "type": "select",
+                            "label": "Duration",
+                            "options": [f"{value}s" for value in range(3, 11)],
+                            "default": "5s",
+                        },
+                    },
+                    "uiHints": {
+                        "allowCustomParams": False,
+                    },
+                    "customParams": {},
+                },
+            ],
+        },
+        {
             "id": "seedance_official",
             "label": "Seedance",
             "models": [

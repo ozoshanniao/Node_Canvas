@@ -47,7 +47,6 @@ export const sanitizePersistedKlingOmniReferences = (customParams = {}) => {
 
 export const buildRuntimeKlingOmniReferences = (omniParamsOutput = {}) => {
   const runtimeImages = [];
-  const seenSources = new Map();
   const imageDescriptors = [];
 
   (Array.isArray(omniParamsOutput?.images) ? omniParamsOutput.images : []).forEach((item) => {
@@ -56,17 +55,8 @@ export const buildRuntimeKlingOmniReferences = (omniParamsOutput = {}) => {
     const alias = cleanString(item.alias);
     if (!url || !IMAGE_ALIAS_PATTERN.test(alias)) return;
 
-    const sourceKey = [
-      cleanString(item.sourceNodeId),
-      cleanString(item.sourceHandle),
-      url,
-    ].join('\u0000');
-    let index = seenSources.get(sourceKey);
-    if (index === undefined) {
-      index = runtimeImages.length;
-      seenSources.set(sourceKey, index);
-      runtimeImages.push(url);
-    }
+    const index = runtimeImages.length;
+    runtimeImages.push(url);
 
     const descriptor = {
       alias,

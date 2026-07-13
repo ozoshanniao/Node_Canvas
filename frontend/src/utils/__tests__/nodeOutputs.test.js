@@ -8,7 +8,7 @@ import {
   pushAnnotationHistory,
   renderAnnotationLayer,
 } from '../annotationUtils.js';
-import { isImageLabelTargetHandle, normalizeImageInputEdgeLabels, shouldShowEdgeControls, shouldShowImageInputEdgeLabel } from '../edgeLabels.js';
+import { getDerivedImageInputEdgeLabel, isImageLabelTargetHandle, normalizeImageInputEdgeLabels, shouldShowImageInputEdgeLabel } from '../edgeLabels.js';
 
 const makeOmniNode = (data) => ({
   id: 'omni-1',
@@ -32,58 +32,45 @@ const imageEdge = {
 };
 
 {
-  const edges = normalizeImageInputEdgeLabels([
-    { id: 'v1', source: 'video-a', target: 'seedance', targetHandle: 'video:references', data: {} },
-    { id: 'v2', source: 'video-b', target: 'seedance', targetHandle: 'video:references', data: {} },
-    { id: 'a1', source: 'audio-a', target: 'seedance', targetHandle: 'audio:references', data: {} },
-  ]);
-  assert.equal(edges[0].data.kind, 'video');
-  assert.equal(edges[0].data.videoIndex, 0);
-  assert.equal(edges[0].data.inputLabel, 'video1');
-  assert.equal(edges[1].data.videoIndex, 1);
-  assert.equal(edges[1].data.inputLabel, 'video2');
-  assert.equal(edges[2].data.kind, 'audio');
-  assert.equal(edges[2].data.audioIndex, 0);
-  assert.equal(edges[2].data.inputLabel, 'audio1');
-}
-
-{
   assert.equal(isImageLabelTargetHandle('image:references'), true);
+  assert.equal(isImageLabelTargetHandle('image:references[]'), true);
   assert.equal(isImageLabelTargetHandle('image:images'), true);
   assert.equal(isImageLabelTargetHandle('image:firstFrame'), true);
   assert.equal(isImageLabelTargetHandle('image:lastFrame'), true);
   assert.equal(isImageLabelTargetHandle('text:prompt'), false);
 
-  assert.equal(shouldShowImageInputEdgeLabel('image:firstFrame', 'image1'), true);
-  assert.equal(shouldShowImageInputEdgeLabel('image:lastFrame', 'image2'), true);
+  assert.equal(shouldShowImageInputEdgeLabel('image:firstFrame', 'image1'), false);
+  assert.equal(shouldShowImageInputEdgeLabel('image:firstFrame', 'image1', true), true);
+  assert.equal(shouldShowImageInputEdgeLabel('image:lastFrame', 'image2'), false);
+  assert.equal(shouldShowImageInputEdgeLabel('image:lastFrame', 'image2', true), true);
   assert.equal(shouldShowImageInputEdgeLabel('image:end', 'END'), false);
   assert.equal(shouldShowImageInputEdgeLabel('image:end', 'END', true), true);
-  assert.equal(shouldShowImageInputEdgeLabel('text:prompt', 'prompt'), false);
-  assert.equal(shouldShowEdgeControls({ selected: false, sourceSelected: false, targetSelected: false }), false);
-  assert.equal(shouldShowEdgeControls({ selected: true, sourceSelected: false, targetSelected: false }), true);
+  assert.equal(shouldShowImageInputEdgeLabel('text:prompt', 'prompt', true), false);
 
   const referenceEdges = normalizeImageInputEdgeLabels([
-    { id: 'reference', target: 'omni', targetHandle: 'image:references', data: {} },
-    { id: 'images', target: 'legacy-video', targetHandle: 'image:images', data: {} },
+    { id: 'third', source: 'c', target: 'omni', targetHandle: 'image:references', data: { connectionOrder: 8, inputLabel: 'wrong', imageIndex: 99 } },
+    { id: 'first', source: 'a', target: 'omni', targetHandle: 'image:references', data: { connectionOrder: 2 } },
+    { id: 'second', source: 'b', target: 'omni', targetHandle: 'image:references', data: { connectionOrder: 5 } },
   ]);
-  assert.equal(referenceEdges[0].data.inputLabel, 'image1');
-  assert.equal(referenceEdges[1].data.inputLabel, 'image1');
+  assert.equal(referenceEdges[0].data.inputLabel, undefined);
+  assert.equal(referenceEdges[0].data.imageIndex, undefined);
+  assert.equal(referenceEdges[0].data.connectionOrder, 8);
+  assert.equal(getDerivedImageInputEdgeLabel(referenceEdges[1], referenceEdges), 'image1');
+  assert.equal(getDerivedImageInputEdgeLabel(referenceEdges[2], referenceEdges), 'image2');
+  assert.equal(getDerivedImageInputEdgeLabel(referenceEdges[0], referenceEdges), 'image3');
 
-  const frameEdges = normalizeImageInputEdgeLabels([
-    { id: 'last', target: 'video', targetHandle: 'image:lastFrame', data: {} },
-    { id: 'first', target: 'video', targetHandle: 'image:firstFrame', data: {} },
-  ]);
-  assert.equal(frameEdges[0].data.imageIndex, 1);
-  assert.equal(frameEdges[0].data.inputLabel, 'image2');
-  assert.equal(frameEdges[1].data.imageIndex, 0);
-  assert.equal(frameEdges[1].data.inputLabel, 'image1');
+  const afterMiddleDelete = referenceEdges.filter((edge) => edge.id !== 'second');
+  assert.equal(getDerivedImageInputEdgeLabel(afterMiddleDelete[0], afterMiddleDelete), 'image2');
+  assert.equal(getDerivedImageInputEdgeLabel(afterMiddleDelete[1], afterMiddleDelete), 'image1');
+  assert.equal(afterMiddleDelete[0].data.connectionOrder, 8);
 
-  const normalizedAgain = normalizeImageInputEdgeLabels(frameEdges);
-  assert.equal(normalizedAgain, frameEdges);
-  assert.equal(normalizedAgain[0].data.imageIndex, 1);
-  assert.equal(normalizedAgain[1].data.imageIndex, 0);
+  const frameEdges = [
+    { id: 'last', source: 'b', target: 'video', targetHandle: 'image:lastFrame', data: { connectionOrder: 0 } },
+    { id: 'first', source: 'a', target: 'video', targetHandle: 'image:firstFrame', data: { connectionOrder: 0 } },
+  ];
+  assert.equal(getDerivedImageInputEdgeLabel(frameEdges[0], frameEdges), 'image2');
+  assert.equal(getDerivedImageInputEdgeLabel(frameEdges[1], frameEdges), 'image1');
 }
-
 {
   const videoInputOutput = getNodeVideoInputOutput({
     id: 'video-input-1',
@@ -216,6 +203,73 @@ const imageEdge = {
   assert.equal(output.resolvedPrompt, 'Use <<<image_1>>> with <<<element_1>>>');
 }
 
+{
+  const prompt = 'Use @image2 after @image_1';
+  const orderedNodes = [
+    { id: 'image-a', type: 'imageInputNode', data: { url: 'input/a.png' } },
+    { id: 'image-b', type: 'imageInputNode', data: { url: 'input/b.png' } },
+  ];
+  const orderedEdges = [
+    {
+      id: 'later',
+      source: 'image-b',
+      sourceHandle: 'image:out',
+      target: 'omni-1',
+      targetHandle: 'image:references',
+      data: { connectionOrder: 9 },
+    },
+    {
+      id: 'first',
+      source: 'image-a',
+      sourceHandle: 'image:out',
+      target: 'omni-1',
+      targetHandle: 'image:references',
+      data: { connectionOrder: 3 },
+    },
+    {
+      id: 'repeat',
+      source: 'image-a',
+      sourceHandle: 'image:out',
+      target: 'omni-1',
+      targetHandle: 'image:references',
+      data: { connectionOrder: 12 },
+    },
+  ];
+  const omniNode = makeOmniNode({ prompt, elements: [] });
+  const output = getNodeOmniParamsOutput(omniNode, orderedEdges, orderedNodes);
+
+  assert.equal(output.isValid, true);
+  assert.equal(output.resolvedPrompt, 'Use <<<image_2>>> after <<<image_1>>>');
+  assert.deepEqual(output.images.map((image) => image.alias), ['image_1', 'image_2', 'image_3']);
+  assert.deepEqual(output.images.map((image) => image.url), [
+    'input/a.png',
+    'input/b.png',
+    'input/a.png',
+  ]);
+  assert.equal(getDerivedImageInputEdgeLabel(orderedEdges[1], orderedEdges), 'image1');
+  assert.equal(getDerivedImageInputEdgeLabel(orderedEdges[0], orderedEdges), 'image2');
+  assert.equal(omniNode.data.prompt, prompt, 'runtime validation must not rewrite the user prompt');
+
+  const afterDelete = getNodeOmniParamsOutput(omniNode, [orderedEdges[1]], orderedNodes);
+  assert.equal(afterDelete.isValid, false);
+  assert.equal(afterDelete.errors.includes('Unknown Omni reference: @image2'), true);
+  assert.equal(omniNode.data.prompt, prompt);
+
+  const missing = getNodeOmniParamsOutput(
+    makeOmniNode({ prompt: 'Use @image1', elements: [] }),
+    [{
+      id: 'missing',
+      source: 'missing-source',
+      sourceHandle: 'image:out',
+      target: 'omni-1',
+      targetHandle: 'image:references',
+      data: { connectionOrder: 0 },
+    }],
+    orderedNodes
+  );
+  assert.equal(missing.isValid, false);
+  assert.equal(missing.errors.includes('Image input image1 has no usable image.'), true);
+}
 {
   const output = getNodeOmniParamsOutput(makeOmniNode({
     prompt: 'Use @element_1',

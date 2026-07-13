@@ -204,4 +204,57 @@ assert.deepEqual(sanitizedOmniCustomParams.customParams.kling.omniParams.images,
   { alias: 'image_1', role: 'reference', sourceNodeId: 'source-1', sourceHandle: 'image:out' },
 ]);
 
+const googleOmniCapability = {
+  ...capability,
+  provider: 'google_omni',
+  model: 'gemini-omni-flash-preview',
+  family: 'gemini_omni',
+  taskTypes: ['text-to-video', 'image-to-video', 'reference-video'],
+  parameters: {
+    videoMode: { type: 'select', group: 'basic', default: 'text-to-video', options: ['text-to-video', 'image-to-video', 'reference-video'] },
+    aspectRatio: { type: 'select', group: 'basic', default: '16:9', options: ['16:9', '9:16'] },
+    duration: { type: 'select', group: 'basic', default: '5s', options: ['3s', '4s', '5s', '6s', '7s', '8s', '9s', '10s'] },
+  },
+};
+const sanitizedGoogleOmni = sanitizeVideoNodeDataForSave({
+  provider: 'google_omni',
+  model: 'gemini-omni-flash-preview',
+  taskType: 'image-to-video',
+  params: {
+    prompt: 'Animate',
+    videoMode: 'image-to-video',
+    aspectRatio: '9:16',
+    resolution: '720p',
+    duration: '8s',
+    seed: 1,
+  },
+  customParams: { forbidden: true },
+}, googleOmniCapability);
+assert.deepEqual(sanitizedGoogleOmni.params, {
+  prompt: 'Animate',
+  videoMode: 'image-to-video',
+  aspectRatio: '9:16',
+  duration: '8s',
+});
+assert.equal('customParams' in sanitizedGoogleOmni, false);
+
+const syncedGoogleOmni = buildSyncedVideoParamsPatch({
+  settings: {
+    provider: 'google',
+    model: 'veo-3.1-generate-001',
+    params: { prompt: 'Keep me', videoMode: 'text-to-video', resolution: '1080p', duration: '8s' },
+    customParams: { stale: true },
+  },
+  nextSettings: {
+    provider: 'google_omni',
+    model: 'gemini-omni-flash-preview',
+    videoMode: 'text-to-video',
+    aspectRatio: '16:9',
+  },
+  modelConfig: { ...googleOmniCapability, id: 'gemini-omni-flash-preview', adapterKey: 'google_omni', params: googleOmniCapability.parameters },
+});
+assert.deepEqual(syncedGoogleOmni.params, { prompt: 'Keep me', videoMode: 'text-to-video', aspectRatio: '16:9', duration: '8s' });
+assert.equal(syncedGoogleOmni.duration, undefined);
+assert.equal(syncedGoogleOmni.customParams, undefined);
+
 console.log('videoNodeData tests passed');
